@@ -1,0 +1,908 @@
+ 
+ 
+                 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+PAKISTAN REVENUE AUTOMATION (PVT.) LTD 
+PRAL – Head office, Software Technology Park-III, Plot No. 156, Service Road (North),  
+Industrial Area, I-9/3, Islamabad. Pakistan 
+ 
+ Disclaimer:   
+The information provided in this document is intended solely for th e Digital Invoicing (DI) from PRAL. 
+The contents of this document may not be reproduced or divulged outside the intended organizations 
+without the express written permission of PRAL. 
+ 
+Digital Invoicing 
+User Manual 
+Version: 1.6 
+ 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 1 of 37 
+ 
+Document Information 
+ 
+  
+External 
+SD Wing 
+ 
+Mehboob Ur Rehman / Arslan Nazir 
+ 
+16-Apr-26 
+No change since first issue 
+Anam Majid 
+05-Apr-25 
+Mehboob Ur Rehman / Arslan Nazir 
+ 
+05-Apr-25 
+Arslan Nazir 
+Digital Invoicing - User Manual 
+ 
+Document Name 
+Digital Invoicing 
+Project Name 
+1.6 
+Version 
+Issued 
+Status 
+Muhammad Umair Siddique 
+Reviewer(s) 
+First Review Date 
+Approver 
+Issue Date 
+Update By 
+ 
+Last Update Date 
+ 
+Update Reviewed by 
+Distribution 
+ 
+Category 
+ 
+Public 
+ 
+Privacy Level 
+ 
+Author 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 2 of 37 
+ 
+Review History 
+ 
+Sr. # Reviewer R/V Date Remarks 
+1.  Mehboob Ur Rehman 05-Apr-25 Initial Document 
+2.  Arslan Nazir 03-Jun-25 Screens Update, Enhancements & CRM 
+3.  Mehboob Ur Rehman 05-Jun-25 Focused solely on the taxpayer 
+registration process and CRM. 
+4.  Mehboob Ur Rehman 23-Jun-25 CRM Link Updated 
+5.  Mehboob Ur Rehman 18-Jul-25 Reattempting Invoice Submission After 
+Connection Loss 
+6.  Arslan Nazir 16-Apr-26 
+• Invoice Cancellation Process & 
+Screens 
+• Conditions/Validations for Invoice 
+Cancellation 
+  
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 3 of 37 
+ 
+Table of Content 
+Contents 
+1. Introduction ........................................................................................................................ 4 
+2. Objective ............................................................................................................................. 4 
+3. Scope of the Document ...................................................................................................... 4 
+4. Digital Invoicing User Manual ............................................................................................. 5 
+4.1. Taxpayer’s Registration Process ................................................................................ 5 
+4.1.1. IF “Proceed with PRAL as Licensed Integrator” ................................................. 7 
+4.1.2. IF “Proceed with Other Licensed Integrator” .................................................. 19 
+4.2. Reattempting Invoice Submission After Connection Loss ....................................... 31 
+5. DI CRM Manual: ................................................................................................................ 32 
+6. Frequently Asked Questions (FAQs) ................................................................................. 36 
+ 
+  
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 4 of 37 
+ 
+1. Introduction 
+This document serves as a comprehensive guide for understanding and utilizing the Digital 
+Invoicing System developed by Pakistan Revenue Automation Limited (PRAL) for the Federal 
+Board of Revenue (FBR), Pakistan. The Digital Invoicing System is a pivotal s tep towards 
+modernizing the taxation process by streamlining invoice management and fostering 
+compliance. It provides an integrated platform for taxpayers, license integrators, and tax 
+officers to collaborate effectively in managing and validating digital invoices in accordance 
+with FBR regulations.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
+2. Objective 
+To provide clear guidance on effectively using the Digital Invoicing System developed by PRAL 
+for FBR to streamline invoice management and ensure compliance with tax regulations. 
+3. Scope of the Document 
+This document provides detailed guidance on the following aspects of the Digital Invoicing 
+System: 
+• Taxpayer Responsibilities: 
+o Submission and management of digital invoices. 
+o API integration. 
+• License Integrator Responsibilities: 
+o Reviewing taxpayer applications. 
+o Accepting or rejecting applications. 
+o Transitioning accepted applications to production for invoice management. 
+• System Functionalities: 
+o Real-time invoice management and viewing (Daily, Monthly, Quarterly and Yearly). 
+o Seamless integration with FBR’s broader taxation infrastructure. 
+  
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 5 of 37 
+ 
+4. Digital Invoicing User Manual 
+4.1. Taxpayer’s Registration Process 
+1. Log In 
+• Access the IRIS portal using the designated link by entering your CNIC / NTN  and 
+password. Upon logging in, you will be directed to the dashboard. 
+ 
+• Navigate to Digital Invoicing on the main dashboard. 
+ 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 6 of 37 
+ 
+2. Integration Mode 
+It is the method through which the business’s invoices are connected and submitted to FBR’s 
+platform 
+2.1. Choose Integration Mode 
+You will land on the Integration Mode screen where two Modes are available:  
+o API Integration 
+o Manual Invoice Generation. 
+• Choose API Integration from the available Modes 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 7 of 37 
+ 
+3. API Integration 
+Proceed to the API Integration tab and choose Licensed Integrator. PRAL will provide Free 
+of Cost Licensed Integrator Services along with Sandbox Testing, whereas other License 
+Integrators may charge certain fee. 
+ 
+4.1.1. IF “Proceed with PRAL as Licensed Integrator” 
+• Select “Proceed with PRAL as Licensed Integrator” and click the “Next” button. 
+ 
+1. Technical Details: 
+ 
+• Provide the required Technical Details and click on Next button. 
+o Technical Contact Person 
+o Technical Contact Mobile 
+o Technical Contact E-mail 
+o ERP/System Provider 
+o Software Type (Cloud/On Premises) 
+o Software Version 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 8 of 37 
+ 
+o CRM User ID for Authorized Person (Email), that will be used to register complaint or 
+seek support at our “Customer Relationship Management”. 
+o CRM Password 
+• Specify Business Types (for Sandbox Testing Only) 
+o Business Nature (Multiple can be Selected) 
+o Sector (Select One Only) 
+• Click on “Next” button. 
+ 
+2. IP Whitelisting: 
+• Enter IP Whitelisting details. 
+o Hosting Server Company Name 
+o Hosting Server Country 
+o IP Address (minimum 1 and maximum 3) 
+OR 
+• Upload a file for multiple IPs 
+o Click the Download Sample File link. 
+o Fill in details and upload. 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 9 of 37 
+ 
+o File type must be .xls with up to 1 MB size. 
+ 
+• The IPs detail will be displayed in below table. 
+• By clicking the “Submit” button, the application will be successfully submitted to PRAL.  
+ 
+• A confirmation message will appear on the screen, click the “Next” button to proceed. 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 10 of 37 
+ 
+The PRAL Data Centre will accept or reject the submitted IPs by the taxpayer within 2 working 
+hours. This will automatically initiate Sandbox testing. 
+3. Sandbox Environment: 
+• Click on Sandbox Environment to view following information to complete integration for 
+testing. 
+o View Web API Details 
+o View Sample JSON Format 
+o View Sample Code 
+ 
+3.1. View Web API Environment Details 
+ 
+• Click “View Web API Environment Details”  
+ 
+• A new pop -up will appear on the screen to view details of the Sandbox API  and 
+Sandbox Invoice Details API for testing and integration with the FBR system. 
+ 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 11 of 37 
+ 
+• Click “Copy Web API Environment Details” to  transfer the configuration information 
+of the Web API environment for easier integration or setup with the FBR system. 
+ 
+3.2. View Sample JSON Format 
+ 
+• Click on “View Sample JSON Format” 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 12 of 37 
+ 
+• The new pop-up will display the sample JSON data for interaction with the FBR API 
+• To easily get the correct JSON structure for an invoice, Click on “Copy Invoice Format” 
+ 
+3.3. View Sample Code 
+• Click on “View Sample Code” 
+ 
+ 
+ 
+ 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 13 of 37 
+ 
+• Click Copy Sample Code (.Net) to access a code example for integrating with the FBR API 
+ 
+• After completing the integration in the Sandbox Environment, the taxpayer must submit 
+scenario-based invoices that align with the selected combination of “Business Nature” 
+and “Sector” as specified in the Technical Details section. 
+• The dashboard displays the applicable scenarios to based on selected Business Nature & 
+Sector to complete. 
+ 
+• To begin, use the Sandbox Environment token to get access to the available JSON invoice 
+data. After authorization, post each invoice JSON according to the specific scenario 
+explained in the Technical Document.  
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 14 of 37 
+ 
+• Click on the Eligible Scenarios tile 
+ 
+• A new pop-up will appear, displaying the details and status of invoices for the applicable 
+scenarios. 
+ 
+ 
+ 
+ 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 15 of 37 
+ 
+• All the submitted invoices will be displayed in the table, reflecting the details and status 
+of each invoice. 
+ 
+• Click on the Failed status to access error information. 
+ 
+ 
+ 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 16 of 37 
+ 
+• A pop-up window will appear displaying the Error Details. 
+ 
+• When a ll the invoices have been successfully submitted a ccording to the applicable 
+scenarios, the system will automatically generate a Production Token.  
+• Click on Next to proceed for Production Environment 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 17 of 37 
+ 
+4. Production Environment: 
+• Click on Production Environment to view below details: 
+o View Production API Details 
+o View Security Token  
+ 
+1. View Production API Details 
+ 
+2. View Security Token  
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 18 of 37 
+ 
+• Use the aforementioned information to complete integration in the Production 
+Environment and start transmitting invoices in real time. 
+Note: Once you’ve successfully submitted all the required test invoices for every relevant 
+sector and business type, the system will generate the final Production Token for you. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 19 of 37 
+ 
+4.1.2. IF “Proceed with Other Licensed Integrator” 
+• Select “Other Licensed Integrator ”, choose the desired license d integrator from drop -
+down list and click on “Next” button. 
+ 
+• Click on the “Next” button to access the “API Integration” Screen. 
+1. Technical Details: 
+ 
+• Provide Technical Details 
+ 
+• After the acceptance of the application by the chosen Licensed Integrator, remaining 
+menu links (under API Integration Tab) will be available. 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 20 of 37 
+ 
+Note: The rest of the process remains the same as explained in “Proceed with PRAL as 
+Licensed Integrator”. However, in case of an LI other than PRAL, PRAL does not perform IP 
+whitelisting for taxpayers. 
+2. Invoice Dashboard 
+• Navigate to the Invoice Dashboard, which contains two subsections: 
+o Summary Dashboard 
+o Search Invoice 
+ 
+2.1. Summary Dashboard 
+ 
+• In the Summary Dashboard, invoices from a selected month and year can be viewed. 
+ 
+• View real time invoice value graph data in four formats: 
+o Daily 
+o Monthly 
+o Quarterly 
+o Yearly 
+• The invoice value graph is available in two formats: 
+• Sale Invoice 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 21 of 37 
+ 
+• Debit Note 
+2.2. Search Invoice 
+Invoices can be retrieved using either the FBR Invoice Number or an Invoice Date Range.  
+ 
+Providing a date range is optional when searching by FBR Invoice Number. 
+• Enter FBR Invoice Number to search 
+ 
+• Select a “From” and “To” date to retrieve invoices for that period. 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 22 of 37 
+ 
+• Click on the “Search” button 
+ 
+The search results can be further segmented based on the selected invoice status. 
+• Select the invoice Status from the provided drop-down 
+o Valid – Successfully issued and verified by the FBR system 
+o Edited – The invoice has been edited 
+o Cancelled – The invoice has been cancelled 
+o Partially Edited – Some items in the invoice have been modified 
+o Partially Cancelled – Some items in the invoice have been cancelled 
+o Partially Edited & Cancelled – Some items have been Modified, while other 
+items have been Cancelled. 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 23 of 37 
+ 
+All invoices within the specified time period and details will be displayed in a table, and can 
+be downloaded 
+• Click on “Download” button to export specific invoices 
+ 
+An individual invoice along with its item can also be downloaded 
+• Click on Export PDF button to access and view the invoice in PDF. 
+ 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 24 of 37 
+ 
+On the PDF invoice, “C” and “E” represent Cancelled and Edited, respectively. 
+ 
+The Status column in the table reflects the updates status 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 25 of 37 
+ 
+• Click on the icon to cancel the invoice. 
+ 
+• Click “Yes” to confirm the entire invoice cancellation 
+ 
+The “Cancel All’ option is enabled only if none of the items in the invoice have been edited. 
+ 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 26 of 37 
+ 
+An item in the invoice can be cancelled or edited 
+• Click on the FBR Invoice No. 
+ 
+• Click on to cancel the item. 
+ 
+ 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 27 of 37 
+ 
+• Click “Yes” to confirm the item cancellation. 
+ 
+To edit an item of the invoice 
+• Click on  to make changes in the particular item of the invoice. 
+ 
+ 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 28 of 37 
+ 
+• Edit the fields where required and click the “Submit” button 
+ 
+Once an item on an invoice has been edited, it can no longer be cancelled. As a result, the 
+entire invoice containing that item is also ineligible for cancellation. Each item only be edited 
+once. 
+The dates for Insertion, Editing, and Cancellation can also be accessed. 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 29 of 37 
+ 
+Original invoice item details can still be viewed after editing. 
+• Click on FBR Invoice No of the edited invoice 
+ 
+• Click on button to view the pre-edited details 
+ 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 30 of 37 
+ 
+The original invoice details are displayed below the edited invoice. 
+ 
+Conditions for Invoice Cancellation 
+• Only e-invoices received through DI Integration are eligible for correction.  
+• Corrections must be made within 72 hours of issuing the invoice (Insertion Date).  
+• The invoice number is fixed and cannot be modified.  
+• Only individual item details can be edited, while header information remains fixed and 
+cannot be modified. 
+• The invoice date cannot be revised to a date earlier than 3 days before the current 
+system date. 
+• Invoices linked with Annexure-C are not eligible for correction. 
+• Invoices that have already been reported in submitted returns cannot be changed. 
+• Invoices will be moved to return after 72 hours of invoice posting time or at month 
+end, whichever comes first, and cannot be cancelled afterward. 
+• Invoice cancellation is allowed only when its value does not exceed 10% of last 
+month’s sales. Once the limit is exhausted, no further invoices can be cancelled 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 31 of 37 
+ 
+• The 10% limit is the total limit allowed for all invoice modification together, 
+irrespective of the single invoice or item or multiple invoices or items modification 
+• After modification, a revised invoice will be generated, retaining the original number 
+and date. 
+4.2. Reattempting Invoice Submission After Connection Loss 
+In situations where an invoice submission is interrupted due to internet connectivity failures 
+or other unforeseen technical issues, it is essential to resubmit the affected invoice through 
+the Digital Invoicing System. The system does not feature automatic retries for failed uploads; 
+therefore, the invoice must be submitted again to ensure its successful recording within the 
+FBR’s digital platform.  
+Resubmission of the invoice helps maintain the accuracy and completeness of the 
+invoicing data, which is critical for compliance with tax regulations. Users can locate the 
+original invoice within their records and proceed to transmit it once more via the s ystem’s 
+interface. This process safeguards against any inconsistencies or data gaps that might 
+otherwise arise from incomplete submissions. 
+  
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 32 of 37 
+ 
+5. DI CRM Manual: 
+In order to seek help and support for issues during integration and post  integration, the 
+Taxpayer and License Integrators will use the “Customer Relationship Management” (CRM) 
+for Digital Invoicing.  
+1. Log In 
+• Navigate to the ECRM portal. (https://dicrm.pral.com.pk) 
+• Select the relevant radio button. 
+▪ License Integrators will select IRIS 
+ (Log in by entering registration number and Password) 
+▪ Taxpayer / Technical Content Person will select DI-Support 
+ (Login by entering DI registered email ID and Password provided in technical 
+details) 
+• Log in by entering your credentials and click the “Submit” button. 
+ 
+(Note: After 5 unsuccessful attempts, ID will be Blocked) 
+Note: A taxpayer can log in using either IRIS or the DI Support option. If he wants to log in 
+himself, he can use the IRIS option. If he wants to authorize a person (as mentioned in the 
+technical details screen), the login should be done through the DI Support option. 
+• Upon successful login, you will be directed to the main dashboard, which displays the 
+Case List and provides the option to create New Case. 
+• Cases can be searched by their case number or title. 
+• To view details of an existing case, simply click the “View” icon next to the case entry. 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 33 of 37 
+ 
+ 
+ 
+2. New Case 
+• To enter a new case, click on '+ New Case' on the main dashboard. 
+ 
+       FOR LICENSE INTEGRATOR    FOR TAXPAYER 
+ 
+The fields marked with * are mandatory 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 34 of 37 
+ 
+• In case of LI, enter Client Registration No./Name and all the locked details will be auto 
+selected. 
+• “Case Number” will be assigned by the system. 
+• Person type “License Integrator” or “Taxpayer” will be auto fetched at the time of login 
+as per user type selection (IRIS/DI-Support) 
+• Client Name (In case of LI) auto populated and cannot be changed. 
+• Select the Priority Type from the drop-down list. (Mandatory) 
+▪ High 
+▪ Normal 
+▪ Low 
+• Select the Query Type from the drop-down list. (Mandatory) 
+▪ Integration 
+▪ Post Integration 
+• Select the Title. (Mandatory) 
+• Email is auto-populated and cannot be changed. (Mandatory) 
+• Describe the issue in the Description field (Mandatory) 
+• Click the “Save” button. 
+ 
+3. Attachments 
+o Once the case is saved, attachments can be added, removed, viewed, and 
+downloaded. 
+o Attachments should be in PDF format and must not exceed a file size of 5MB 
+ 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 35 of 37 
+ 
+4. Correspondence 
+o Any additional information or correspondence can be added under the 
+Correspondence section. 
+ 
+ 
+  
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 36 of 37 
+ 
+6. Frequently Asked Questions (FAQs) 
+ 
+Q. Can I use PRAL as my Licensed Integrator free of charge? 
+• Yes. PRAL provides Licensed Integrator services and sandbox testing free of cost. 
+Q. What is the purpose of IP Whitelisting? 
+• IP whitelisting ensures that only approved IP addresses can access the integration. You 
+can enter 1–3 IPs or upload a file with multiple IPs. 
+Q. What happens after submitting test invoices in the Sandbox environment? 
+• Once all required scenario -based test invoices are submitted and validated, a 
+Production Token is automatically generated. 
+Q. What should I do if invoice submission fails due to a connection issue? 
+• You must resubmit the failed invoice to ensure it is recorded properly. 
+Q. Can the same email ID used in the CRM be used to log in? 
+• Yes. The DI registered email ID and password provided in the technical details are used 
+to access CRM as a Technical Contact Person. 
+Q. What is the difference between Sandbox and Production environments? 
+• The Sandbox is for testing your  integration with dummy data. Production is for real -
+time, live invoice transmission after successful testing. 
+Q. Can multiple business types be selected during the registration? 
+• Yes. You can select multiple Business Natures, but only one Sector. 
+Q. Is it mandatory to go through Sandbox testing? 
+• Yes. Scenario-based testing in the Sandbox is required before gaining access to the 
+Production environment. 
+ 
+ 
+
+                                                        
+  
+  
+ Digital Invoicing – User Manual                                          
+ 
+ 
+Document Version :1.6 PRAL © 2025-2026 – All rights reserved Page 37 of 37 
+ 
+Q. How are invoices uniquely identified after submission? 
+• Each successfully submitted invoice receives a unique Invoice Number from the  
+system. 
+Q. What is the format of the invoice data for API integration? 
+• Invoices must be submitted in JSON format, following  the sample provided in the 
+Sandbox. 
+Q. What type of invoice should I choose for a sale? 
+• If you are generating a sales invoice, select "Sale Invoice" as the Invoice Type from the 
+list. 
+Q. Can I edit or delete items from the invoice? 
+• Yes, you can edit or delete items from the item list after they have been added to the 
+invoice. 
+Q. What happens if the reason for a debit note is selected as “Others”? 
+• If "Others" is chosen as the reason for the debit note, additional remarks are required 
+to explain the specific reason for the adjustment. This ensures clarity and transparency 
+in the transaction. 
+Q. Is it mandatory to include a buyer’s registration number when creating a sale invoice? 
+• Yes, the buyer’s registration number is mandatory for a sale invoice, as it helps link 
+the invoice to the appropriate buyer in the system. 
+Q. What happens if I don’t complete all the required fields in the invoice creation process? 
+• If any mandatory fields are left incomplete, the system will prompt the user to fill them 
+in before proceeding with the invoice validation and generation. 
+Q. What happens if I don’t complete all the required fields in the invoice creation process? 
+• If any mandatory fields are left incomplete, the system will prompt the user to fill them 
+in before proceeding with the invoice validation and generation. 
+ 
+  

@@ -1,0 +1,334 @@
+"""CSV upload pipeline: parse POS product rows → group into invoices →
+submit each to FBR → record results.
+
+CSV format (one row per product/line item; rows sharing the same
+``pos_invoice_no`` become one invoice):
+
+    pos_invoice_no,invoice_date,buyer_ntn_cnic,buyer_name,buyer_province,
+    buyer_address,buyer_registration_type,product_description,hs_code,
+    rate,uom,quantity,unit_price,sale_type,scenario_id,fixed_notified_value,
+    sro_schedule_no,sro_item_serial_no
+
+Required per row: pos_invoice_no, invoice_date (YYYY-MM-DD),
+product_description, quantity, unit_price. Everything else falls back to
+sensible defaults / the user's FBR settings.
+
+fixed_notified_value / sro_schedule_no / sro_item_serial_no are optional —
+they only matter for retail-reduced-rate goods (FBR scenarios SN008, SN027,
+SN028). Only sale_type "3rd Schedule Goods" (SN008, SN027) is actually
+*priced and taxed* off the fixed/notified value instead of quantity ×
+unit price (spec error 0090/0102 if missing there). "Goods at Reduced Rate"
+(SN028) still carries fixed_notified_value/SRO fields for reference, but
+tax is computed off the normal sale value — confirmed against FBR's live
+sandbox and PRAL's own SN028 sample.
+"""
+
+import csv
+import io
+from datetime import date
+
+from sqlalchemy.orm import Session
+
+from app.fbr.scenario_samples import SCENARIO_NAMES, SCENARIO_SAMPLE_ITEMS
+from app.models import FbrSettings, Invoice, InvoiceItem, Upload, User
+from app.services import invoice_service
+
+REQUIRED_COLUMNS = [
+    "pos_invoice_no",
+    "invoice_date",
+    "product_description",
+    "quantity",
+    "unit_price",
+]
+
+ALL_COLUMNS = [
+    "pos_invoice_no",
+    "invoice_date",
+    "buyer_ntn_cnic",
+    "buyer_name",
+    "buyer_province",
+    "buyer_address",
+    "buyer_registration_type",
+    "product_description",
+    "hs_code",
+    "rate",
+    "uom",
+    "quantity",
+    "unit_price",
+    "sale_type",
+    "scenario_id",
+    "fixed_notified_value",
+    "sro_schedule_no",
+    "sro_item_serial_no",
+]
+
+TEMPLATE_ROWS = [
+    {
+        "pos_invoice_no": "POS-1001",
+        "invoice_date": "2026-08-15",
+        "buyer_ntn_cnic": "1234567",
+        "buyer_name": "ABC Traders",
+        "buyer_province": "Punjab",
+        "buyer_address": "Mall Road, Lahore",
+        "buyer_registration_type": "Registered",
+        "product_description": "Laptop Computer 15 inch",
+        "hs_code": "8471.3010",
+        "rate": "18%",
+        "uom": "Numbers, pieces, units",
+        "quantity": "2",
+        "unit_price": "150000",
+        "sale_type": "Goods at standard rate (default)",
+        "scenario_id": "SN001",
+    },
+    {
+        "pos_invoice_no": "POS-1001",
+        "invoice_date": "2026-08-15",
+        "buyer_ntn_cnic": "1234567",
+        "buyer_name": "ABC Traders",
+        "buyer_province": "Punjab",
+        "buyer_address": "Mall Road, Lahore",
+        "buyer_registration_type": "Registered",
+        "product_description": "Wireless Mouse",
+        "hs_code": "8471.6020",
+        "rate": "18%",
+        "uom": "Numbers, pieces, units",
+        "quantity": "5",
+        "unit_price": "2500",
+        "sale_type": "Goods at standard rate (default)",
+        "scenario_id": "SN001",
+    },
+    {
+        "pos_invoice_no": "POS-1002",
+        "invoice_date": "2026-08-15",
+        "buyer_ntn_cnic": "",
+        "buyer_name": "Walk-in Customer",
+        "buyer_province": "Sindh",
+        "buyer_address": "Karachi",
+        "buyer_registration_type": "Unregistered",
+        "product_description": "Mobile Phone",
+        "hs_code": "8517.1219",
+        "rate": "18%",
+        "uom": "Numbers, pieces, units",
+        "quantity": "1",
+        "unit_price": "45000",
+        "sale_type": "Goods at standard rate (default)",
+        "scenario_id": "SN002",
+    },
+]
+
+
+def template_csv() -> str:
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=ALL_COLUMNS)
+    writer.writeheader()
+    writer.writerows(TEMPLATE_ROWS)
+    return buf.getvalue()
+
+
+def scenario_template_csv(scenario_id: str) -> str | None:
+    """A CSV template pre-filled from FBR/PRAL's own worked example for one
+    sandbox scenario (SN001–SN028) — same hsCode/rate/uoM/saleType they use
+    in the official spec, so a scenario-testing submission doesn't fail on a
+    combination FBR considers invalid before the business logic is even
+    tested. Returns None for an unrecognized scenario code."""
+    item = SCENARIO_SAMPLE_ITEMS.get(scenario_id)
+    if not item:
+        return None
+    quantity = item["quantity"] or 1
+    fixed_value = item.get("fixedNotifiedValueOrRetailPrice") or 0
+    # 3rd Schedule / retail-reduced-rate goods (SN008, SN027, SN028) price
+    # off the fixed/notified value, not quantity × unit price — leave
+    # unit_price at 0 for those so csv_processor prices the line correctly.
+    if fixed_value > 0:
+        unit_price = 0
+    else:
+        unit_price = round(item["valueSalesExcludingST"] / quantity, 2)
+    buyer_registered = item["buyerRegistrationType"] == "Registered"
+    row = {
+        "pos_invoice_no": f"{scenario_id}-TEST-1",
+        "invoice_date": date.today().isoformat(),
+        "buyer_ntn_cnic": "1234567" if buyer_registered else "",
+        "buyer_name": "Test Registered Buyer" if buyer_registered else "Walk-in Customer",
+        "buyer_province": "Sindh",
+        "buyer_address": "Karachi",
+        "buyer_registration_type": item["buyerRegistrationType"],
+        "product_description": item["productDescription"],
+        "hs_code": item["hsCode"],
+        "rate": item["rate"],
+        "uom": item["uoM"],
+        "quantity": quantity,
+        "unit_price": unit_price,
+        "sale_type": item["saleType"],
+        "scenario_id": scenario_id,
+        "fixed_notified_value": fixed_value or "",
+        "sro_schedule_no": item.get("sroScheduleNo") or "",
+        "sro_item_serial_no": item.get("sroItemSerialNo") or "",
+    }
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=ALL_COLUMNS)
+    writer.writeheader()
+    writer.writerow(row)
+    return buf.getvalue()
+
+
+def scenario_catalog() -> list[dict]:
+    """Scenarios with a ready-made official sample — for the scenario picker."""
+    return [
+        {"code": code, "name": SCENARIO_NAMES.get(code, code)}
+        for code in sorted(SCENARIO_SAMPLE_ITEMS)
+    ]
+
+
+class CsvError(Exception):
+    pass
+
+
+def _parse_rows(content: str) -> list[dict]:
+    reader = csv.DictReader(io.StringIO(content))
+    if not reader.fieldnames:
+        raise CsvError("The CSV file is empty.")
+    fieldnames = [f.strip().lower() for f in reader.fieldnames]
+    missing = [c for c in REQUIRED_COLUMNS if c not in fieldnames]
+    if missing:
+        raise CsvError(
+            f"Missing required columns: {', '.join(missing)}. "
+            "Download the CSV template for the correct format."
+        )
+    rows = []
+    for line_no, raw in enumerate(reader, start=2):
+        row = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
+        if not any(row.values()):
+            continue
+        for col in REQUIRED_COLUMNS:
+            if not row.get(col):
+                raise CsvError(f"Row {line_no}: '{col}' is required.")
+        try:
+            date.fromisoformat(row["invoice_date"])
+        except ValueError:
+            raise CsvError(
+                f"Row {line_no}: invoice_date must be YYYY-MM-DD "
+                f"(got '{row['invoice_date']}')."
+            )
+        try:
+            float(row["quantity"])
+            float(row["unit_price"])
+            if row.get("fixed_notified_value"):
+                float(row["fixed_notified_value"])
+        except ValueError:
+            raise CsvError(
+                f"Row {line_no}: quantity, unit_price, and fixed_notified_value "
+                "(if given) must be numbers."
+            )
+        rows.append(row)
+    if not rows:
+        raise CsvError("The CSV file has no data rows.")
+    return rows
+
+
+def process_upload(
+    db: Session, user: User, fbr: FbrSettings, filename: str, content: str
+) -> Upload:
+    upload = Upload(
+        user_id=user.id,
+        filename=filename,
+        total_rows=0,
+        invoices_created=0,
+        invoices_submitted=0,
+        invoices_failed=0,
+    )
+    db.add(upload)
+
+    try:
+        rows = _parse_rows(content)
+    except CsvError as exc:
+        upload.status = "failed"
+        upload.error = str(exc)
+        db.commit()
+        return upload
+
+    upload.total_rows = len(rows)
+
+    # Group rows by POS invoice number, preserving first-seen order.
+    groups: dict[str, list[dict]] = {}
+    for row in rows:
+        groups.setdefault(row["pos_invoice_no"], []).append(row)
+
+    for pos_no, group in groups.items():
+        first = group[0]
+        invoice = Invoice(
+            user_id=user.id,
+            upload=upload,
+            pos_invoice_no=pos_no,
+            invoice_date=date.fromisoformat(first["invoice_date"]),
+            scenario_id=first.get("scenario_id") or fbr.default_scenario,
+            buyer_ntn_cnic=first.get("buyer_ntn_cnic", ""),
+            buyer_name=first.get("buyer_name") or "Walk-in Customer",
+            buyer_province=first.get("buyer_province") or fbr.seller_province,
+            buyer_address=first.get("buyer_address", ""),
+            buyer_registration_type=first.get("buyer_registration_type")
+            or "Unregistered",
+        )
+        for row in group:
+            quantity = float(row["quantity"])
+            unit_price = float(row["unit_price"])
+            value_excl = round(quantity * unit_price, 2)
+            rate = row.get("rate") or "18%"
+            fixed_notified_value = float(row.get("fixed_notified_value") or 0)
+            sale_type = row.get("sale_type") or "Goods at standard rate (default)"
+            if fixed_notified_value > 0 and value_excl == 0:
+                # PRAL's own official samples send valueSalesExcludingST: 0
+                # whenever a fixed/notified value is used instead (correct
+                # per the spec). In practice FBR's live sandbox validator
+                # rejects a literal 0 here as "invalid" (error 0300), a
+                # validator bug/doc mismatch on FBR's side — confirmed
+                # 2026-08-17 against real sandbox responses. A negligible
+                # non-zero placeholder satisfies it without meaningfully
+                # affecting the invoice total.
+                value_excl = 0.01
+            # Only "3rd Schedule Goods" (retail-price-scheme items, e.g.
+            # SN008/SN027) are *taxed* off the fixed/notified value — FBR
+            # rejects the invoice (error 0102) if salesTaxApplicable doesn't
+            # match that basis for those. "Goods at Reduced Rate" (SN028)
+            # also carries a fixedNotifiedValueOrRetailPrice for reference,
+            # but per PRAL's own official SN028 sample (salesTaxApplicable:
+            # 0, matching valueSalesExcludingST: 0, NOT the fixed value of
+            # 100) tax is still computed off the sale value for that sale
+            # type — confirmed live 2026-08-18 (FBR error: "Provided sales
+            # tax amount does not match the calculated sales tax amount...
+            # the provided Sale Value is used to calculate the Sales Tax").
+            uses_fixed_value_basis = (
+                fixed_notified_value > 0 and sale_type == "3rd Schedule Goods"
+            )
+            tax_base = fixed_notified_value if uses_fixed_value_basis else value_excl
+            invoice.items.append(
+                InvoiceItem(
+                    product_description=row["product_description"],
+                    hs_code=row.get("hs_code") or "0101.2100",
+                    rate=rate,
+                    uom=row.get("uom") or "Numbers, pieces, units",
+                    quantity=quantity,
+                    unit_price=unit_price,
+                    value_excl_st=value_excl,
+                    sales_tax=invoice_service.compute_sales_tax(tax_base, rate),
+                    fixed_notified_value=fixed_notified_value,
+                    sro_schedule_no=row.get("sro_schedule_no") or "",
+                    sro_item_serial_no=row.get("sro_item_serial_no") or "",
+                    sale_type=sale_type,
+                )
+            )
+        db.add(invoice)
+        upload.invoices_created += 1
+        db.commit()
+
+        invoice_service.submit(db, invoice, fbr)
+        if invoice.status == "submitted":
+            upload.invoices_submitted += 1
+        else:
+            upload.invoices_failed += 1
+        db.commit()
+
+    upload.status = (
+        "completed" if upload.invoices_failed == 0 else "completed_with_errors"
+    )
+    db.commit()
+    return upload

@@ -1,0 +1,428 @@
+ 
+ 
+Digital Invoicing FAQs 
+ 
+What is the Digital Invoicing System? 
+The Digital Invoicing System is an initiative by FBR to modernize invoice 
+reporting. It allows taxpayers to report invoices in real-time using PRAL's 
+integration platform. 
+ 
+What are the benefits of using the Digital Invoicing System? 
+ Real-time invoice submission and validation. 
+ Automated tax calculations. 
+ Seamless integration with ERP systems. 
+ Reduced manual errors and improved compliance. 
+ Auto population of invoices in Annexure C and Sales Tax Return. 
+ 
+Is the Digital Invoicing System mandatory? 
+Yes, as per FBR regulations defined in SRO 709(I)/2025, registered taxpayers 
+must use the system for issuing and managing digital invoices. 
+ 
+Is digital invoicing mandatory for businesses that file nil (null) sales tax 
+returns? 
+Yes. If a business is registered, digital invoicing is mandatory even if no invoices 
+are issued (a null submission is still required). 
+ 
+Are penalties applied for late submissions due to technical issues? 
+Penalties apply if the failure is due to an issue with the taxpayer's own system. 
+The taxpayer must resubmit the invoices once the system is available. 
+ 
+Are exporters required to integrate with the digital invoicing system? 
+Yes, exporters are required to complete the integration. 
+ 
+Do small businesses or those without an invoicing system need to comply? 
+Yes. All registered persons not specifically exempted must comply. Those 
+without an invoicing system must write to their concerned tax office. 
+ 
+ 
+  
+
+ 
+ 
+Do manufacturer already integrated with POS need to migrate to digital 
+invoicing? 
+Yes, if they fall under a covered B2B category, they must migrate to digital 
+invoicing. 
+ 
+How do I access the Digital Invoicing System? 
+You can access the system via the IRIS portal using your registration number and 
+password. Navigate to Digital Invoicing from the dashboard. Detailed 
+documentation available on FBR website. 
+ 
+What are the two integration modes available? 
+API Integration: For automated real-time invoice submission. 
+Manual Invoice Generation: For manual entry of invoices (limited 
+functionality). 
+ 
+Can businesses use both API and manual invoicing simultaneously? 
+No. All registered persons with their own invoicing system must complete 
+integration and use the API method. 
+ 
+What are the software requirements for the invoicing system? 
+There is no restriction on the type or version of software, as long as it supports 
+RESTFUL API JSON integration with FBR/PRAL. Older systems (e.g., MS-DOS) 
+are practically not feasible. 
+ 
+Is cloud-based software mandatory for integration? 
+No. On-premise systems can integrate if they have a stable internet connection 
+and a static public IP address. 
+ 
+Can businesses using unauthorized (cracked) software integrate? 
+While it may be technically possible, it is not allowed. Security and compliance 
+with software licensing are required. 
+ 
+Is integration with PRAL mandatory? 
+No. Taxpayers can choose PRAL or any other FBR-licensed integrator. However, 
+PRAL offers free services, while others may charge a fee. 
+ 
+Why are other LIs paid if PRAL offers free services? 
+PRAL was nominated as an LI to provide free integration services for the ease 
+of taxpayers. Other licensed private integrators are also available. 
+  
+
+ 
+ 
+What are the maximum charges Other Licensed Integrator (LI) can apply? 
+An LI cannot charge more than: 
+ Rs. 10 per invoice, OR 
+ Rs. 100,000 per taxpayer, OR 
+ Rs. 1,000,000 annually. 
+ 
+Does PRAL offer its own invoicing software? 
+Not yet. 
+ 
+Will PRAL/FBR ensure the security of our business data? 
+PRAL commits to encryption and confidentiality. Importantly, PRAL/FBR only 
+receive the transmitted invoice data; they do not have remote access to your 
+internal ERP or other business systems. 
+ 
+Can PRAL/FBR access our internal system data? 
+No. The integration is via API, which only allows for the transmission of invoice 
+data. PRAL/FBR cannot remotely access your internal systems. 
+ 
+How do I register for Digital Invoicing through PRAL? 
+PRAL provides free integration services, including Sandbox testing. You will 
+need to: 
+ Submit technical details (contact person, ERP details, etc.). 
+ Provide IP whitelisting details (mandatory step). 
+ Complete assigned scenarios on the basis of selected business nature 
+and activity in sandbox environment before moving to Production. 
+ 
+ 
+What if I choose another Licensed Integrator? 
+You must select the LI from the dropdown list and submit your application. The 
+LI will review and approve your request. The remaining process (IP whitelisting, 
+Sandbox, etc.) will be handled by the LI. 
+ 
+Can we change our Licensed Integrator? 
+Yes. A systematic process will be available in the near future. Currently, such 
+requests are handled through the DI CRM. 
+ 
+  
+
+ 
+ 
+What technical details are required for registration? 
+ Technical contact person details (name, mobile, email). 
+ ERP or any other invoicing system provider information. 
+ Software type (Cloud/On-Premises) and version. 
+ CRM User ID and password for support. 
+ Business Nature & Sector 
+ 
+ What is IP Whitelisting, and why is it required? 
+IP whitelisting ensures secure communication between taxpayer’s system and 
+PRAL's servers. You must provide: 
+ Hosting server details (company name, country). 
+ Up to 3 IP addresses or upload a file for multiple IPs. 
+ 
+ How do I upload multiple IPs? 
+Use the downloadable Excel template, enter IP details, and upload. File should 
+be less than or equal to 1 MB in .xls format. 
+ 
+What type of IP connection is required for whitelisting? 
+A static public IP is required. Temporary or dynamic IPs (like mobile data) are 
+not acceptable. 
+ 
+What if we need to issue invoices while traveling? 
+You must use a VPN connected to your whitelisted static IP or use your 
+software vendor's whitelisted IP. 
+ 
+How long does IP whitelisting approval take? 
+PRAL typically approves or rejects IP whitelisting requests within 2 working 
+hours. 
+ 
+What is the Sandbox Environment? 
+The Sandbox is a testing environment where you can simulate invoice 
+submissions before going live. It helps ensure your integration works correctly. 
+ 
+How do I access the Sandbox Environment? 
+After IP whitelisting approval, navigate to the Sandbox Environment tab to: 
+ View Web API details. 
+ Access sample JSON formats and code snippets. 
+ Submit scenarios-based test invoices. 
+ 
+ 
+
+ 
+ 
+ What happens after Sandbox access is granted? 
+ Get Sandbox token 
+ Use test credentials and endpoints 
+ Submit invoices using scenario-based testing according to your 
+sector/business type 
+ 
+What test invoices should I submit? 
+Submit invoices that match the Business Nature and Sector selected during 
+registration. Each submission will generate a unique Invoice Number. 
+ 
+Can a taxpayer select multiple business Nature (e.g., manufacturer and 
+dealer)? 
+Yes, multiple roles can be selected in the taxpayer's profile. 
+ 
+What are scenarios in Sandbox testing? 
+Scenarios are predefined test cases (e.g., standard rate sales, exempt goods) 
+based on your business activity. Refer to the Point # 9 Scenarios for Sandbox 
+Testing section of Technical Document. 
+ 
+How do I know which testing scenarios to use? 
+The eligible scenarios will be viewable in sandbox environment. Further you 
+may check the point # 10 “Applicable Scenarios based on Business Activity” in 
+the technical document. E.g., textile manufacturers must test SN001, SN002, 
+SN005, SN006, etc. 
+ 
+How do I know if my Sandbox test is successful? 
+The system will validate your test invoices. 
+Upon successful completion of all assigned scenarios, a Production Token will 
+be auto generated. 
+ 
+How much invoices of each scenario I need to complete? 
+Minimum 1 invoice of each scenario must be successful to mark it complete. 
+Note: The successful, pending and unsuccessful scenarios will be viewable in 
+sandbox environment. 
+ 
+What if a test invoice fails? 
+Use the error code returned to fix issues. Refer to detailed error code list 
+provided in the technical document (Sales/Purchase Errors). 
+ 
+ 
+
+ 
+ 
+ How do I move from Sandbox to Production? 
+Once all test invoices are successfully submitted, the system will generate 
+a Production Token. Use this token to complete integration in the Production 
+Environment. 
+ 
+What is a production token and where is it used? 
+It is a secure credential issued after successful testing in the sandbox (test) 
+environment. It is used for all live invoice submissions. 
+ 
+ What details are available in the Production Environment? 
+ Production API details. 
+ Security Token for real-time invoice submissions. 
+ 
+ How do I go live? 
+ Use Production Token 
+ Switch endpoints 
+ Start real-time invoice posting 
+ 
+If we switch our invoicing software later, is re-integration needed? 
+Yes, you will need to complete the integration process again using the same 
+credentials/token. 
+ 
+How can a business coordinate integration if its software vendor is overseas? 
+Integration can be coordinated remotely using API credentials. PRAL provides 
+technical support via email and the DI CRM portal. 
+ 
+ What are the key APIs to use? 
+postinvoicedata (Real-time invoice posting) 
+validateinvoicedata (Validation before posting) 
+Reference APIs for: 
+ Province Code 
+ HS Code 
+ Rate ID 
+ UOM ID 
+ SRO Items 
+ STATL Status 
+(Available in Technical document Point # 4 Digital Invoicing APIs) 
+ 
+  
+
+ 
+ 
+How do I authenticate API requests? 
+Include the Security Token in the request header as follows: 
+Authorization: Bearer <Your_Security_Token> 
+ 
+ What is the API endpoint for posting invoices? 
+Sandbox: https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata_sb 
+Production: https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata 
+ 
+ What is the JSON structure for invoice submission? 
+Refer to the point # 4.1.1 & 4.1.2 in Technical Documentation for sample JSON 
+structures for both Sandbox and Production. 
+ 
+ How do I test APIs using Postman? 
+Set the Authorization header: Bearer <Your_Token> 
+For Production: 
+ Use POST for /postinvoicedata 
+ Use POST for /validateinvoicedata 
+ For Sandbox: 
+ Use POST for /postinvoicedata_sb 
+ Use POST for /validateinvoicedata_sb 
+ 
+What if our current software is not compatible with PRAL’s API? 
+Using a compatible version is mandatory. You will need to upgrade or change 
+your invoicing software. 
+ 
+Do Sandbox and Production have separate URLs? 
+Yes, as mentioned in Technical document point # 4.1 & 4.2. 
+ 
+What format is required for invoices? 
+JSON object with fields like invoiceType, sellerNTNCNIC, hsCode, rate, etc. 
+Refer to the sample JSONs in the technical document. 
+ 
+Where can I get the list of valid HS Codes, UOMs, or SROs? 
+Use the Reference APIs: 
+https://gw.fbr.gov.pk/pdi/v1/itemdesccode (HS Codes) 
+https://gw.fbr.gov.pk/pdi/v1/uom (UOM) 
+https://gw.fbr.gov.pk/pdi/v1/sroitemcode (SROs) 
+For further details refer to the point # 5 Reference APIs in technical document. 
+  
+
+ 
+ 
+How do I handle errors in API responses? 
+Check the point # 7 Sales Error Codes and point # 8 Purchase Error Codes in 
+the Technical Documentation for detailed error descriptions and resolutions. 
+ 
+What do I do if I get an error code? 
+Refer to the detailed error code tables: 
+Sales Errors (e.g., Code 0046: "Provide rate.") 
+Purchase Errors, Each code includes description and resolution suggestion 
+ 
+My invoice returns Invalid but has no error message. 
+Check your JSON validity and check the nested invoiceStatuses array; each line 
+item may have its own error. 
+ 
+Why am I getting "Calculated Tax Not matched in 3rd Schedule" error?? 
+This occurs when sales tax isn't calculated correctly for 3rd Schedule goods. 
+Use fixedNotifiedValueOrRetailPrice instead of sale value for tax calculation. 
+"fixedNotifiedValueOrRetailPrice": 1000, 
+"salesTaxApplicable": 180  // 18% of fixed value 
+ 
+How do I fix "Invalid UOM" error? 
+This means your Unit of Measurement is incorrect.  
+ UOM values are case-sensitive (use "KG" not "kg") 
+ Verify correct UOM from Reference API 
+(https://gw.fbr.gov.pk/pdi/v1/uom) 
+ 
+What causes "Wrong sale type is selected with invoice" error? 
+This occurs when your sale type doesn't match the transaction. Match sale 
+type to your business scenario. Use the correct sales type as provided in the 
+reference APIs. 
+Common valid types: 
+ "Goods at standard rate (default)" 
+ "Exempt Goods" 
+ "3rd Schedule Goods" 
+ 
+Why does the system say "Provide rate" when I've entered one? 
+This occurs when your rate doesn't match the required rate for the sale type. 
+Check required rates using: https://gw.fbr.gov.pk/pdi/v2/SaleTypeToRate 
+  
+
+ 
+ 
+How should I format HS Codes to avoid errors? 
+HS Codes must follow strict formatting. 
+Requirements: 
+ 4 digits before decimal 
+ 4 digits after decimal 
+ Example: 0101.2100 
+Verify codes using: https://gw.fbr.gov.pk/pdi/v1/itemdesccode 
+ 
+What does "Unauthorized token" mean and how do I fix it? 
+This means your security token is invalid or expired. Use correct token for your 
+environment (Sandbox vs Production). 
+Correct header format:  Authorization: Bearer <Your_Valid_Token> 
+ 
+Why does the system say my seller NTN is invalid? 
+Your NTN must be registered with FBR and match API credentials. 
+Ensure NTN is active 
+Format: "sellerNTNCNIC": "1234567890123" 
+ 
+How should I set buyer registration type correctly? 
+This must accurately reflect buyer's status. 
+Options: 
+"Registered" (FBR-registered) 
+"Unregistered" (not registered) 
+Example: "buyerRegistrationType": "Unregistered" 
+ 
+What's the correct way to enter province information? 
+Provinces must use exact official names. Refer to reference APIs in technical 
+document. 
+Incorrect: "Karachi", "Lahore" (use province names) 
+Correct Format: 
+"buyerProvince": "Punjab", 
+"sellerProvince": "Sindh" 
+ 
+Is there a daily volume limit on the number of invoices? 
+No, there is no limit.  
+  
+
+ 
+ 
+Can invoices be generated or downloaded in bulk? 
+Generation: No, bulk upload is not allowed. Invoices must be transmitted in 
+real-time upon generation. 
+Download: Currently, individual invoices can be downloaded in PDF format. A 
+bulk download (ledger) option is available in the IMS. 
+ 
+Can we preview an invoice before final submission to FBR? 
+Yes, but only if your invoicing software has this feature. The invoice is 
+transmitted to FBR immediately upon generation in your system. 
+ 
+Is there an option to edit or delete an invoice after submission? 
+No. Editing is only allowed before submission. After an invoice is submitted, 
+any changes or cancellations must be handled by issuing a credit or debit note. 
+ 
+How are partial payments or instalment invoices handled? 
+An invoice for the full value must be generated and transmitted to the buyer 
+upon creation. 
+ 
+What happens if an invoice is submitted but not received by FBR? 
+You should retry the submission with the valid invoice data. Check your 
+integration, reference the APIs, and seek help from the PRAL support team if the 
+issue persists. 
+ 
+After integration, is monthly IMS submission still required? 
+No. The digital invoicing system replaces the old process of monthly IMS 
+submission. 
+ 
+Why is the manual invoice tab disabled in the portal? 
+For now, taxpayers with no sales invoicing system must continue to post invoices 
+through the IMS until FBR provides further notification.  
+ 
+  
+
+ 
+ 
+Where can I find more help? 
+Refer to the User Manual and Technical Documentation. 
+Contact PRAL support via CRM https://dicrm.pral.com.pk/ or email 
+digital.invoicing@pral.com.pk 
+ 
+ 
+How do I raise a new case in CRM? 
+1. Log in to the CRM. (https://dicrm.pral.com.pk) 
+2. Click + New Case. 
+3. Fill in mandatory fields (priority, query type, title, description). 
+4. Attach supporting documents (PDF, max 20MB). 
+ 
+  
+How can I track my support case? 
+ Use the Case List to view existing cases. 
+ Search by case number or title. 
+ Click View to check updates or add correspondence. 
+ 
+ 
