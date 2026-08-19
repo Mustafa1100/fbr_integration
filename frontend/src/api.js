@@ -1,6 +1,12 @@
 const TOKEN_KEY = 'fbr_token'
 const USER_KEY = 'fbr_user'
 
+// In dev, Vite's server proxy forwards /api to localhost:8000 (see
+// vite.config.js), so this stays empty and requests use relative paths. In
+// production the frontend (Cloudflare Pages) and backend (Fly.io) are on
+// different domains, so builds set VITE_API_URL to the backend's origin.
+export const API_BASE = import.meta.env.VITE_API_URL || ''
+
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY)
 }
@@ -49,7 +55,7 @@ async function request(path, { method = 'GET', body, formData, raw = false } = {
   if (token) headers.Authorization = `Bearer ${token}`
   if (body) headers['Content-Type'] = 'application/json'
 
-  const resp = await fetch(path, {
+  const resp = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
     body: formData ?? (body ? JSON.stringify(body) : undefined),

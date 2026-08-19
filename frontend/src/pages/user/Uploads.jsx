@@ -13,7 +13,7 @@ import {
   Search,
   X,
 } from 'lucide-react'
-import { api, getToken } from '../../api'
+import { API_BASE, api, getToken } from '../../api'
 import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
 
@@ -104,8 +104,8 @@ export default function Uploads() {
   }
 
   async function downloadTemplate(scenario) {
-    const url = scenario ? `/api/uploads/template?scenario=${scenario}` : '/api/uploads/template'
-    const resp = await fetch(url, {
+    const path = scenario ? `/api/uploads/template?scenario=${scenario}` : '/api/uploads/template'
+    const resp = await fetch(`${API_BASE}${path}`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     })
     const blob = await resp.blob()
