@@ -42,6 +42,19 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner }) {
       </div>
     )
 
+  // 3rd Schedule Goods are taxed off fixedNotifiedValueOrRetailPrice, not
+  // the sale value — value_excl_st on those items can hold a negligible
+  // FBR-workaround placeholder (0.01) rather than a real price (see
+  // csv_processor.py). Show the real fixed/notified value as the basis
+  // instead, wherever it's set, so the receipt doesn't read as "free."
+  const items = inv.items.map((it) => {
+    const excl = it.fixed_notified_value > 0 ? it.fixed_notified_value : it.value_excl_st
+    return { ...it, displayExcl: excl, displayTotal: excl + it.sales_tax }
+  })
+  const usesFixedValue = items.some((it) => it.fixed_notified_value > 0)
+  const displayTotalExcl = items.reduce((sum, it) => sum + it.displayExcl, 0)
+  const displayGrandTotal = displayTotalExcl + inv.total_tax
+
   return (
     <>
       <div className="page-header no-print">
@@ -136,7 +149,7 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner }) {
               </tr>
             </thead>
             <tbody>
-              {inv.items.map((it, idx) => (
+              {items.map((it, idx) => (
                 <tr key={idx}>
                   <td>{idx + 1}</td>
                   <td>
@@ -147,10 +160,13 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner }) {
                   <td>{it.uom}</td>
                   <td>{it.unit_price.toLocaleString()}</td>
                   <td>{it.rate}</td>
-                  <td>{it.value_excl_st.toLocaleString()}</td>
+                  <td>
+                    {it.displayExcl.toLocaleString()}
+                    {it.fixed_notified_value > 0 && <sup>*</sup>}
+                  </td>
                   <td>{it.sales_tax.toLocaleString()}</td>
                   <td>
-                    <span className="strong">{it.total_value.toLocaleString()}</span>
+                    <span className="strong">{it.displayTotal.toLocaleString()}</span>
                   </td>
                 </tr>
               ))}
@@ -158,11 +174,18 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner }) {
           </table>
         </div>
 
+        {usesFixedValue && (
+          <p className="muted" style={{ marginTop: 8, fontSize: '0.78rem' }}>
+            * 3rd Schedule item — taxed on the government-notified retail price, not the sale
+            value.
+          </p>
+        )}
+
         <div className="totals">
           <div className="totals-box">
             <div className="trow">
               <span>Total (excl. ST)</span>
-              <span>{inv.total_excl.toLocaleString()}</span>
+              <span>{displayTotalExcl.toLocaleString()}</span>
             </div>
             <div className="trow">
               <span>Sales tax</span>
@@ -170,7 +193,7 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner }) {
             </div>
             <div className="trow grand">
               <span>Grand total</span>
-              <span>{inv.grand_total.toLocaleString()}</span>
+              <span>{displayGrandTotal.toLocaleString()}</span>
             </div>
           </div>
         </div>

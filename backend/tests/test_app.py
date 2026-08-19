@@ -689,6 +689,13 @@ def test_third_schedule_csv_upload_prices_and_taxes_off_fixed_value(user_headers
     # the placeholder sale value.
     assert item["salesTaxApplicable"] == 180
 
+    # Our own item serialization (not the FBR payload) also exposes
+    # fixed_notified_value, so the receipt can display the real pricing
+    # basis instead of the 0.01 placeholder in value_excl_st.
+    own_item = detail["items"][0]
+    assert own_item["value_excl_st"] == 0.01
+    assert own_item["fixed_notified_value"] == 1000
+
 
 def test_reduced_rate_goods_send_empty_extra_tax_and_tax_off_sale_value(user_headers):
     # "Goods at Reduced Rate" (SN028) has two FBR quirks confirmed live

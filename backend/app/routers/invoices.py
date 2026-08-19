@@ -117,6 +117,11 @@ def detail_out(inv: Invoice, fbr) -> dict:
                 "value_excl_st": round(it.value_excl_st, 2),
                 "sales_tax": round(it.sales_tax, 2),
                 "total_value": round(it.total_value, 2),
+                # Only meaningful (>0) for 3rd Schedule Goods — the receipt
+                # uses this as the real pricing basis instead of
+                # value_excl_st, which can hold a negligible FBR-workaround
+                # placeholder (see csv_processor.py) rather than a real value.
+                "fixed_notified_value": round(it.fixed_notified_value, 2),
             }
             for it in inv.items
         ],
