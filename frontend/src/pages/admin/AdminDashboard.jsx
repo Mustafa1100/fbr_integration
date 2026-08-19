@@ -10,6 +10,7 @@ import {
   AlertCircle,
   TrendingUp,
   PieChart,
+  Loader2,
 } from 'lucide-react'
 import { api } from '../../api'
 import { TrendChart, DonutChart } from '../../components/Charts'
@@ -37,6 +38,12 @@ export default function AdminDashboard() {
         <div className="alert error">
           <AlertCircle size={17} />
           <span>{error}</span>
+        </div>
+      )}
+
+      {!stats && !error && (
+        <div className="loading">
+          <Loader2 size={18} className="spin" /> Loading dashboard…
         </div>
       )}
 
