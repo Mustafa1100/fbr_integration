@@ -63,7 +63,9 @@ async function request(path, { method = 'GET', body, formData, raw = false } = {
 
   if (resp.status === 401) {
     clearSession()
-    window.location.href = '/login'
+    // ?session=expired lets the login page explain why it just bounced
+    // the user here, instead of silently dropping them on the form.
+    window.location.href = '/login?session=expired'
     throw new ApiError('Session expired', 401)
   }
 

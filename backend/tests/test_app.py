@@ -4,18 +4,21 @@ soft deletes → deactivation."""
 
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ["DATABASE_URL"] = "sqlite:///./test_fbr.db"
 os.environ["ADMIN_EMAIL"] = "admin@example.com"
 os.environ["ADMIN_PASSWORD"] = "admin123"
 
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 
 if os.path.exists("test_fbr.db"):
     os.remove("test_fbr.db")
 
+from app.config import get_settings
 from app.main import app
 
 client = TestClient(app)
@@ -1057,3 +1060,22 @@ def test_my_stats_scoped_to_current_user(admin_headers, user_headers):
     assert all(b["total"] == 0 for b in quiet_stats["invoices_by_day"])
 
     assert client.get("/api/stats").status_code == 401
+
+
+def test_expired_token_rejected_with_clear_message(user_headers):
+    settings = get_settings()
+    expired_token = jwt.encode(
+        {
+            "sub": "1",
+            "role": "user",
+            "tv": 0,
+            "exp": datetime.now(timezone.utc) - timedelta(hours=1),
+        },
+        settings.jwt_secret,
+        algorithm="HS256",
+    )
+    resp = client.get(
+        "/api/uploads", headers={"Authorization": f"Bearer {expired_token}"}
+    )
+    assert resp.status_code == 401
+    assert "expired" in resp.json()["detail"].lower()

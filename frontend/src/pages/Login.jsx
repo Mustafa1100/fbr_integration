@@ -1,5 +1,6 @@
 import {
   AlertCircle,
+  Clock,
   Eye,
   EyeOff,
   Loader2,
@@ -12,7 +13,7 @@ import {
   UploadCloud,
 } from 'lucide-react'
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, storeSession } from '../api'
 
 export default function Login() {
@@ -22,6 +23,8 @@ export default function Login() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const sessionExpired = searchParams.get('session') === 'expired'
 
   async function submit(e) {
     e.preventDefault()
@@ -103,6 +106,13 @@ export default function Login() {
         <form className="login-card" onSubmit={submit}>
           <h2>Welcome back</h2>
           <p className="sub">Sign in to your dashboard</p>
+
+          {sessionExpired && !error && (
+            <div className="alert info">
+              <Clock size={17} />
+              <span>Your session ended — please sign in again.</span>
+            </div>
+          )}
 
           {error && (
             <div className="alert error">

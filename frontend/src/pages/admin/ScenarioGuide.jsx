@@ -8,7 +8,7 @@ import {
   Loader2,
   CheckCircle2,
 } from 'lucide-react'
-import { API_BASE, api, getToken } from '../../api'
+import { api } from '../../api'
 
 function parseCsv(text) {
   const rows = []
@@ -146,9 +146,7 @@ export default function ScenarioGuide() {
   }
 
   async function downloadTemplate(code) {
-    const resp = await fetch(`${API_BASE}/api/uploads/template?scenario=${code}`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
-    })
+    const resp = await api.getRaw(`/api/uploads/template?scenario=${code}`)
     const blob = await resp.blob()
     const objectUrl = URL.createObjectURL(blob)
     const a = document.createElement('a')
