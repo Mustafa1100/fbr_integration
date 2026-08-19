@@ -9,17 +9,18 @@ import {
   UserX,
   Trash2,
   AlertCircle,
-  CheckCircle2,
   Settings2,
   KeyRound,
   Search,
+  Copy,
+  Check,
 } from 'lucide-react'
 import { api } from '../api'
 import Modal from './Modal'
 import PaginationBar from './PaginationBar'
 import TableLoader from './TableLoader'
 
-const emptyForm = { email: '', password: '', full_name: '' }
+const emptyForm = { email: '', full_name: '' }
 const DEFAULT_PAGE_SIZE = 10
 
 // Shared page shell for the two separate admin-only sidebar tabs — Users
@@ -40,7 +41,8 @@ export default function AdminAccountsPage({ role }) {
   const [creating, setCreating] = useState(false)
   const [formError, setFormError] = useState('')
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const [createdAccount, setCreatedAccount] = useState(null) // { email, temp_password }
+  const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)
 
   // Debounce the search box so it doesn't fire a request per keystroke.
@@ -84,11 +86,9 @@ export default function AdminAccountsPage({ role }) {
     setFormError('')
     setCreating(true)
     try {
-      await api.post('/api/admin/users', { ...form, role })
+      const created = await api.post('/api/admin/users', { ...form, role })
       setShowModal(false)
-      setNotice(
-        `${isAdmin ? 'Admin' : 'User'} ${form.email} created — they'll set their own password on first sign-in.`
-      )
+      setCreatedAccount({ email: created.email, temp_password: created.temp_password })
       setPage(1)
       await refresh()
     } catch (err) {
@@ -96,6 +96,15 @@ export default function AdminAccountsPage({ role }) {
     } finally {
       setCreating(false)
     }
+  }
+
+  function copyTempPassword() {
+    navigator.clipboard.writeText(createdAccount.temp_password).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+    // If the browser denies clipboard access, the code is still fully
+    // visible and selectable in the box above — nothing else to fall back to.
   }
 
   async function toggleActive(user) {
@@ -147,12 +156,6 @@ export default function AdminAccountsPage({ role }) {
         <div className="alert error">
           <AlertCircle size={17} />
           <span>{error}</span>
-        </div>
-      )}
-      {notice && (
-        <div className="alert ok">
-          <CheckCircle2 size={17} />
-          <span>{notice}</span>
         </div>
       )}
 
@@ -313,28 +316,64 @@ export default function AdminAccountsPage({ role }) {
                 required
               />
             </div>
-            <div className="field">
-              <label>
-                Temporary password <span className="hint">(min 6 chars)</span>
-              </label>
-              <input
-                type="text"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                minLength={6}
-                required
-                placeholder="Share this with the user"
-              />
-              <p className="muted" style={{ marginTop: 6, fontSize: '0.8rem' }}>
-                <KeyRound size={13} style={{ verticalAlign: -2, marginRight: 4 }} />
-                They must replace this with their own strong password on first sign-in.
-              </p>
-            </div>
+            <p className="muted" style={{ margin: '0 0 14px', fontSize: '0.8rem' }}>
+              <KeyRound size={13} style={{ verticalAlign: -2, marginRight: 4 }} />
+              A 6-digit temporary password will be generated automatically — you&apos;ll see it
+              once, right after creating the account, to share with them.
+            </p>
             <button className="btn btn-primary" disabled={creating} style={{ width: '100%' }}>
               {isAdmin ? <ShieldPlus size={16} /> : <UserPlus size={16} />}{' '}
               {creating ? 'Creating…' : isAdmin ? 'Create admin' : 'Create user'}
             </button>
           </form>
+        </Modal>
+      )}
+
+      {createdAccount && (
+        <Modal
+          title={`${isAdmin ? 'Admin' : 'User'} created`}
+          onClose={() => setCreatedAccount(null)}
+          width={420}
+        >
+          <p className="muted" style={{ margin: '0 0 16px' }}>
+            Share this temporary password with <strong>{createdAccount.email}</strong> — they'll
+            be required to set their own on first sign-in. It won&apos;t be shown again.
+          </p>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              padding: '14px 18px',
+              borderRadius: 10,
+              background: 'var(--slate-50)',
+              border: '1px solid var(--border-strong)',
+              marginBottom: 18,
+            }}
+          >
+            <span className="mono" style={{ fontSize: '1.4rem', fontWeight: 700, letterSpacing: '0.12em' }}>
+              {createdAccount.temp_password}
+            </span>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={copyTempPassword}>
+              {copied ? (
+                <>
+                  <Check size={14} /> Copied
+                </>
+              ) : (
+                <>
+                  <Copy size={14} /> Copy
+                </>
+              )}
+            </button>
+          </div>
+          <button
+            className="btn btn-primary"
+            style={{ width: '100%' }}
+            onClick={() => setCreatedAccount(null)}
+          >
+            Done
+          </button>
         </Modal>
       )}
     </>

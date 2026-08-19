@@ -48,7 +48,11 @@ def admin_headers():
     return _login("admin@example.com", "admin123")
 
 
-SHOP_TEMP_PASSWORD = "TempPass1"
+# Temp passwords are now server-generated (see test_create_user_...
+# below) — this stashes one across two sequential tests that both need
+# the same account's real temp password (create → later re-login).
+_stash = {}
+
 SHOP_REAL_PASSWORD = "Str0ng!Passw0rd99"
 
 
@@ -56,15 +60,13 @@ SHOP_REAL_PASSWORD = "Str0ng!Passw0rd99"
 def user_headers(admin_headers):
     resp = client.post(
         "/api/admin/users",
-        json={
-            "email": "shop@example.com",
-            "password": SHOP_TEMP_PASSWORD,
-            "full_name": "Shop Owner",
-        },
+        json={"email": "shop@example.com", "full_name": "Shop Owner"},
         headers=admin_headers,
     )
     assert resp.status_code == 201, resp.text
     user_id = resp.json()["id"]
+    shop_temp_password = resp.json()["temp_password"]
+    assert len(shop_temp_password) == 6 and shop_temp_password.isdigit()
     # FBR settings are admin-managed only — configure them here so every
     # other test can assume a working seller profile is already in place.
     resp = client.put(
@@ -85,7 +87,7 @@ def user_headers(admin_headers):
     # before the account can do real work (mirrors the actual product flow).
     login = client.post(
         "/api/auth/login",
-        json={"email": "shop@example.com", "password": SHOP_TEMP_PASSWORD},
+        json={"email": "shop@example.com", "password": shop_temp_password},
     )
     assert login.status_code == 200, login.text
     assert login.json()["must_change_password"] is True
@@ -118,15 +120,16 @@ def test_must_change_password_gates_real_actions(admin_headers):
     # A fresh admin-created user, never through the fixture's set-password step.
     resp = client.post(
         "/api/admin/users",
-        json={"email": "temp@example.com", "password": "Temporary1", "full_name": "Temp User"},
+        json={"email": "temp@example.com", "full_name": "Temp User"},
         headers=admin_headers,
     )
     assert resp.status_code == 201, resp.text
     user_id = resp.json()["id"]
     assert resp.json()["must_change_password"] is True
+    temp_password = resp.json()["temp_password"]
 
     login = client.post(
-        "/api/auth/login", json={"email": "temp@example.com", "password": "Temporary1"}
+        "/api/auth/login", json={"email": "temp@example.com", "password": temp_password}
     )
     assert login.status_code == 200
     assert login.json()["must_change_password"] is True
@@ -198,7 +201,7 @@ def test_must_change_password_gates_real_actions(admin_headers):
 
     # Old temp password no longer works.
     old_login = client.post(
-        "/api/auth/login", json={"email": "temp@example.com", "password": "Temporary1"}
+        "/api/auth/login", json={"email": "temp@example.com", "password": temp_password}
     )
     assert old_login.status_code == 401
 
@@ -211,19 +214,16 @@ def test_admin_with_temp_password_blocked_from_admin_routes(admin_headers):
     # admin accounts specifically.
     resp = client.post(
         "/api/admin/users",
-        json={
-            "email": "newadmin@example.com",
-            "password": "TempAdmin1",
-            "full_name": "New Admin",
-            "role": "admin",
-        },
+        json={"email": "newadmin@example.com", "full_name": "New Admin", "role": "admin"},
         headers=admin_headers,
     )
     assert resp.status_code == 201, resp.text
     new_admin_id = resp.json()["id"]
+    new_admin_temp_password = resp.json()["temp_password"]
 
     login = client.post(
-        "/api/auth/login", json={"email": "newadmin@example.com", "password": "TempAdmin1"}
+        "/api/auth/login",
+        json={"email": "newadmin@example.com", "password": new_admin_temp_password},
     )
     assert login.status_code == 200
     assert login.json()["must_change_password"] is True
@@ -235,7 +235,7 @@ def test_admin_with_temp_password_blocked_from_admin_routes(admin_headers):
     assert (
         client.post(
             "/api/admin/users",
-            json={"email": "x@example.com", "password": "Whatever1", "full_name": "X"},
+            json={"email": "x@example.com", "full_name": "X"},
             headers=temp_admin_headers,
         ).status_code
         == 403
@@ -606,12 +606,13 @@ def test_admin_stats(admin_headers):
 
 
 def test_user_isolation(admin_headers):
-    client.post(
+    resp = client.post(
         "/api/admin/users",
-        json={"email": "other@example.com", "password": "secret1", "full_name": "Other"},
+        json={"email": "other@example.com", "full_name": "Other"},
         headers=admin_headers,
     )
-    other = _login("other@example.com", "secret1")
+    _stash["other_temp_password"] = resp.json()["temp_password"]
+    other = _login("other@example.com", _stash["other_temp_password"])
     assert client.get("/api/invoices", headers=other).json() == []
 
 
@@ -626,7 +627,7 @@ def test_deactivate_blocks_login(admin_headers):
     assert resp.status_code == 200
     resp = client.post(
         "/api/auth/login",
-        json={"email": "other@example.com", "password": "secret1"},
+        json={"email": "other@example.com", "password": _stash["other_temp_password"]},
     )
     assert resp.status_code == 403
 
@@ -646,16 +647,12 @@ def test_recreate_soft_deleted_email_restores_account(admin_headers):
     # restores the account (same row — users.email is UNIQUE in the DB).
     resp = client.post(
         "/api/admin/users",
-        json={
-            "email": "other@example.com",
-            "password": "newpass1",
-            "full_name": "Other Restored",
-        },
+        json={"email": "other@example.com", "full_name": "Other Restored"},
         headers=admin_headers,
     )
     assert resp.status_code == 201, resp.text
     assert resp.json()["is_active"] is True
-    assert _login("other@example.com", "newpass1")
+    assert _login("other@example.com", resp.json()["temp_password"])
 
 
 def test_third_schedule_csv_upload_prices_and_taxes_off_fixed_value(user_headers):
@@ -842,12 +839,7 @@ def test_admin_stats_extended_fields(admin_headers):
 def test_create_admin_via_admin_users_endpoint(admin_headers):
     resp = client.post(
         "/api/admin/users",
-        json={
-            "email": "second-admin@example.com",
-            "password": "secret1",
-            "full_name": "Second Admin",
-            "role": "admin",
-        },
+        json={"email": "second-admin@example.com", "full_name": "Second Admin", "role": "admin"},
         headers=admin_headers,
     )
     assert resp.status_code == 201, resp.text
@@ -855,6 +847,40 @@ def test_create_admin_via_admin_users_endpoint(admin_headers):
     users = client.get("/api/admin/users", headers=admin_headers).json()
     created = next(u for u in users if u["email"] == "second-admin@example.com")
     assert created["role"] == "admin"
+
+
+def test_create_user_gets_auto_generated_6_digit_temp_password(admin_headers):
+    resp = client.post(
+        "/api/admin/users",
+        json={"email": "autogen@example.com", "full_name": "Auto Gen"},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    temp_password = resp.json()["temp_password"]
+    assert len(temp_password) == 6
+    assert temp_password.isdigit()
+    # It's a real, working credential for the one first login.
+    login = client.post(
+        "/api/auth/login", json={"email": "autogen@example.com", "password": temp_password}
+    )
+    assert login.status_code == 200
+    assert login.json()["must_change_password"] is True
+
+    # A client-supplied password is ignored — the server always generates
+    # its own, so there's no way to end up with a weak/guessable temp code.
+    resp2 = client.post(
+        "/api/admin/users",
+        json={
+            "email": "autogen2@example.com",
+            "full_name": "Auto Gen 2",
+            "password": "ignored-if-sent",
+        },
+        headers=admin_headers,
+    )
+    assert resp2.status_code == 201, resp2.text
+    temp2 = resp2.json()["temp_password"]
+    assert temp2 != "ignored-if-sent"
+    assert len(temp2) == 6 and temp2.isdigit()
 
 
 def test_users_list_role_filter(admin_headers):
@@ -1032,11 +1058,12 @@ def test_my_stats_scoped_to_current_user(admin_headers, user_headers):
     # first user's data.
     resp = client.post(
         "/api/admin/users",
-        json={"email": "quiet@example.com", "password": "secret1", "full_name": "Quiet One"},
+        json={"email": "quiet@example.com", "full_name": "Quiet One"},
         headers=admin_headers,
     )
     login = client.post(
-        "/api/auth/login", json={"email": "quiet@example.com", "password": "secret1"}
+        "/api/auth/login",
+        json={"email": "quiet@example.com", "password": resp.json()["temp_password"]},
     )
     quiet_headers = {"Authorization": f"Bearer {login.json()['token']}"}
     quiet_resp = client.post(

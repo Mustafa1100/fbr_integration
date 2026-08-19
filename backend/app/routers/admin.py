@@ -1,3 +1,5 @@
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, or_
@@ -47,6 +49,14 @@ def _get_user_or_404(db: Session, user_id: int) -> User:
     if not user or user.is_deleted:
         raise HTTPException(404, "User not found")
     return user
+
+
+def _generate_temp_password() -> str:
+    """6-digit numeric code, cryptographically random — short and easy to
+    read aloud/type when handing it to a new user. Never actually usable
+    for more than one login: must_change_password forces an immediate
+    replacement with a real, strong password."""
+    return f"{secrets.randbelow(1_000_000):06d}"
 
 
 @router.get("/stats")
@@ -118,7 +128,6 @@ def list_users(
 
 class CreateUserRequest(BaseModel):
     email: EmailStr
-    password: str
     full_name: str
     role: str = "user"
 
@@ -127,15 +136,18 @@ class CreateUserRequest(BaseModel):
 def create_user(body: CreateUserRequest, db: Session = Depends(get_db)):
     if body.role not in ("user", "admin"):
         raise HTTPException(400, "Role must be 'user' or 'admin'")
-    if len(body.password) < 6:
-        raise HTTPException(400, "Password must be at least 6 characters")
+    # The admin never types this in — a random 6-digit code is generated
+    # here and returned once in the response for them to hand off. It's
+    # only ever valid for the one first login; must_change_password forces
+    # an immediate replacement with a real, strong password.
+    temp_password = _generate_temp_password()
     existing = db.query(User).filter(User.email == body.email.lower()).first()
     if existing and not existing.is_deleted:
         raise HTTPException(409, "A user with this email already exists")
     if existing:
         # Soft-deleted account with this email: restore it (rows are never
         # really deleted, and users.email is UNIQUE at the DB level).
-        existing.password_hash = hash_password(body.password)
+        existing.password_hash = hash_password(temp_password)
         existing.full_name = body.full_name.strip()
         existing.role = body.role
         existing.is_active = True
@@ -143,10 +155,10 @@ def create_user(body: CreateUserRequest, db: Session = Depends(get_db)):
         existing.must_change_password = True
         existing.token_version += 1
         db.commit()
-        return _user_out(existing)
+        return {**_user_out(existing), "temp_password": temp_password}
     user = User(
         email=body.email.lower(),
-        password_hash=hash_password(body.password),
+        password_hash=hash_password(temp_password),
         full_name=body.full_name.strip(),
         role=body.role,
         # Every password an admin sets is a temporary one — the user is
@@ -155,7 +167,7 @@ def create_user(body: CreateUserRequest, db: Session = Depends(get_db)):
     )
     db.add(user)
     db.commit()
-    return _user_out(user)
+    return {**_user_out(user), "temp_password": temp_password}
 
 
 class UpdateUserRequest(BaseModel):
