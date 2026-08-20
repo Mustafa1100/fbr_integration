@@ -48,7 +48,11 @@ def query_uploads(
 
 
 @router.get("/template", response_class=PlainTextResponse)
-def download_template(scenario: str | None = None):
+def download_template(
+    scenario: str | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """The valid downloadable CSV format for tax uploads.
 
     With ?scenario=SN0xx, returns a single row pre-filled from FBR/PRAL's own
@@ -61,7 +65,8 @@ def download_template(scenario: str | None = None):
             raise HTTPException(404, f"No official sample for scenario '{scenario}'")
         filename = f"fbr_template_{scenario.upper()}.csv"
     else:
-        content = csv_processor.template_csv()
+        fbr = get_or_create_fbr_settings(db, user)
+        content = csv_processor.template_csv(include_scenario=not fbr.is_production)
         filename = "fbr_invoice_template.csv"
     return PlainTextResponse(
         content,

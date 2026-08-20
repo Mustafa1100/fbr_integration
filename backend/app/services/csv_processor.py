@@ -118,11 +118,20 @@ TEMPLATE_ROWS = [
 ]
 
 
-def template_csv() -> str:
+def template_csv(include_scenario: bool = True) -> str:
+    """The generic starter template. ``include_scenario=False`` drops the
+    scenario_id column entirely — production accounts don't tag invoices
+    with a sandbox test scenario at all (see the Column Guide's own
+    production-vs-sandbox note), so a production user's only template
+    shouldn't carry a column that means nothing for them."""
+    fieldnames = ALL_COLUMNS if include_scenario else [c for c in ALL_COLUMNS if c != "scenario_id"]
+    rows = TEMPLATE_ROWS
+    if not include_scenario:
+        rows = [{k: v for k, v in row.items() if k != "scenario_id"} for row in TEMPLATE_ROWS]
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=ALL_COLUMNS)
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
     writer.writeheader()
-    writer.writerows(TEMPLATE_ROWS)
+    writer.writerows(rows)
     return buf.getvalue()
 
 

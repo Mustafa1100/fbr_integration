@@ -531,9 +531,52 @@ def test_admin_manages_user_fbr_settings(admin_headers, user_headers):
 
 
 def test_csv_template(user_headers):
-    resp = client.get("/api/uploads/template")
+    resp = client.get("/api/uploads/template", headers=user_headers)
     assert resp.status_code == 200
     assert "pos_invoice_no" in resp.text
+    assert "scenario_id" in resp.text  # the shared fixture's user is in mock mode
+
+    # Unauthenticated download is no longer allowed — the response has to
+    # be shaped by the requesting user's own FBR environment.
+    assert client.get("/api/uploads/template").status_code == 401
+
+
+def test_production_account_template_omits_scenario_id(admin_headers, user_headers):
+    users = client.get("/api/admin/users", headers=admin_headers).json()
+    shop = next(u for u in users if u["email"] == "shop@example.com")
+    ORIGINAL_PROFILE = {
+        "fbr_env": "mock",
+        "seller_ntn_cnic": "7654321",
+        "seller_business_name": "Shop Owner Pvt Ltd",
+        "seller_province": "Punjab",
+        "seller_address": "Lahore",
+        "default_scenario": "SN001",
+    }
+    try:
+        client.put(
+            f"/api/admin/users/{shop['id']}/fbr-settings",
+            json={**ORIGINAL_PROFILE, "fbr_env": "production"},
+            headers=admin_headers,
+        )
+        resp = client.get("/api/uploads/template", headers=user_headers)
+        assert resp.status_code == 200
+        header_row = resp.text.splitlines()[0]
+        assert "scenario_id" not in header_row.split(",")
+        assert "pos_invoice_no" in header_row
+
+        # A scenario-specific sandbox download still carries scenario_id
+        # regardless of env — the frontend just never surfaces it to a
+        # production account in the first place.
+        scenario_resp = client.get(
+            "/api/uploads/template?scenario=SN001", headers=user_headers
+        )
+        assert "scenario_id" in scenario_resp.text.splitlines()[0]
+    finally:
+        client.put(
+            f"/api/admin/users/{shop['id']}/fbr-settings",
+            json=ORIGINAL_PROFILE,
+            headers=admin_headers,
+        )
 
 
 def test_csv_upload_and_receipts(user_headers):

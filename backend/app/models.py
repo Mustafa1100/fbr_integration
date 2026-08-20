@@ -68,6 +68,10 @@ class FbrSettings(Base):
     def is_sandbox(self) -> bool:
         return self.fbr_env in ("mock", "sandbox")
 
+    @property
+    def is_production(self) -> bool:
+        return self.fbr_env == "production"
+
 
 class Upload(Base):
     __tablename__ = "uploads"
