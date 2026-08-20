@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ReceiptText, RefreshCw, QrCode, AlertCircle, Search } from 'lucide-react'
+import { ReceiptText, RefreshCw, QrCode, AlertCircle, Search, CircleDollarSign } from 'lucide-react'
 import { api } from '../../api'
 import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
@@ -51,6 +51,16 @@ export default function Invoices() {
     setError('')
     try {
       await api.post(`/api/invoices/${inv.id}/submit`)
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function togglePaid(inv) {
+    setError('')
+    try {
+      await api.patch(`/api/invoices/${inv.id}/paid`, { is_paid: !inv.is_paid })
       await refresh()
     } catch (err) {
       setError(err.message)
@@ -138,6 +148,7 @@ export default function Invoices() {
                   <th>Tax</th>
                   <th>Total</th>
                   <th>Status</th>
+                  <th>Paid</th>
                   <th>FBR Invoice No.</th>
                   <th></th>
                 </tr>
@@ -159,6 +170,19 @@ export default function Invoices() {
                     <td>{inv.grand_total.toLocaleString()}</td>
                     <td>
                       <span className={`badge ${inv.status}`}>{inv.status}</span>
+                    </td>
+                    <td>
+                      {inv.status === 'submitted' ? (
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${inv.is_paid ? 'btn-primary' : 'btn-secondary'}`}
+                          onClick={() => togglePaid(inv)}
+                        >
+                          <CircleDollarSign size={14} /> {inv.is_paid ? 'Paid' : 'Mark paid'}
+                        </button>
+                      ) : (
+                        '—'
+                      )}
                     </td>
                     <td className="mono">{inv.fbr_invoice_number || '—'}</td>
                     <td>

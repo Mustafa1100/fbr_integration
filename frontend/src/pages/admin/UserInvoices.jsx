@@ -157,6 +157,7 @@ export default function UserInvoices() {
                       <th>Tax</th>
                       <th>Total</th>
                       <th>Status</th>
+                      <th>Paid</th>
                       <th>FBR Invoice No.</th>
                       <th></th>
                     </tr>
@@ -176,6 +177,15 @@ export default function UserInvoices() {
                         <td>{inv.grand_total.toLocaleString()}</td>
                         <td>
                           <span className={`badge ${inv.status}`}>{inv.status}</span>
+                        </td>
+                        <td>
+                          {inv.status === 'submitted' ? (
+                            <span className={`badge ${inv.is_paid ? 'submitted' : 'draft'}`}>
+                              {inv.is_paid ? 'paid' : 'unpaid'}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
                         </td>
                         <td className="mono">{inv.fbr_invoice_number || '—'}</td>
                         <td>

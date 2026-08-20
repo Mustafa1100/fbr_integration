@@ -30,7 +30,13 @@ def run_light_migrations() -> None:
     migration framework (no Alembic in this project) — just enough to add a
     NOT NULL-ish column with a safe default without dropping existing dev
     data. New rows get their default from the Python-side mapped_column
-    default; existing rows get the SQL-level default below."""
+    default; existing rows get the SQL-level default below.
+
+    The DDL here has to work across SQLite (dev) and whatever's configured
+    for prod (MySQL or Postgres via DATABASE_URL) — DEFAULT FALSE/TRUE are
+    understood by all three, but DEFAULT 0 on a BOOLEAN column is rejected
+    by Postgres (no implicit int->bool cast), and DATETIME isn't a
+    Postgres type at all (TIMESTAMP is the portable one)."""
     inspector = inspect(engine)
     if "users" not in inspector.get_table_names():
         return  # fresh DB — create_all already gives it the current schema
@@ -40,7 +46,7 @@ def run_light_migrations() -> None:
             conn.execute(
                 text(
                     "ALTER TABLE users ADD COLUMN must_change_password "
-                    "BOOLEAN NOT NULL DEFAULT 0"
+                    "BOOLEAN NOT NULL DEFAULT FALSE"
                 )
             )
     if "token_version" not in existing_columns:
@@ -48,3 +54,16 @@ def run_light_migrations() -> None:
             conn.execute(
                 text("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0")
             )
+    if "invoices" in inspector.get_table_names():
+        invoice_columns = {c["name"] for c in inspector.get_columns("invoices")}
+        if "is_paid" not in invoice_columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE invoices ADD COLUMN is_paid "
+                        "BOOLEAN NOT NULL DEFAULT FALSE"
+                    )
+                )
+        if "paid_at" not in invoice_columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE invoices ADD COLUMN paid_at TIMESTAMP NULL"))

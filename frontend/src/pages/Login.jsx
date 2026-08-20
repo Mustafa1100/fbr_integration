@@ -54,7 +54,7 @@ export default function Login() {
           </div>
           <div className="logo-text">
             <div className="t1">FBR Invoicing</div>
-            <div className="t2">Digital · PRAL</div>
+            <div className="t2">ARG · Al Rahim Group of Companies</div>
           </div>
         </div>
 

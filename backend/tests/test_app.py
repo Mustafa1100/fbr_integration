@@ -4,7 +4,7 @@ soft deletes → deactivation."""
 
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ["DATABASE_URL"] = "sqlite:///./test_fbr.db"
@@ -1087,6 +1087,232 @@ def test_my_stats_scoped_to_current_user(admin_headers, user_headers):
     assert all(b["total"] == 0 for b in quiet_stats["invoices_by_day"])
 
     assert client.get("/api/stats").status_code == 401
+
+
+def test_mark_invoice_paid_requires_submitted_status(user_headers):
+    invoices = client.get("/api/invoices?status=submitted", headers=user_headers).json()
+    inv = invoices[0]
+    assert inv["is_paid"] is False
+
+    resp = client.patch(
+        f"/api/invoices/{inv['id']}/paid", json={"is_paid": True}, headers=user_headers
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["is_paid"] is True
+
+    # Toggling back off works too.
+    resp = client.patch(
+        f"/api/invoices/{inv['id']}/paid", json={"is_paid": False}, headers=user_headers
+    )
+    assert resp.status_code == 200
+    assert resp.json()["is_paid"] is False
+
+    # A draft/failed invoice was never actually issued — can't be marked paid.
+    failed = client.get("/api/invoices?status=failed", headers=user_headers).json()
+    if failed:
+        resp = client.patch(
+            f"/api/invoices/{failed[0]['id']}/paid",
+            json={"is_paid": True},
+            headers=user_headers,
+        )
+        assert resp.status_code == 400
+
+
+def test_paid_tax_reflected_in_stats(admin_headers, user_headers):
+    invoices = client.get("/api/invoices?status=submitted", headers=user_headers).json()
+    inv = invoices[0]
+    client.patch(f"/api/invoices/{inv['id']}/paid", json={"is_paid": True}, headers=user_headers)
+
+    try:
+        stats = client.get("/api/stats", headers=user_headers).json()
+        assert stats["paid_tax"] == inv["total_tax"]
+
+        admin_stats = client.get("/api/admin/stats", headers=admin_headers).json()
+        assert admin_stats["paid_tax"] >= inv["total_tax"]
+        assert admin_stats["total_tax_collected"] >= admin_stats["paid_tax"]
+    finally:
+        client.patch(
+            f"/api/invoices/{inv['id']}/paid", json={"is_paid": False}, headers=user_headers
+        )
+
+
+def test_admin_user_growth_chart(admin_headers):
+    for granularity, expected_periods in [
+        ("day", 30),
+        ("week", 12),
+        ("month", 12),
+        ("year", 5),
+    ]:
+        resp = client.get(
+            f"/api/admin/stats/user-growth?granularity={granularity}", headers=admin_headers
+        )
+        assert resp.status_code == 200, resp.text
+        buckets = resp.json()
+        assert len(buckets) == expected_periods
+        for b in buckets:
+            assert set(b) == {"period", "label", "count"}
+        # Every account created during this test run must land in some
+        # bucket — total counts across all buckets can't be zero.
+        assert sum(b["count"] for b in buckets) >= 1
+
+    resp = client.get("/api/admin/stats/user-growth?granularity=bogus", headers=admin_headers)
+    assert resp.status_code == 400
+
+
+def test_excel_upload_happy_path(user_headers):
+    import io
+
+    import openpyxl
+
+    from app.services.csv_processor import ALL_COLUMNS
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(ALL_COLUMNS)
+    ws.append(
+        [
+            "POS-XL1",
+            "2026-08-19",
+            "1234567",
+            "Excel Buyer",
+            "Punjab",
+            "Lahore",
+            "Registered",
+            "Excel Item",
+            "8471.3010",
+            "18%",
+            "Numbers, pieces, units",
+            3,
+            1000,
+            "Goods at standard rate (default)",
+            "SN001",
+            "",
+            "",
+            "",
+        ]
+    )
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    resp = client.post(
+        "/api/uploads",
+        files={
+            "file": (
+                "sales.xlsx",
+                buf.read(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers=user_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    upload = resp.json()
+    assert upload["status"] == "completed"
+    assert upload["total_rows"] == 1
+    assert upload["invoices_created"] == 1
+    assert upload["invoices_submitted"] == 1
+
+    invoices = client.get(
+        f"/api/invoices?upload_id={upload['id']}", headers=user_headers
+    ).json()
+    assert invoices[0]["total_excl"] == 3000.0
+    assert invoices[0]["total_tax"] == 540.0
+
+
+def test_excel_upload_with_percent_and_date_formatted_cells(user_headers):
+    # Regression: typing "18%" into an Excel cell stores the underlying
+    # value as 0.18 with a percentage number format, and a date-typed cell
+    # comes back as a Python datetime — both must be normalized back to
+    # the plain strings our validation/pricing logic expects.
+    import io
+
+    import openpyxl
+
+    from app.services.csv_processor import ALL_COLUMNS
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(ALL_COLUMNS)
+    row_idx = 2
+    ws.append(
+        [
+            "POS-XL2",
+            date(2026, 8, 19),
+            "",
+            "Walk-in Customer",
+            "Sindh",
+            "Karachi",
+            "Unregistered",
+            "Formatted Item",
+            "8517.1219",
+            0.18,
+            "Numbers, pieces, units",
+            1,
+            1000,
+            "Goods at standard rate (default)",
+            "SN001",
+            "",
+            "",
+            "",
+        ]
+    )
+    rate_cell = ws.cell(row=row_idx, column=ALL_COLUMNS.index("rate") + 1)
+    rate_cell.number_format = "0%"
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    resp = client.post(
+        "/api/uploads",
+        files={
+            "file": (
+                "formatted.xlsx",
+                buf.read(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers=user_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    upload = resp.json()
+    assert upload["status"] == "completed", upload
+    assert upload["invoices_submitted"] == 1
+
+    invoices = client.get(
+        f"/api/invoices?upload_id={upload['id']}", headers=user_headers
+    ).json()
+    # 1000 * 18% = 180, proving the rate cell was read back as "18%" (not
+    # silently treated as a 0.18% rate).
+    assert invoices[0]["total_tax"] == 180.0
+
+
+def test_excel_upload_corrupt_file_gives_clear_error(user_headers):
+    resp = client.post(
+        "/api/uploads",
+        files={
+            "file": (
+                "not-really-excel.xlsx",
+                b"this is not a real xlsx file",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers=user_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["status"] == "failed"
+    assert "Excel file" in body["error"]
+
+
+def test_upload_rejects_unsupported_extension(user_headers):
+    resp = client.post(
+        "/api/uploads",
+        files={"file": ("sales.txt", "pos_invoice_no,invoice_date\n", "text/plain")},
+        headers=user_headers,
+    )
+    assert resp.status_code == 400
+    assert ".csv or .xlsx" in resp.json()["detail"]
 
 
 def test_expired_token_rejected_with_clear_message(user_headers):

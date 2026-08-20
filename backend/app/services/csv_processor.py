@@ -25,8 +25,9 @@ sandbox and PRAL's own SN028 sample.
 
 import csv
 import io
-from datetime import date
+from datetime import date, datetime
 
+import openpyxl
 from sqlalchemy.orm import Session
 
 from app.fbr.scenario_samples import SCENARIO_NAMES, SCENARIO_SAMPLE_ITEMS
@@ -183,20 +184,23 @@ class CsvError(Exception):
     pass
 
 
-def _parse_rows(content: str) -> list[dict]:
-    reader = csv.DictReader(io.StringIO(content))
-    if not reader.fieldnames:
-        raise CsvError("The CSV file is empty.")
-    fieldnames = [f.strip().lower() for f in reader.fieldnames]
+def _validate_and_collect(fieldnames: list[str], rows_iter) -> list[dict]:
+    """Shared validation core for both CSV and Excel uploads: required
+    columns present, then per-row required fields / date format / numeric
+    fields. ``rows_iter`` yields (line_no, row) where row is already a
+    normalized {lowercased column: stripped string value} dict — the two
+    format-specific adapters below are responsible for getting each format
+    into that shape before handing rows to this function, so every error
+    message here reads identically regardless of which file type produced
+    it (and the line number matches the actual spreadsheet/CSV row)."""
     missing = [c for c in REQUIRED_COLUMNS if c not in fieldnames]
     if missing:
         raise CsvError(
             f"Missing required columns: {', '.join(missing)}. "
-            "Download the CSV template for the correct format."
+            "Download the template for the correct format."
         )
     rows = []
-    for line_no, raw in enumerate(reader, start=2):
-        row = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
+    for line_no, row in rows_iter:
         if not any(row.values()):
             continue
         for col in REQUIRED_COLUMNS:
@@ -221,14 +225,78 @@ def _parse_rows(content: str) -> list[dict]:
             )
         rows.append(row)
     if not rows:
-        raise CsvError("The CSV file has no data rows.")
+        raise CsvError("The file has no data rows.")
     return rows
 
 
-def process_upload(
-    db: Session, user: User, fbr: FbrSettings, filename: str, content: str
-) -> Upload:
-    upload = Upload(
+def _parse_rows(content: str) -> list[dict]:
+    reader = csv.DictReader(io.StringIO(content))
+    if not reader.fieldnames:
+        raise CsvError("The CSV file is empty.")
+    fieldnames = [f.strip().lower() for f in reader.fieldnames]
+
+    def rows_iter():
+        for line_no, raw in enumerate(reader, start=2):
+            row = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
+            yield line_no, row
+
+    return _validate_and_collect(fieldnames, rows_iter())
+
+
+def _excel_cell_to_str(cell) -> str:
+    """Normalize one openpyxl cell to the same plain-string shape a CSV
+    field would have. Excel silently reformats cells that "look like"
+    dates or percentages (see the warning on the Column Guide page) —
+    handled explicitly here instead of naively str()-ing the raw value,
+    which would otherwise turn a "18%" rate cell into "0.18" or an
+    invoice_date cell into a Python datetime repr."""
+    value = cell.value
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, (int, float)):
+        if "%" in (cell.number_format or ""):
+            pct = round(value * 100, 2)
+            return f"{pct:g}%"
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+        return str(value)
+    return str(value).strip()
+
+
+def _parse_excel_rows(raw: bytes) -> list[dict]:
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
+    except Exception as exc:
+        raise CsvError(
+            "Could not read the Excel file — make sure it's a valid, "
+            "unprotected .xlsx workbook."
+        ) from exc
+    ws = wb.active
+    sheet_rows = ws.iter_rows()
+    try:
+        header_cells = next(sheet_rows)
+    except StopIteration:
+        raise CsvError("The Excel file is empty.")
+    fieldnames = [str(c.value or "").strip().lower() for c in header_cells]
+
+    def rows_iter():
+        for line_no, cells in enumerate(sheet_rows, start=2):
+            row = {
+                name: _excel_cell_to_str(cell)
+                for name, cell in zip(fieldnames, cells)
+                if name
+            }
+            yield line_no, row
+
+    return _validate_and_collect(fieldnames, rows_iter())
+
+
+def _new_upload(user: User, filename: str) -> Upload:
+    return Upload(
         user_id=user.id,
         filename=filename,
         total_rows=0,
@@ -236,8 +304,13 @@ def process_upload(
         invoices_submitted=0,
         invoices_failed=0,
     )
-    db.add(upload)
 
+
+def process_upload(
+    db: Session, user: User, fbr: FbrSettings, filename: str, content: str
+) -> Upload:
+    upload = _new_upload(user, filename)
+    db.add(upload)
     try:
         rows = _parse_rows(content)
     except CsvError as exc:
@@ -245,7 +318,27 @@ def process_upload(
         upload.error = str(exc)
         db.commit()
         return upload
+    return _process_rows(db, user, fbr, upload, rows)
 
+
+def process_upload_excel(
+    db: Session, user: User, fbr: FbrSettings, filename: str, raw: bytes
+) -> Upload:
+    upload = _new_upload(user, filename)
+    db.add(upload)
+    try:
+        rows = _parse_excel_rows(raw)
+    except CsvError as exc:
+        upload.status = "failed"
+        upload.error = str(exc)
+        db.commit()
+        return upload
+    return _process_rows(db, user, fbr, upload, rows)
+
+
+def _process_rows(
+    db: Session, user: User, fbr: FbrSettings, upload: Upload, rows: list[dict]
+) -> Upload:
     upload.total_rows = len(rows)
 
     # Group rows by POS invoice number, preserving first-seen order.

@@ -4,6 +4,7 @@ import {
   History,
   LayoutDashboard,
   LogOut,
+  Menu,
   PanelLeftClose,
   PanelLeftOpen,
   ReceiptText,
@@ -13,12 +14,13 @@ import {
   UploadCloud,
   Users,
 } from 'lucide-react'
-import { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { clearSession, getStoredUser } from '../api'
 import Modal from './Modal'
 
 const COLLAPSE_KEY = 'fbr_sidebar_collapsed'
+const MOBILE_QUERY = '(max-width: 768px)'
 
 function initials(name = '') {
   return (
@@ -34,15 +36,37 @@ function initials(name = '') {
 export default function Layout() {
   const user = getStoredUser()
   const navigate = useNavigate()
+  const location = useLocation()
   const [confirmLogout, setConfirmLogout] = useState(false)
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1')
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia(MOBILE_QUERY).matches)
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  useEffect(() => {
+    const mql = window.matchMedia(MOBILE_QUERY)
+    const onChange = (e) => setIsMobile(e.matches)
+    mql.addEventListener('change', onChange)
+    return () => mql.removeEventListener('change', onChange)
+  }, [])
+
+  // Picking a nav link should close the drawer instead of leaving it open
+  // over the newly-navigated page.
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [location.pathname])
 
   function logout() {
     clearSession()
     navigate('/login')
   }
 
-  function toggleCollapsed() {
+  // One button, two jobs depending on viewport: collapses/expands the
+  // icon-only desktop sidebar, or opens/closes the mobile slide-over.
+  function toggleSidebar() {
+    if (isMobile) {
+      setMobileOpen((v) => !v)
+      return
+    }
     setCollapsed((c) => {
       const next = !c
       localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0')
@@ -51,10 +75,15 @@ export default function Layout() {
   }
 
   const link = ({ isActive }) => `nav-item${isActive ? ' active' : ''}`
+  // The mobile drawer always shows full labels — the desktop "collapsed"
+  // icon-only look doesn't apply once the sidebar is off-canvas.
+  const sidebarClass = `sidebar${collapsed && !isMobile ? ' collapsed' : ''}${
+    mobileOpen ? ' mobile-open' : ''
+  }`
 
   return (
     <div className="app-shell">
-      <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
+      <aside className={sidebarClass}>
         <div className="sidebar-logo">
           <div className="logo-mark">
             <ScrollText size={20} />
@@ -64,16 +93,6 @@ export default function Layout() {
             <div className="t2">Digital · PRAL</div>
           </div>
         </div>
-
-        <button
-          type="button"
-          className="sidebar-collapse-btn"
-          onClick={toggleCollapsed}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
-          {!collapsed && <span>Collapse</span>}
-        </button>
 
         <div className="nav-section-label">Menu</div>
         {user?.role === 'admin' ? (
@@ -144,7 +163,30 @@ export default function Layout() {
         </div>
       </aside>
 
+      {mobileOpen && <div className="sidebar-backdrop" onClick={() => setMobileOpen(false)} />}
+
       <div className="content">
+        <div className="topbar">
+          <button
+            type="button"
+            className="topbar-toggle"
+            onClick={toggleSidebar}
+            aria-label="Toggle navigation"
+            title={isMobile ? 'Open menu' : collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {isMobile ? (
+              <Menu size={19} />
+            ) : collapsed ? (
+              <PanelLeftOpen size={19} />
+            ) : (
+              <PanelLeftClose size={19} />
+            )}
+          </button>
+          <div className="topbar-brand">
+            <ScrollText size={16} />
+            <span>FBR Invoicing</span>
+          </div>
+        </div>
         <div className="page">
           <Outlet />
         </div>

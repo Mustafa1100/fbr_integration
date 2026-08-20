@@ -77,7 +77,6 @@ code { background: var(--slate-50); border: 1px solid var(--border); border-radi
 .sidebar.collapsed .user-meta,
 .sidebar.collapsed .nav-item span { display: none; }
 .sidebar.collapsed .sidebar-logo { justify-content: center; padding-bottom: 16px; }
-.sidebar.collapsed .sidebar-collapse-btn,
 .sidebar.collapsed .nav-item { justify-content: center; padding: 11px; }
 .sidebar.collapsed .sidebar-footer { flex-direction: column; }
 
@@ -133,26 +132,6 @@ code { background: var(--slate-50); border: 1px solid var(--border); border-radi
 }
 .nav-item svg { flex-shrink: 0; opacity: 0.9; }
 
-.sidebar-collapse-btn {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  width: 100%;
-  padding: 9px 12px;
-  margin: 0 0 12px;
-  border: none;
-  border-radius: 10px;
-  background: none;
-  color: #a9c4b8;
-  font-family: var(--font);
-  font-weight: 500;
-  font-size: 0.84rem;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-.sidebar-collapse-btn:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
-.sidebar-collapse-btn svg { flex-shrink: 0; opacity: 0.9; }
-
 .sidebar-footer {
   margin-top: auto;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
@@ -191,6 +170,52 @@ code { background: var(--slate-50); border: 1px solid var(--border); border-radi
 
 .content { flex: 1; min-width: 0; }
 .page { max-width: 1180px; margin: 0 auto; padding: 34px 38px 60px; }
+
+/* ── Topbar ────────────────────────────────────────────────────────── */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  padding: 0 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-toggle {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.topbar-toggle:hover { background: var(--slate-50); color: var(--text); }
+.topbar-brand {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.topbar-brand svg { color: var(--brand-600); flex-shrink: 0; }
+
+/* ── Mobile sidebar backdrop (see the drawer rules further down) ───── */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(16, 24, 40, 0.5);
+  z-index: 190;
+  animation: modal-fade-in 0.15s ease;
+}
 
 /* ── Page header ───────────────────────────────────────────────────── */
 .page-header {
@@ -661,10 +686,39 @@ pre {
   .sidebar { width: 68px; padding: 18px 10px; }
   .logo-text, .nav-section-label, .user-meta, .nav-item span { display: none; }
   .sidebar-logo { justify-content: center; padding-bottom: 16px; }
-  .sidebar-collapse-btn, .nav-item { justify-content: center; padding: 11px; }
+  .nav-item { justify-content: center; padding: 11px; }
   .sidebar-footer { flex-direction: column; }
   .page { padding: 24px 20px 48px; }
   .form-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Mobile: sidebar becomes a slide-over drawer, opened via the topbar
+   hamburger button, instead of the permanently-visible icon rail above. ── */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: min(280px, 82vw);
+    padding: 20px 14px;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    z-index: 200;
+  }
+  .sidebar.mobile-open { transform: translateX(0); box-shadow: var(--shadow-lg); }
+  /* The drawer always shows full labels, regardless of the desktop
+     collapsed/icon-only look (Layout.jsx never applies .collapsed here). */
+  .sidebar .logo-text,
+  .sidebar .nav-section-label,
+  .sidebar .user-meta { display: block; }
+  .sidebar .nav-item span { display: inline; }
+  .sidebar .sidebar-logo { justify-content: flex-start; padding-bottom: 20px; }
+  .sidebar .nav-item { justify-content: flex-start; padding: 10px 12px; }
+  .sidebar .sidebar-footer { flex-direction: row; }
+
+  .topbar-brand { display: flex; }
+  .page { padding: 18px 14px 40px; }
 }
 
 @media print {

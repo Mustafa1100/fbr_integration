@@ -40,7 +40,15 @@ def bootstrap_admin() -> None:
 
 bootstrap_admin()
 
-app = FastAPI(title="FBR Digital Invoicing API")
+# Interactive docs are a reconnaissance aid for an attacker probing a live
+# production API — only serve them in development.
+_docs_enabled = not get_settings().is_production
+app = FastAPI(
+    title="FBR Digital Invoicing API",
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().cors_origin_list,

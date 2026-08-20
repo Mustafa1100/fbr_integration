@@ -1,6 +1,8 @@
 import json
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Query, Session
 
@@ -32,6 +34,8 @@ def summary_out(inv: Invoice) -> dict:
         "total_tax": round(inv.total_tax, 2),
         "grand_total": round(inv.grand_total, 2),
         "upload_id": inv.upload_id,
+        "is_paid": inv.is_paid,
+        "paid_at": inv.paid_at.isoformat() if inv.paid_at else None,
     }
 
 
@@ -157,6 +161,29 @@ def submit_invoice(
         raise HTTPException(400, "Invoice already submitted to FBR")
     fbr = get_or_create_fbr_settings(db, user)
     invoice_service.submit(db, inv, fbr)
+    return summary_out(inv)
+
+
+class MarkPaidRequest(BaseModel):
+    is_paid: bool
+
+
+@router.patch("/{invoice_id}/paid")
+def mark_invoice_paid(
+    invoice_id: int,
+    body: MarkPaidRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Track whether the buyer has actually paid — independent of FBR
+    submission status. Only meaningful once an invoice is a real,
+    FBR-registered record; a draft/failed invoice was never issued."""
+    inv = _get_owned(db, user, invoice_id)
+    if inv.status != "submitted":
+        raise HTTPException(400, "Only a submitted invoice can be marked as paid")
+    inv.is_paid = body.is_paid
+    inv.paid_at = datetime.now(timezone.utc) if body.is_paid else None
+    db.commit()
     return summary_out(inv)
 
 

@@ -1,6 +1,9 @@
 app = "fbr-integration-api"
 primary_region = "sin"
 
+[env]
+  ENVIRONMENT = "production"
+
 [build]
 
 [http_service]

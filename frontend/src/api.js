@@ -61,7 +61,11 @@ async function request(path, { method = 'GET', body, formData, raw = false } = {
     body: formData ?? (body ? JSON.stringify(body) : undefined),
   })
 
-  if (resp.status === 401) {
+  // A 401 on a request that carried no token (e.g. a failed login itself)
+  // is a fresh auth failure, not an expired session — fall through to the
+  // normal error parsing below so the real message (e.g. "Invalid email or
+  // password") reaches the caller instead of being swallowed by a redirect.
+  if (resp.status === 401 && token) {
     clearSession()
     // ?session=expired lets the login page explain why it just bounced
     // the user here, instead of silently dropping them on the form.

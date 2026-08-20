@@ -11,17 +11,36 @@ import {
   TrendingUp,
   PieChart,
   Loader2,
+  Landmark,
+  Wallet,
+  UserPlus,
 } from 'lucide-react'
 import { api } from '../../api'
-import { TrendChart, DonutChart } from '../../components/Charts'
+import { TrendChart, DonutChart, BarChart } from '../../components/Charts'
+
+const GROWTH_GRANULARITIES = [
+  { value: 'day', label: 'Day' },
+  { value: 'week', label: 'Week' },
+  { value: 'month', label: 'Month' },
+  { value: 'year', label: 'Year' },
+]
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState(null)
   const [error, setError] = useState('')
+  const [growth, setGrowth] = useState(null)
+  const [granularity, setGranularity] = useState('day')
 
   useEffect(() => {
     api.get('/api/admin/stats').then(setStats).catch((e) => setError(e.message))
   }, [])
+
+  useEffect(() => {
+    api
+      .get(`/api/admin/stats/user-growth?granularity=${granularity}`)
+      .then(setGrowth)
+      .catch((e) => setError(e.message))
+  }, [granularity])
 
   return (
     <>
@@ -103,6 +122,24 @@ export default function AdminDashboard() {
               <div className="stat-label">Failed</div>
             </div>
           </div>
+          <div className="stat-card">
+            <div className="stat-icon tint-blue">
+              <Landmark size={20} />
+            </div>
+            <div>
+              <div className="stat-value">{stats.total_tax_collected.toLocaleString()}</div>
+              <div className="stat-label">Total tax</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon tint-green">
+              <Wallet size={20} />
+            </div>
+            <div>
+              <div className="stat-value">{stats.paid_tax.toLocaleString()}</div>
+              <div className="stat-label">Paid tax</div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -131,6 +168,36 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+      <div className="card" style={{ marginBottom: '1.5rem' }}>
+        <div
+          className="row-actions"
+          style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: 10 }}
+        >
+          <h3 style={{ margin: 0, fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: 7 }}>
+            <UserPlus size={16} /> Users created
+          </h3>
+          <div className="row-actions" style={{ gap: 4 }}>
+            {GROWTH_GRANULARITIES.map((g) => (
+              <button
+                key={g.value}
+                type="button"
+                className={`btn btn-sm ${granularity === g.value ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setGranularity(g.value)}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {growth ? (
+          <BarChart data={growth} />
+        ) : (
+          <div className="loading">
+            <Loader2 size={16} className="spin" /> Loading…
+          </div>
+        )}
+      </div>
     </>
   )
 }

@@ -12,6 +12,7 @@ import {
   FlaskConical,
   Search,
   X,
+  BookOpenText,
 } from 'lucide-react'
 import { api } from '../../api'
 import PaginationBar from '../../components/PaginationBar'
@@ -33,7 +34,9 @@ export default function Uploads() {
   const [scenarioPick, setScenarioPick] = useState('')
   const [fileName, setFileName] = useState('')
   const [dragOver, setDragOver] = useState(false)
+  const [fbrEnv, setFbrEnv] = useState(null)
   const fileRef = useRef()
+  const isProduction = fbrEnv === 'production'
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -61,6 +64,10 @@ export default function Uploads() {
 
   useEffect(() => {
     api.get('/api/uploads/scenario-catalog').then(setScenarios).catch(() => {})
+    api
+      .get('/api/settings/fbr')
+      .then((s) => setFbrEnv(s.fbr_env))
+      .catch(() => {})
   }, [])
 
   async function submit(e) {
@@ -132,6 +139,11 @@ export default function Uploads() {
           <button type="button" className="btn btn-secondary" onClick={() => downloadTemplate()}>
             <Download size={16} /> Download CSV template
           </button>
+          {isProduction && (
+            <Link to="/columns" className="btn btn-secondary">
+              <BookOpenText size={16} /> Column guide
+            </Link>
+          )}
         </div>
       </div>
 
@@ -142,7 +154,18 @@ export default function Uploads() {
         </div>
       )}
 
-      {scenarios.length > 0 && (
+      {isProduction && (
+        <div className="alert info">
+          <BookOpenText size={17} />
+          <span>
+            Your account is set to production — there&apos;s one CSV/Excel template to use.
+            See the <Link to="/columns">Column Guide</Link> for exactly which columns are
+            required.
+          </span>
+        </div>
+      )}
+
+      {!isProduction && scenarios.length > 0 && (
         <div className="card" style={{ marginBottom: '1.5rem' }}>
           <div className="row-actions" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
             <FlaskConical size={17} style={{ flexShrink: 0, color: 'var(--muted)' }} />
@@ -177,7 +200,7 @@ export default function Uploads() {
       <form className="card" onSubmit={submit}>
         <div className="field">
           <label>
-            CSV file <span className="hint">(.csv)</span>
+            CSV or Excel file <span className="hint">(.csv or .xlsx)</span>
           </label>
           <div
             className={`dropzone${fileName ? ' has-file' : ''}${dragOver ? ' drag-over' : ''}`}
@@ -190,7 +213,7 @@ export default function Uploads() {
           >
             <input
               type="file"
-              accept=".csv"
+              accept=".csv,.xlsx"
               ref={fileRef}
               required
               className="dropzone-input"
@@ -210,7 +233,7 @@ export default function Uploads() {
               <>
                 <UploadCloud size={22} />
                 <span className="dropzone-text">
-                  <strong>Click to choose a file</strong> or drag and drop your CSV here
+                  <strong>Click to choose a file</strong> or drag and drop your CSV/Excel file here
                 </span>
               </>
             )}

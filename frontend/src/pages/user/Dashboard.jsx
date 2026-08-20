@@ -7,6 +7,7 @@ import {
   XCircle,
   Banknote,
   Landmark,
+  Wallet,
   AlertCircle,
   TrendingUp,
   PieChart,
@@ -104,7 +105,16 @@ export default function Dashboard() {
             </div>
             <div>
               <div className="stat-value">{stats.total_tax_collected.toLocaleString()}</div>
-              <div className="stat-label">Tax collected</div>
+              <div className="stat-label">Total tax</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon tint-green">
+              <Wallet size={20} />
+            </div>
+            <div>
+              <div className="stat-value">{stats.paid_tax.toLocaleString()}</div>
+              <div className="stat-label">Paid tax</div>
             </div>
           </div>
         </div>

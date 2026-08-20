@@ -7,6 +7,7 @@ import {
   AlertCircle,
   Code2,
   Loader2,
+  CircleDollarSign,
 } from 'lucide-react'
 import { api } from '../api'
 
@@ -14,10 +15,13 @@ import { api } from '../api'
 // admin read-only view (/admin/invoices/:userId/:invoiceId) — same data
 // shape from either GET /api/invoices/:id or GET
 // /api/admin/users/:userId/invoices/:invoiceId, just a different URL.
-export default function ReceiptView({ apiUrl, backTo, backLabel, banner }) {
+// allowMarkPaid: only the user's own view passes this — admin's view stays
+// read-only oversight, not on-behalf editing, but still shows the badge.
+export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMarkPaid = false }) {
   const [inv, setInv] = useState(null)
   const [error, setError] = useState('')
   const [showJson, setShowJson] = useState(false)
+  const [paidBusy, setPaidBusy] = useState(false)
 
   useEffect(() => {
     setInv(null)
@@ -27,6 +31,19 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner }) {
       .then(setInv)
       .catch((e) => setError(e.message))
   }, [apiUrl])
+
+  async function togglePaid() {
+    setPaidBusy(true)
+    setError('')
+    try {
+      const updated = await api.patch(`/api/invoices/${inv.id}/paid`, { is_paid: !inv.is_paid })
+      setInv({ ...inv, ...updated })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setPaidBusy(false)
+    }
+  }
 
   if (error)
     return (
@@ -62,6 +79,11 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner }) {
           <h1 className="page-title">
             <ReceiptIcon size={22} /> Tax Receipt{' '}
             <span className={`badge ${inv.status}`}>{inv.status}</span>
+            {inv.status === 'submitted' && (
+              <span className={`badge ${inv.is_paid ? 'submitted' : 'draft'}`}>
+                {inv.is_paid ? 'paid' : 'unpaid'}
+              </span>
+            )}
           </h1>
           <p className="page-sub">Printable tax receipt for this invoice.</p>
         </div>
@@ -69,6 +91,16 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner }) {
           <Link to={backTo} className="btn btn-secondary">
             <ArrowLeft size={16} /> {backLabel}
           </Link>
+          {allowMarkPaid && inv.status === 'submitted' && (
+            <button
+              className={`btn ${inv.is_paid ? 'btn-secondary' : 'btn-primary'}`}
+              onClick={togglePaid}
+              disabled={paidBusy}
+            >
+              {paidBusy ? <Loader2 size={16} className="spin" /> : <CircleDollarSign size={16} />}
+              {inv.is_paid ? 'Mark as unpaid' : 'Mark as paid'}
+            </button>
+          )}
           <button className="btn btn-primary" onClick={() => window.print()}>
             <Printer size={16} /> Print receipt
           </button>

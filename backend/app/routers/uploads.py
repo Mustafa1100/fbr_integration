@@ -97,15 +97,15 @@ async def upload_csv(
     user: User = Depends(require_password_already_set),
     db: Session = Depends(get_db),
 ):
-    if not (file.filename or "").lower().endswith(".csv"):
-        raise HTTPException(400, "Please upload a .csv file (download the template)")
+    filename_lower = (file.filename or "").lower()
+    is_excel = filename_lower.endswith(".xlsx")
+    if not is_excel and not filename_lower.endswith(".csv"):
+        raise HTTPException(
+            400, "Please upload a .csv or .xlsx file (download the template)"
+        )
     raw = await file.read()
     if len(raw) > 5 * 1024 * 1024:
         raise HTTPException(400, "File too large (max 5 MB)")
-    try:
-        content = raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        raise HTTPException(400, "File must be UTF-8 encoded CSV")
 
     fbr = get_or_create_fbr_settings(db, user)
     if not fbr.is_mock and not fbr.fbr_token:
@@ -113,7 +113,15 @@ async def upload_csv(
             400,
             "Set up your FBR integration first (token missing) or switch to mock mode.",
         )
-    upload = csv_processor.process_upload(db, user, fbr, file.filename, content)
+
+    if is_excel:
+        upload = csv_processor.process_upload_excel(db, user, fbr, file.filename, raw)
+    else:
+        try:
+            content = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            raise HTTPException(400, "File must be UTF-8 encoded CSV")
+        upload = csv_processor.process_upload(db, user, fbr, file.filename, content)
     return upload_out(upload)
 
 

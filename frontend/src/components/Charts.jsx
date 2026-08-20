@@ -32,10 +32,14 @@ export function TrendChart({ data, height = 180 }) {
       role="img"
       aria-label="Invoices submitted per day, last 14 days"
     >
-      {yGridValues.map((v) => {
+      {yGridValues.map((v, gi) => {
+        // Keyed by index, not value: small integer maxVal values (e.g. a
+        // quiet account whose 14-day max is 1) make Math.round((maxVal /
+        // yTicks) * i) repeat across ticks — a value-keyed list then hands
+        // React duplicate keys.
         const y = padT + chartH - (v / maxVal) * chartH
         return (
-          <g key={v}>
+          <g key={gi}>
             <line
               x1={padL}
               x2={width - padR}
@@ -113,6 +117,101 @@ export function TrendChart({ data, height = 180 }) {
                 fill="var(--muted)"
               >
                 {DAY_LABEL(d.date)}
+              </text>
+            )}
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
+// Single-series bar chart — e.g. "accounts created per period". Unlike
+// TrendChart, there's no submitted/failed stacking, just one count per
+// period label.
+export function BarChart({ data, height = 180 }) {
+  const width = 640
+  const padL = 34
+  const padB = 26
+  const padT = 10
+  const padR = 10
+  const chartW = width - padL - padR
+  const chartH = height - padT - padB
+  const n = Math.max(1, data.length)
+  const maxVal = Math.max(1, ...data.map((d) => d.count))
+  const barGap = 6
+  const barW = Math.max(2, chartW / n - barGap)
+
+  const yTicks = 4
+  const yGridValues = Array.from({ length: yTicks + 1 }, (_, i) =>
+    Math.round((maxVal / yTicks) * i)
+  )
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      width="100%"
+      height={height}
+      role="img"
+      aria-label="Accounts created per period"
+    >
+      {yGridValues.map((v, gi) => {
+        // Keyed by index — see the identical note in TrendChart above.
+        const y = padT + chartH - (v / maxVal) * chartH
+        return (
+          <g key={gi}>
+            <line
+              x1={padL}
+              x2={width - padR}
+              y1={y}
+              y2={y}
+              stroke="var(--border)"
+              strokeWidth="1"
+            />
+            <text x={padL - 8} y={y + 3} textAnchor="end" fontSize="9" fill="var(--muted)">
+              {v}
+            </text>
+          </g>
+        )
+      })}
+
+      {data.map((d, i) => {
+        const x = padL + i * (barW + barGap) + barGap / 2
+        const barH = (d.count / maxVal) * chartH
+        const showLabel = n <= 8 || i === 0 || i === n - 1 || i % Math.ceil(n / 8) === 0
+        return (
+          <g key={d.period}>
+            <title>
+              {d.label}: {d.count} account{d.count === 1 ? '' : 's'}
+            </title>
+            {barH > 0 ? (
+              <rect
+                x={x}
+                y={padT + chartH - barH}
+                width={barW}
+                height={barH}
+                rx="2"
+                style={{ fill: 'var(--brand-500)' }}
+              />
+            ) : (
+              <rect
+                x={x}
+                y={padT + chartH - 2}
+                width={barW}
+                height="2"
+                rx="1"
+                style={{ fill: 'var(--border-strong)' }}
+              />
+            )}
+            {showLabel && (
+              <text
+                x={x + barW / 2}
+                y={height - 6}
+                textAnchor="middle"
+                fontSize="9"
+                fill="var(--muted)"
+              >
+                {d.label}
               </text>
             )}
           </g>

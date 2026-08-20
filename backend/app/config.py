@@ -8,6 +8,10 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///./fbr_dev.db"
 
+    # "development" (default) or "production" — production hides the
+    # interactive API docs (/docs, /redoc, /openapi.json).
+    environment: str = "development"
+
     jwt_secret: str = "change-me-to-a-long-random-string"
     jwt_expire_hours: int = 24
 
@@ -20,6 +24,10 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.strip().lower() == "production"
 
 
 @lru_cache

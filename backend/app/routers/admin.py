@@ -3,11 +3,13 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.auth import hash_password, require_admin, require_password_already_set
 from app.database import get_db
+from app.insights import USER_GROWTH_GRANULARITIES
 from app.insights import invoices_by_day as build_invoices_by_day
+from app.insights import users_by_period as build_users_by_period
 from app.models import Invoice, Upload, User
 from app.pagination import paginate
 from app.routers.invoices import detail_out, query_invoices, summary_out
@@ -63,6 +65,11 @@ def _generate_temp_password() -> str:
 def stats(db: Session = Depends(get_db)):
     users_q = db.query(User).filter(User.is_deleted.is_(False))
     invoices_q = db.query(Invoice).filter(Invoice.is_deleted.is_(False))
+    submitted = (
+        invoices_q.filter(Invoice.status == "submitted")
+        .options(joinedload(Invoice.items))
+        .all()
+    )
 
     return {
         "total_users": users_q.count(),
@@ -78,6 +85,8 @@ def stats(db: Session = Depends(get_db)):
         ).count(),
         "failed_invoices": invoices_q.filter(Invoice.status == "failed").count(),
         "draft_invoices": invoices_q.filter(Invoice.status == "draft").count(),
+        "total_tax_collected": round(sum(i.total_tax for i in submitted), 2),
+        "paid_tax": round(sum(i.total_tax for i in submitted if i.is_paid), 2),
         "invoices_per_user": [
             {"email": email, "count": count}
             for email, count in db.query(User.email, func.count(Invoice.id))
@@ -88,6 +97,17 @@ def stats(db: Session = Depends(get_db)):
         ],
         "invoices_by_day": build_invoices_by_day(db),
     }
+
+
+@router.get("/stats/user-growth")
+def user_growth(granularity: str = "day", db: Session = Depends(get_db)):
+    """Accounts created per day/week/month/year — powers the admin
+    dashboard's user-growth chart."""
+    if granularity not in USER_GROWTH_GRANULARITIES:
+        raise HTTPException(
+            400, f"granularity must be one of: {', '.join(USER_GROWTH_GRANULARITIES)}"
+        )
+    return build_users_by_period(db, granularity)
 
 
 @router.get("/users")
