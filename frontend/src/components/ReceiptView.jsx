@@ -7,7 +7,6 @@ import {
   AlertCircle,
   Code2,
   Loader2,
-  CircleDollarSign,
 } from 'lucide-react'
 import { api } from '../api'
 
@@ -97,7 +96,7 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
               onClick={togglePaid}
               disabled={paidBusy}
             >
-              {paidBusy ? <Loader2 size={16} className="spin" /> : <CircleDollarSign size={16} />}
+              {paidBusy && <Loader2 size={16} className="spin" />}
               {inv.is_paid ? 'Mark as unpaid' : 'Mark as paid'}
             </button>
           )}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ReceiptText, RefreshCw, QrCode, AlertCircle, Search, CircleDollarSign } from 'lucide-react'
+import { ReceiptText, RefreshCw, QrCode, AlertCircle, Search } from 'lucide-react'
 import { api } from '../../api'
 import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
@@ -178,7 +178,7 @@ export default function Invoices() {
                           className={`btn btn-sm ${inv.is_paid ? 'btn-primary' : 'btn-secondary'}`}
                           onClick={() => togglePaid(inv)}
                         >
-                          <CircleDollarSign size={14} /> {inv.is_paid ? 'Paid' : 'Mark paid'}
+                          {inv.is_paid ? 'Paid' : 'Mark paid'}
                         </button>
                       ) : (
                         '—'
