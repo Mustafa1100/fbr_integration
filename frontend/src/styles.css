@@ -190,6 +190,7 @@ code { background: var(--slate-50); border: 1px solid var(--border); border-radi
   width: 34px;
   height: 34px;
   flex-shrink: 0;
+  margin-left: auto;
   border: none;
   border-radius: 8px;
   background: none;

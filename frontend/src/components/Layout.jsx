@@ -5,8 +5,6 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
-  PanelLeftClose,
-  PanelLeftOpen,
   ReceiptText,
   ScrollText,
   Settings2,
@@ -167,6 +165,10 @@ export default function Layout() {
 
       <div className="content">
         <div className="topbar">
+          <div className="topbar-brand">
+            <ScrollText size={16} />
+            <span>FBR Invoicing</span>
+          </div>
           <button
             type="button"
             className="topbar-toggle"
@@ -174,18 +176,8 @@ export default function Layout() {
             aria-label="Toggle navigation"
             title={isMobile ? 'Open menu' : collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            {isMobile ? (
-              <Menu size={19} />
-            ) : collapsed ? (
-              <PanelLeftOpen size={19} />
-            ) : (
-              <PanelLeftClose size={19} />
-            )}
+            <Menu size={19} />
           </button>
-          <div className="topbar-brand">
-            <ScrollText size={16} />
-            <span>FBR Invoicing</span>
-          </div>
         </div>
         <div className="page">
           <Outlet />
