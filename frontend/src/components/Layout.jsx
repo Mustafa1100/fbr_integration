@@ -155,7 +155,16 @@ export default function Layout() {
             <div className="name">{user?.full_name}</div>
             <div className="role">{user?.role}</div>
           </div>
-          <button className="logout-btn" onClick={() => setConfirmLogout(true)} title="Sign out">
+          <button
+            className="logout-btn"
+            onClick={() => {
+              // Close the mobile drawer first — otherwise it sits on top of
+              // (and hides) the confirmation modal.
+              setMobileOpen(false)
+              setConfirmLogout(true)
+            }}
+            title="Sign out"
+          >
             <LogOut size={17} />
           </button>
         </div>

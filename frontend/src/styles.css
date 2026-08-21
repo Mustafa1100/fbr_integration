@@ -621,7 +621,10 @@ pre {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  z-index: 100;
+  /* Above the mobile sidebar drawer (200) and its backdrop (190) — a
+     modal opened while the drawer is open (e.g. the logout confirmation)
+     must never render underneath it. */
+  z-index: 210;
   animation: modal-fade-in 0.15s ease;
 }
 .modal-card {
