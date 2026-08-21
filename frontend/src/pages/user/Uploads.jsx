@@ -127,17 +127,17 @@ export default function Uploads() {
       <div className="page-header">
         <div>
           <h1 className="page-title">
-            <UploadCloud size={22} /> CSV Uploads
+            <UploadCloud size={22} /> CSV / Excel Uploads
           </h1>
           <p className="page-sub">
-            Upload your POS product sales as CSV — rows with the same <code>pos_invoice_no</code>{' '}
-            become one invoice, each invoice is submitted to FBR, and you get a tax receipt with
-            the FBR invoice number and QR code.
+            Upload your POS product sales as a CSV or Excel file — rows with the same{' '}
+            <code>pos_invoice_no</code> become one invoice, each invoice is submitted to FBR, and
+            you get a tax receipt with the FBR invoice number and QR code.
           </p>
         </div>
         <div className="page-actions">
           <button type="button" className="btn btn-secondary" onClick={() => downloadTemplate()}>
-            <Download size={16} /> Download CSV template
+            <Download size={16} /> Download template
           </button>
           {isProduction && (
             <Link to="/columns" className="btn btn-secondary">
