@@ -7,8 +7,10 @@ import {
   AlertCircle,
   Code2,
   Loader2,
+  ShieldCheck,
 } from 'lucide-react'
 import { api } from '../api'
+import Modal from './Modal'
 
 // Shared receipt UI for both the user's own view (/invoices/:id) and the
 // admin read-only view (/admin/invoices/:userId/:invoiceId) — same data
@@ -21,6 +23,7 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
   const [error, setError] = useState('')
   const [showJson, setShowJson] = useState(false)
   const [paidBusy, setPaidBusy] = useState(false)
+  const [confirmingPaid, setConfirmingPaid] = useState(false)
 
   useEffect(() => {
     setInv(null)
@@ -31,17 +34,24 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
       .catch((e) => setError(e.message))
   }, [apiUrl])
 
-  async function togglePaid() {
+  async function setPaid(isPaid) {
     setPaidBusy(true)
     setError('')
     try {
-      const updated = await api.patch(`/api/invoices/${inv.id}/paid`, { is_paid: !inv.is_paid })
+      const updated = await api.patch(`/api/invoices/${inv.id}/paid`, { is_paid: isPaid })
       setInv({ ...inv, ...updated })
     } catch (err) {
       setError(err.message)
     } finally {
       setPaidBusy(false)
     }
+  }
+
+  // Marking paid asks for confirmation (it's an attestation the tax was
+  // actually paid/submitted) — undoing an accidental mark doesn't need it.
+  async function confirmMarkPaid() {
+    await setPaid(true)
+    setConfirmingPaid(false)
   }
 
   if (error)
@@ -93,7 +103,7 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
           {allowMarkPaid && inv.status === 'submitted' && (
             <button
               className={`btn ${inv.is_paid ? 'btn-secondary' : 'btn-primary'}`}
-              onClick={togglePaid}
+              onClick={() => (inv.is_paid ? setPaid(false) : setConfirmingPaid(true))}
               disabled={paidBusy}
             >
               {paidBusy && <Loader2 size={16} className="spin" />}
@@ -252,6 +262,35 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
           </>
         )}
       </div>
+
+      {confirmingPaid && (
+        <Modal
+          title="Mark invoice as paid?"
+          onClose={() => !paidBusy && setConfirmingPaid(false)}
+          width={440}
+        >
+          <div className="alert info" style={{ marginTop: 0 }}>
+            <ShieldCheck size={17} />
+            <span>
+              By confirming, you're stating that this invoice has actually been paid and its
+              sales tax has been submitted to FBR.
+            </span>
+          </div>
+          <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setConfirmingPaid(false)}
+              disabled={paidBusy}
+            >
+              Cancel
+            </button>
+            <button className="btn btn-primary" onClick={confirmMarkPaid} disabled={paidBusy}>
+              {paidBusy ? <Loader2 size={16} className="spin" /> : <ShieldCheck size={16} />}
+              Confirm, mark as paid
+            </button>
+          </div>
+        </Modal>
+      )}
     </>
   )
 }

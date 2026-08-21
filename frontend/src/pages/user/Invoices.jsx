@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ReceiptText, RefreshCw, QrCode, AlertCircle, Search } from 'lucide-react'
+import {
+  ReceiptText,
+  RefreshCw,
+  QrCode,
+  AlertCircle,
+  Search,
+  ShieldCheck,
+  Loader2,
+} from 'lucide-react'
 import { api } from '../../api'
+import Modal from '../../components/Modal'
 import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
 
@@ -57,14 +66,26 @@ export default function Invoices() {
     }
   }
 
-  async function togglePaid(inv) {
+  const [confirmPaidInvoice, setConfirmPaidInvoice] = useState(null)
+  const [markingPaid, setMarkingPaid] = useState(false)
+
+  async function setPaid(inv, isPaid) {
     setError('')
     try {
-      await api.patch(`/api/invoices/${inv.id}/paid`, { is_paid: !inv.is_paid })
+      await api.patch(`/api/invoices/${inv.id}/paid`, { is_paid: isPaid })
       await refresh()
     } catch (err) {
       setError(err.message)
     }
+  }
+
+  // Marking paid asks for confirmation (it's an attestation the tax was
+  // actually paid/submitted) — undoing an accidental mark doesn't need it.
+  async function confirmMarkPaid() {
+    setMarkingPaid(true)
+    await setPaid(confirmPaidInvoice, true)
+    setMarkingPaid(false)
+    setConfirmPaidInvoice(null)
   }
 
   const filtersActive = q.trim() !== '' || statusFilter !== 'all'
@@ -175,7 +196,9 @@ export default function Invoices() {
                         <button
                           type="button"
                           className={`btn btn-sm ${inv.is_paid ? 'btn-primary' : 'btn-secondary'}`}
-                          onClick={() => togglePaid(inv)}
+                          onClick={() =>
+                            inv.is_paid ? setPaid(inv, false) : setConfirmPaidInvoice(inv)
+                          }
                         >
                           {inv.is_paid ? 'Paid' : 'Mark paid'}
                         </button>
@@ -213,6 +236,36 @@ export default function Invoices() {
             itemLabel="invoices"
           />
         </>
+      )}
+
+      {confirmPaidInvoice && (
+        <Modal
+          title="Mark invoice as paid?"
+          onClose={() => !markingPaid && setConfirmPaidInvoice(null)}
+          width={440}
+        >
+          <div className="alert info" style={{ marginTop: 0 }}>
+            <ShieldCheck size={17} />
+            <span>
+              By confirming, you're stating that invoice{' '}
+              <strong>{confirmPaidInvoice.pos_invoice_no}</strong> ({confirmPaidInvoice.buyer_name}
+              ) has actually been paid and its sales tax has been submitted to FBR.
+            </span>
+          </div>
+          <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setConfirmPaidInvoice(null)}
+              disabled={markingPaid}
+            >
+              Cancel
+            </button>
+            <button className="btn btn-primary" onClick={confirmMarkPaid} disabled={markingPaid}>
+              {markingPaid ? <Loader2 size={16} className="spin" /> : <ShieldCheck size={16} />}
+              Confirm, mark as paid
+            </button>
+          </div>
+        </Modal>
       )}
     </>
   )
