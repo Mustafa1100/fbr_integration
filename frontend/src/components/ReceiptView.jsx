@@ -272,8 +272,11 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
           <div className="alert info" style={{ marginTop: 0 }}>
             <ShieldCheck size={17} />
             <span>
-              By confirming, you're stating that this invoice has actually been paid and its
-              sales tax has been submitted to FBR.
+              By confirming, you're stating that invoice{' '}
+              <strong className="mono">
+                {inv.fbr_invoice_number || inv.pos_invoice_no}
+              </strong>{' '}
+              has actually been paid and its sales tax has been submitted to FBR.
             </span>
           </div>
           <div className="row-actions" style={{ justifyContent: 'flex-end' }}>

@@ -248,8 +248,11 @@ export default function Invoices() {
             <ShieldCheck size={17} />
             <span>
               By confirming, you're stating that invoice{' '}
-              <strong>{confirmPaidInvoice.pos_invoice_no}</strong> ({confirmPaidInvoice.buyer_name}
-              ) has actually been paid and its sales tax has been submitted to FBR.
+              <strong className="mono">
+                {confirmPaidInvoice.fbr_invoice_number || confirmPaidInvoice.pos_invoice_no}
+              </strong>{' '}
+              ({confirmPaidInvoice.buyer_name}) has actually been paid and its sales tax has been
+              submitted to FBR.
             </span>
           </div>
           <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
