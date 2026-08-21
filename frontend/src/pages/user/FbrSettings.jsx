@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../api'
+import usePageTitle from '../../hooks/usePageTitle'
 import { Settings2, Globe, Building2, Info, Loader2, AlertCircle } from 'lucide-react'
 
 const ENV_LABELS = {
@@ -9,6 +10,7 @@ const ENV_LABELS = {
 }
 
 export default function FbrSettings() {
+  usePageTitle('FBR Settings')
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
 

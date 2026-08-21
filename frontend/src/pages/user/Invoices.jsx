@@ -13,8 +13,10 @@ import { api } from '../../api'
 import Modal from '../../components/Modal'
 import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
+import usePageTitle from '../../hooks/usePageTitle'
 
 export default function Invoices() {
+  usePageTitle('Invoices')
   const [invoices, setInvoices] = useState([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)

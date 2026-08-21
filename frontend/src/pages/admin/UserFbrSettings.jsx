@@ -12,11 +12,13 @@ import {
   ArrowLeft,
 } from 'lucide-react'
 import { api } from '../../api'
+import usePageTitle from '../../hooks/usePageTitle'
 
 export default function UserFbrSettings() {
   const { userId } = useParams()
   const navigate = useNavigate()
   const [targetUser, setTargetUser] = useState(null)
+  usePageTitle(`FBR Settings — ${targetUser?.full_name || `User #${userId}`}`)
   const [form, setForm] = useState(null)
   const [provinces, setProvinces] = useState([])
   const [scenarios, setScenarios] = useState([])

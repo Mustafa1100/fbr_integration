@@ -1,7 +1,9 @@
 import { BookOpenText } from 'lucide-react'
 import ColumnGuideView from '../../components/ColumnGuideView'
+import usePageTitle from '../../hooks/usePageTitle'
 
 export default function AdminColumnGuide() {
+  usePageTitle('Column Guide')
   return (
     <>
       <div className="page-header">

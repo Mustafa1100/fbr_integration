@@ -16,6 +16,7 @@ import {
   Check,
 } from 'lucide-react'
 import { api } from '../api'
+import usePageTitle from '../hooks/usePageTitle'
 import Modal from './Modal'
 import PaginationBar from './PaginationBar'
 import TableLoader from './TableLoader'
@@ -28,6 +29,7 @@ const DEFAULT_PAGE_SIZE = 10
 // they can live as fully independent nav items/pages.
 export default function AdminAccountsPage({ role }) {
   const isAdmin = role === 'admin'
+  usePageTitle(isAdmin ? 'Admins' : 'Users')
   const [accounts, setAccounts] = useState([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)

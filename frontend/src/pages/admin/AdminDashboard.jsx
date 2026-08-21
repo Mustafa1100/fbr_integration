@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { api } from '../../api'
 import { TrendChart, DonutChart, BarChart } from '../../components/Charts'
+import usePageTitle from '../../hooks/usePageTitle'
 
 const GROWTH_GRANULARITIES = [
   { value: 'day', label: 'Day' },
@@ -26,6 +27,7 @@ const GROWTH_GRANULARITIES = [
 ]
 
 export default function AdminDashboard() {
+  usePageTitle('Admin Dashboard')
   const [stats, setStats] = useState(null)
   const [error, setError] = useState('')
   const [growth, setGrowth] = useState(null)

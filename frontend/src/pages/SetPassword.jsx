@@ -12,6 +12,7 @@ import {
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, getStoredUser, storeSession } from '../api'
+import usePageTitle from '../hooks/usePageTitle'
 import { passwordStrength } from '../passwordStrength'
 
 const REQUIREMENTS = [
@@ -26,6 +27,7 @@ const REQUIREMENTS = [
 const LABEL_TEXT = { weak: 'Weak', medium: 'Medium', strong: 'Strong' }
 
 export default function SetPassword() {
+  usePageTitle('Set your password')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)

@@ -5,8 +5,10 @@ import { api } from '../../api'
 import UserPicker from '../../components/UserPicker'
 import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
+import usePageTitle from '../../hooks/usePageTitle'
 
 export default function UserUploads() {
+  usePageTitle('Upload History')
   const [searchParams, setSearchParams] = useSearchParams()
   const userId = searchParams.get('user') || ''
   const [uploads, setUploads] = useState(null)

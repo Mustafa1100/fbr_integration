@@ -17,8 +17,10 @@ import {
 import { api } from '../../api'
 import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
+import usePageTitle from '../../hooks/usePageTitle'
 
 export default function Uploads() {
+  usePageTitle('Uploads')
   const [uploads, setUploads] = useState([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)

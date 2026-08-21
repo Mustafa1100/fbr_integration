@@ -5,8 +5,10 @@ import { api } from '../../api'
 import UserPicker from '../../components/UserPicker'
 import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
+import usePageTitle from '../../hooks/usePageTitle'
 
 export default function UserInvoices() {
+  usePageTitle('Invoices')
   const [searchParams, setSearchParams] = useSearchParams()
   const userId = searchParams.get('user') || ''
   const uploadId = searchParams.get('upload') || ''

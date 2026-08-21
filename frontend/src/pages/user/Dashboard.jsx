@@ -15,8 +15,10 @@ import {
 } from 'lucide-react'
 import { api, getStoredUser } from '../../api'
 import { TrendChart, DonutChart } from '../../components/Charts'
+import usePageTitle from '../../hooks/usePageTitle'
 
 export default function Dashboard() {
+  usePageTitle('Dashboard')
   const [stats, setStats] = useState(null)
   const [error, setError] = useState('')
   const user = getStoredUser()

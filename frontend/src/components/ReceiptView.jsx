@@ -10,6 +10,7 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import { api } from '../api'
+import usePageTitle from '../hooks/usePageTitle'
 import Modal from './Modal'
 
 // Shared receipt UI for both the user's own view (/invoices/:id) and the
@@ -19,6 +20,7 @@ import Modal from './Modal'
 // allowMarkPaid: only the user's own view passes this — admin's view stays
 // read-only oversight, not on-behalf editing, but still shows the badge.
 export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMarkPaid = false }) {
+  usePageTitle('Tax Receipt')
   const [inv, setInv] = useState(null)
   const [error, setError] = useState('')
   const [showJson, setShowJson] = useState(false)

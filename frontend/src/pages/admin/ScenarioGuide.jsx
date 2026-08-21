@@ -9,6 +9,7 @@ import {
   CheckCircle2,
 } from 'lucide-react'
 import { api } from '../../api'
+import usePageTitle from '../../hooks/usePageTitle'
 
 function parseCsv(text) {
   const rows = []
@@ -94,6 +95,7 @@ function guidanceFor(row) {
 }
 
 export default function ScenarioGuide() {
+  usePageTitle('Scenario Testing Guide')
   const [options, setOptions] = useState({ activities: [], sectors: [] })
   const [activity, setActivity] = useState('')
   const [sector, setSector] = useState('')
