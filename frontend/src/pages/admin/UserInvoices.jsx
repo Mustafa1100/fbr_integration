@@ -158,7 +158,6 @@ export default function UserInvoices() {
                       <th>Total</th>
                       <th>Status</th>
                       <th>Paid</th>
-                      <th>FBR Invoice No.</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -187,7 +186,6 @@ export default function UserInvoices() {
                             '—'
                           )}
                         </td>
-                        <td className="mono">{inv.fbr_invoice_number || '—'}</td>
                         <td>
                           <Link
                             className="btn btn-ghost btn-sm"

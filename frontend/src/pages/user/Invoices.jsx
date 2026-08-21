@@ -149,7 +149,6 @@ export default function Invoices() {
                   <th>Total</th>
                   <th>Status</th>
                   <th>Paid</th>
-                  <th>FBR Invoice No.</th>
                   <th></th>
                 </tr>
               </thead>
@@ -184,7 +183,6 @@ export default function Invoices() {
                         '—'
                       )}
                     </td>
-                    <td className="mono">{inv.fbr_invoice_number || '—'}</td>
                     <td>
                       <div className="row-actions">
                         {inv.status !== 'submitted' ? (
