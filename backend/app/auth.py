@@ -91,29 +91,14 @@ def require_password_already_set(user: User = Depends(get_current_user)) -> User
     return user
 
 
-# Password strength scoring shared by the server-side check in
+MIN_PASSWORD_LENGTH = 8
+
+
+# Password acceptance check shared by the server-side checks in
 # routers/auth.py (never trust the client alone) and mirrored in the
-# frontend's live strength meter. A password must hit "strong" to replace a
-# temporary one — 8+ chars is a hard floor; the rest raises the score.
+# frontend's live length indicator. The only real requirement is length —
+# an earlier complexity-scoring version could reject an 8+ character
+# password for missing a special character even though it satisfied every
+# visible requirement, which was just confusing without adding real value.
 def password_strength(password: str) -> dict:
-    length_ok = len(password) >= 8
-    checks = {
-        "length": length_ok,
-        "length_12": len(password) >= 12,
-        "upper": any(c.isupper() for c in password),
-        "lower": any(c.islower() for c in password),
-        "digit": any(c.isdigit() for c in password),
-        "special": any(not c.isalnum() for c in password),
-    }
-    score = sum(
-        [checks["length_12"], checks["upper"], checks["lower"], checks["digit"], checks["special"]]
-    )
-    if not length_ok:
-        label = "weak"
-    elif score <= 1:
-        label = "weak"
-    elif score <= 3:
-        label = "medium"
-    else:
-        label = "strong"
-    return {"label": label, "score": score, "checks": checks}
+    return {"ok": len(password) >= MIN_PASSWORD_LENGTH, "length": len(password)}

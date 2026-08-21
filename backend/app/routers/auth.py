@@ -3,6 +3,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from app.auth import (
+    MIN_PASSWORD_LENGTH,
     create_token,
     get_current_user,
     hash_password,
@@ -85,15 +86,49 @@ def set_password(
     authenticated with the temp password — not the old password itself."""
     if body.new_password != body.confirm_password:
         raise HTTPException(400, "Passwords do not match")
-    strength = password_strength(body.new_password)
-    if strength["label"] != "strong":
+    if not password_strength(body.new_password)["ok"]:
         raise HTTPException(
-            400, "Password is not strong enough — it must reach the 'strong' level."
+            400, f"Password must be at least {MIN_PASSWORD_LENGTH} characters."
         )
     user.password_hash = hash_password(body.new_password)
     user.must_change_password = False
     # Invalidate every token issued before this change (including the one
     # used to make this very request) — the response below mints a fresh one.
+    user.token_version += 1
+    db.commit()
+    return _session_out(user)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+    confirm_password: str
+
+
+@router.post("/change-password")
+def change_password(
+    body: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Self-service password change from the Settings page — unlike
+    set-password (proven by token possession alone, for the first-login
+    temp-password swap), this requires the current password itself.
+
+    A wrong current_password is a 400, not 401: the caller's bearer token
+    is perfectly valid (they *are* authenticated) — 401 is reserved for
+    token-level auth failures because the frontend's fetch wrapper treats
+    any 401 on an authenticated request as an expired session and force
+    logs the user out, which would be wrong here."""
+    if not verify_password(body.current_password, user.password_hash):
+        raise HTTPException(400, "Current password is incorrect")
+    if body.new_password != body.confirm_password:
+        raise HTTPException(400, "New passwords do not match")
+    if not password_strength(body.new_password)["ok"]:
+        raise HTTPException(
+            400, f"Password must be at least {MIN_PASSWORD_LENGTH} characters."
+        )
+    user.password_hash = hash_password(body.new_password)
     user.token_version += 1
     db.commit()
     return _session_out(user)

@@ -3,6 +3,7 @@ import {
   Clock,
   Eye,
   EyeOff,
+  HelpCircle,
   Loader2,
   Lock,
   LogIn,
@@ -16,6 +17,7 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, storeSession } from '../api'
 import usePageTitle from '../hooks/usePageTitle'
+import Modal from '../components/Modal'
 
 export default function Login() {
   usePageTitle('Sign in')
@@ -24,6 +26,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [showForgotModal, setShowForgotModal] = useState(false)
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const sessionExpired = searchParams.get('session') === 'expired'
@@ -139,7 +142,17 @@ export default function Login() {
           </div>
 
           <div className="field">
-            <label>Password</label>
+            <div className="row-actions" style={{ justifyContent: 'space-between' }}>
+              <label style={{ margin: 0 }}>Password</label>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ padding: '2px 6px' }}
+                onClick={() => setShowForgotModal(true)}
+              >
+                Forgot password?
+              </button>
+            </div>
             <div className="input-wrap with-toggle">
               <Lock size={16} />
               <input
@@ -171,6 +184,22 @@ export default function Login() {
           </p>
         </form>
       </div>
+
+      {showForgotModal && (
+        <Modal title="Forgot your password?" onClose={() => setShowForgotModal(false)} width={400}>
+          <div className="alert info" style={{ marginTop: 0 }}>
+            <HelpCircle size={17} />
+            <span>Please contact your administrator to reset your password.</span>
+          </div>
+          <button
+            className="btn btn-primary"
+            style={{ width: '100%' }}
+            onClick={() => setShowForgotModal(false)}
+          >
+            Got it
+          </button>
+        </Modal>
+      )}
     </div>
   )
 }

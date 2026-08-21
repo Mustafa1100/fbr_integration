@@ -16,7 +16,7 @@ import TableLoader from '../../components/TableLoader'
 import usePageTitle from '../../hooks/usePageTitle'
 
 export default function Invoices() {
-  usePageTitle('Invoices')
+  usePageTitle('Invoices History')
   const [invoices, setInvoices] = useState([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -97,7 +97,7 @@ export default function Invoices() {
       <div className="page-header">
         <div>
           <h1 className="page-title">
-            <ReceiptText size={22} /> Invoices <span className="muted">({total})</span>{' '}
+            <ReceiptText size={22} /> Invoices History <span className="muted">({total})</span>{' '}
             {uploadId && <span className="muted">(upload #{uploadId})</span>}
           </h1>
           <p className="page-sub">Review invoice receipts and their FBR invoice numbers.</p>
@@ -148,7 +148,7 @@ export default function Invoices() {
                 'Try a different search term or status filter.'
               ) : (
                 <>
-                  <Link to="/uploads">Upload a CSV</Link> to create some.
+                  <Link to="/uploads">Generate an invoice</Link> to create some.
                 </>
               )}
             </div>

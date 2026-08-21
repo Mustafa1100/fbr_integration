@@ -13,14 +13,17 @@ import {
   Search,
   X,
   BookOpenText,
+  PencilLine,
 } from 'lucide-react'
 import { api } from '../../api'
+import ManualInvoiceModal from '../../components/ManualInvoiceModal'
 import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
 import usePageTitle from '../../hooks/usePageTitle'
 
 export default function Uploads() {
-  usePageTitle('Uploads')
+  usePageTitle('Generate Invoices')
+  const [tab, setTab] = useState('submit') // 'submit' | 'history'
   const [uploads, setUploads] = useState([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -37,6 +40,7 @@ export default function Uploads() {
   const [fileName, setFileName] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const [fbrEnv, setFbrEnv] = useState(null)
+  const [showManualModal, setShowManualModal] = useState(false)
   const fileRef = useRef()
   const isProduction = fbrEnv === 'production'
 
@@ -124,12 +128,19 @@ export default function Uploads() {
     URL.revokeObjectURL(objectUrl)
   }
 
+  function handleManualSubmitted(result) {
+    setShowManualModal(false)
+    setLastResult(result)
+    if (page === 1) refresh()
+    else setPage(1)
+  }
+
   return (
     <>
       <div className="page-header">
         <div>
           <h1 className="page-title">
-            <UploadCloud size={22} /> CSV / Excel Uploads
+            <UploadCloud size={22} /> Generate Invoices
           </h1>
           <p className="page-sub">
             Upload your POS product sales as a CSV or Excel file — rows with the same{' '}
@@ -156,245 +167,273 @@ export default function Uploads() {
         </div>
       )}
 
-      {isProduction && (
-        <div className="alert info">
-          <BookOpenText size={17} />
-          <span>
-            Your account is set to production — there&apos;s one CSV/Excel template to use.
-            See the <Link to="/columns">Column Guide</Link> for exactly which columns are
-            required.
-          </span>
-        </div>
-      )}
-
-      {!isProduction && scenarios.length > 0 && (
-        <div className="card" style={{ marginBottom: '1.5rem' }}>
-          <div className="row-actions" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
-            <FlaskConical size={17} style={{ flexShrink: 0, color: 'var(--muted)' }} />
-            <span className="muted" style={{ marginRight: '0.25rem' }}>
-              Sandbox scenario testing: download a template pre-filled with FBR&apos;s own
-              official example for one scenario —
-            </span>
-            <select
-              value={scenarioPick}
-              onChange={(e) => setScenarioPick(e.target.value)}
-              style={{ maxWidth: 340 }}
-            >
-              <option value="">Choose a scenario…</option>
-              {scenarios.map((s) => (
-                <option key={s.code} value={s.code}>
-                  {s.code} — {s.name}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              disabled={!scenarioPick}
-              onClick={() => downloadTemplate(scenarioPick)}
-            >
-              <Download size={14} /> Download
-            </button>
-          </div>
-        </div>
-      )}
-
-      <form className="card" onSubmit={submit}>
-        <div className="field">
-          <label>
-            CSV or Excel file <span className="hint">(.csv or .xlsx)</span>
-          </label>
-          <div
-            className={`dropzone${fileName ? ' has-file' : ''}${dragOver ? ' drag-over' : ''}`}
-            onDragOver={(e) => {
-              e.preventDefault()
-              setDragOver(true)
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
-          >
-            <input
-              type="file"
-              accept=".csv,.xlsx"
-              ref={fileRef}
-              required
-              className="dropzone-input"
-              onChange={(e) => setFileName(e.target.files[0]?.name || '')}
-            />
-            {fileName ? (
-              <>
-                <FileText size={20} />
-                <span className="dropzone-text">
-                  <strong>{fileName}</strong>
-                </span>
-                <button type="button" className="btn btn-ghost btn-sm dropzone-remove" onClick={clearFile}>
-                  <X size={14} /> Remove
-                </button>
-              </>
-            ) : (
-              <>
-                <UploadCloud size={22} />
-                <span className="dropzone-text">
-                  <strong>Click to choose a file</strong> or drag and drop your CSV/Excel file here
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-        <button className="btn btn-primary" disabled={busy}>
-          {busy ? (
-            <>
-              <Loader2 size={16} className="spin" /> Processing…
-            </>
-          ) : (
-            <>
-              <UploadCloud size={16} /> Upload &amp; submit to FBR
-            </>
-          )}
+      <div className="row-actions" style={{ gap: 8, marginBottom: '1.5rem' }}>
+        <button
+          type="button"
+          className={`btn btn-sm ${tab === 'submit' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setTab('submit')}
+        >
+          <UploadCloud size={14} /> Submit Invoices
         </button>
-      </form>
-
-      {lastResult && (
-        <div className={`alert ${lastResult.status === 'failed' ? 'error' : 'ok'}`}>
-          {lastResult.status === 'failed' ? (
-            <>
-              <AlertCircle size={17} />
-              <span>Upload failed: {lastResult.error}</span>
-            </>
-          ) : (
-            <>
-              <CheckCircle2 size={17} />
-              <span>
-                Processed {lastResult.total_rows} rows → {lastResult.invoices_created} invoices,{' '}
-                {lastResult.invoices_submitted} submitted to FBR
-                {lastResult.invoices_failed > 0 && <>, {lastResult.invoices_failed} failed</>}.{' '}
-                <Link to="/invoices">View receipts</Link>
-              </span>
-            </>
-          )}
-        </div>
-      )}
-
-      <h2 className="section-title">
-        <History size={17} /> History <span className="muted">({total})</span>
-      </h2>
-
-      <div className="card" style={{ marginBottom: '1.25rem' }}>
-        <div className="row-actions" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
-          <div className="input-wrap" style={{ flex: '1 1 240px', maxWidth: 320 }}>
-            <Search size={15} />
-            <input
-              value={qInput}
-              onChange={(e) => setQInput(e.target.value)}
-              placeholder="Search by filename…"
-            />
-          </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value)
-              setPage(1)
-            }}
-            style={{ maxWidth: 200 }}
-          >
-            <option value="all">All statuses</option>
-            <option value="completed">Completed</option>
-            <option value="completed_with_errors">Completed with errors</option>
-            <option value="failed">Failed</option>
-          </select>
-        </div>
+        <button
+          type="button"
+          className={`btn btn-sm ${tab === 'history' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setTab('history')}
+        >
+          <History size={14} /> Submission History ({total})
+        </button>
       </div>
 
-      {listLoading && <TableLoader label="uploads" />}
+      {tab === 'submit' && (
+        <>
+          {!isProduction && scenarios.length > 0 && (
+            <div className="card" style={{ marginBottom: '1.5rem' }}>
+              <div className="row-actions" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+                <FlaskConical size={17} style={{ flexShrink: 0, color: 'var(--muted)' }} />
+                <span className="muted" style={{ marginRight: '0.25rem' }}>
+                  Sandbox scenario testing: download a template pre-filled with FBR&apos;s own
+                  official example for one scenario —
+                </span>
+                <select
+                  value={scenarioPick}
+                  onChange={(e) => setScenarioPick(e.target.value)}
+                  style={{ maxWidth: 340 }}
+                >
+                  <option value="">Choose a scenario…</option>
+                  {scenarios.map((s) => (
+                    <option key={s.code} value={s.code}>
+                      {s.code} — {s.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={!scenarioPick}
+                  onClick={() => downloadTemplate(scenarioPick)}
+                >
+                  <Download size={14} /> Download
+                </button>
+              </div>
+            </div>
+          )}
 
-      {!listLoading && uploads.length === 0 && (
-        <div className="table-card">
-          <div className="empty-state">
-            <UploadCloud size={40} />
-            <div className="title">
-              {q.trim() || statusFilter !== 'all' ? 'No matching uploads' : 'No uploads yet'}
+          <form className="card" onSubmit={submit}>
+            <div className="field">
+              <label>
+                CSV or Excel file <span className="hint">(.csv or .xlsx)</span>
+              </label>
+              <div
+                className={`dropzone${fileName ? ' has-file' : ''}${dragOver ? ' drag-over' : ''}`}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setDragOver(true)
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={handleDrop}
+              >
+                <input
+                  type="file"
+                  accept=".csv,.xlsx"
+                  ref={fileRef}
+                  required
+                  className="dropzone-input"
+                  onChange={(e) => setFileName(e.target.files[0]?.name || '')}
+                />
+                {fileName ? (
+                  <>
+                    <FileText size={20} />
+                    <span className="dropzone-text">
+                      <strong>{fileName}</strong>
+                    </span>
+                    <button type="button" className="btn btn-ghost btn-sm dropzone-remove" onClick={clearFile}>
+                      <X size={14} /> Remove
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud size={22} />
+                    <span className="dropzone-text">
+                      <strong>Click to choose a file</strong> or drag and drop your CSV/Excel file here
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
-            <div className="hint">
-              {q.trim() || statusFilter !== 'all'
-                ? 'Try a different search term or status filter.'
-                : 'Upload a CSV above to submit invoices to FBR.'}
+            <div className="row-actions" style={{ flexWrap: 'wrap' }}>
+              <button className="btn btn-primary" disabled={busy}>
+                {busy ? (
+                  <>
+                    <Loader2 size={16} className="spin" /> Processing…
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud size={16} /> Upload &amp; submit to FBR
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowManualModal(true)}
+              >
+                <PencilLine size={16} /> Enter a single invoice
+              </button>
             </div>
-          </div>
-        </div>
+          </form>
+
+          {lastResult && (
+            <div className={`alert ${lastResult.status === 'failed' ? 'error' : 'ok'}`}>
+              {lastResult.status === 'failed' ? (
+                <>
+                  <AlertCircle size={17} />
+                  <span>Submission failed: {lastResult.error}</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={17} />
+                  <span>
+                    Processed {lastResult.total_rows} rows → {lastResult.invoices_created} invoices,{' '}
+                    {lastResult.invoices_submitted} submitted to FBR
+                    {lastResult.invoices_failed > 0 && <>, {lastResult.invoices_failed} failed</>}.{' '}
+                    <Link to="/invoices">View receipts</Link>
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+        </>
       )}
 
-      {!listLoading && uploads.length > 0 && (
+      {tab === 'history' && (
         <>
-          <div className="table-card">
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>File</th>
-                  <th>Date</th>
-                  <th>Rows</th>
-                  <th>Invoices</th>
-                  <th>Submitted</th>
-                  <th>Failed</th>
-                  <th>Status</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {uploads.map((u) => (
-                  <tr key={u.id}>
-                    <td>{u.id}</td>
-                    <td>
-                      <span className="strong">
-                        <FileText size={14} /> {u.filename}
-                      </span>
-                    </td>
-                    <td>{new Date(u.created_at).toLocaleString()}</td>
-                    <td>{u.total_rows}</td>
-                    <td>{u.invoices_created}</td>
-                    <td>{u.invoices_submitted}</td>
-                    <td>{u.invoices_failed}</td>
-                    <td>
-                      <span
-                        className={`badge ${
-                          u.status === 'completed'
-                            ? 'submitted'
-                            : u.status === 'completed_with_errors'
-                              ? 'warn'
-                              : u.status === 'failed'
-                                ? 'failed'
-                                : 'draft'
-                        }`}
-                      >
-                        {u.status.replaceAll('_', ' ')}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="row-actions">
-                        {u.invoices_created > 0 && (
-                          <Link className="btn btn-ghost btn-sm" to={`/invoices?upload=${u.id}`}>
-                            <ReceiptText size={14} /> invoices
-                          </Link>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="card" style={{ marginBottom: '1.25rem' }}>
+            <div className="row-actions" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div className="input-wrap" style={{ flex: '1 1 240px', maxWidth: 320 }}>
+                <Search size={15} />
+                <input
+                  value={qInput}
+                  onChange={(e) => setQInput(e.target.value)}
+                  placeholder="Search by filename…"
+                />
+              </div>
+              <select
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value)
+                  setPage(1)
+                }}
+                style={{ maxWidth: 200 }}
+              >
+                <option value="all">All statuses</option>
+                <option value="completed">Completed</option>
+                <option value="completed_with_errors">Completed with errors</option>
+                <option value="failed">Failed</option>
+              </select>
+            </div>
           </div>
-          <PaginationBar
-            page={page}
-            pageSize={pageSize}
-            total={total}
-            onPageChange={setPage}
-            onPageSizeChange={(n) => {
-              setPageSize(n)
-              setPage(1)
-            }}
-            itemLabel="uploads"
-          />
+
+          {listLoading && <TableLoader label="uploads" />}
+
+          {!listLoading && uploads.length === 0 && (
+            <div className="table-card">
+              <div className="empty-state">
+                <UploadCloud size={40} />
+                <div className="title">
+                  {q.trim() || statusFilter !== 'all' ? 'No matching submissions' : 'No submissions yet'}
+                </div>
+                <div className="hint">
+                  {q.trim() || statusFilter !== 'all'
+                    ? 'Try a different search term or status filter.'
+                    : 'Submit a file or a single invoice to see its history here.'}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!listLoading && uploads.length > 0 && (
+            <>
+              <div className="table-card">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>File</th>
+                      <th>Date</th>
+                      <th>Rows</th>
+                      <th>Invoices</th>
+                      <th>Submitted</th>
+                      <th>Failed</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {uploads.map((u) => (
+                      <tr key={u.id}>
+                        <td>{u.id}</td>
+                        <td>
+                          <span className="strong">
+                            <FileText size={14} /> {u.filename}
+                          </span>
+                        </td>
+                        <td>{new Date(u.created_at).toLocaleString()}</td>
+                        <td>{u.total_rows}</td>
+                        <td>{u.invoices_created}</td>
+                        <td>{u.invoices_submitted}</td>
+                        <td>{u.invoices_failed}</td>
+                        <td>
+                          <span
+                            className={`badge ${
+                              u.status === 'completed'
+                                ? 'submitted'
+                                : u.status === 'completed_with_errors'
+                                  ? 'warn'
+                                  : u.status === 'failed'
+                                    ? 'failed'
+                                    : 'draft'
+                            }`}
+                          >
+                            {u.status.replaceAll('_', ' ')}
+                          </span>
+                        </td>
+                        <td>
+                          <div className="row-actions">
+                            {u.invoices_created > 0 && (
+                              <Link className="btn btn-ghost btn-sm" to={`/invoices?upload=${u.id}`}>
+                                <ReceiptText size={14} /> invoices
+                              </Link>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <PaginationBar
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={setPage}
+                onPageSizeChange={(n) => {
+                  setPageSize(n)
+                  setPage(1)
+                }}
+                itemLabel="submissions"
+              />
+            </>
+          )}
         </>
+      )}
+
+      {showManualModal && (
+        <ManualInvoiceModal
+          onClose={() => setShowManualModal(false)}
+          onSubmitted={handleManualSubmitted}
+          isProduction={isProduction}
+          scenarios={scenarios}
+        />
       )}
     </>
   )

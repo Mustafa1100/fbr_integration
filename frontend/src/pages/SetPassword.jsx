@@ -1,30 +1,10 @@
-import {
-  AlertCircle,
-  Check,
-  Eye,
-  EyeOff,
-  KeyRound,
-  Loader2,
-  Lock,
-  ScrollText,
-  X,
-} from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { AlertCircle, Eye, EyeOff, KeyRound, Loader2, Lock, ScrollText } from 'lucide-react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, getStoredUser, storeSession } from '../api'
 import usePageTitle from '../hooks/usePageTitle'
+import PasswordRequirement from '../components/PasswordRequirement'
 import { passwordStrength } from '../passwordStrength'
-
-const REQUIREMENTS = [
-  { key: 'length', label: 'At least 8 characters' },
-  { key: 'length12', label: '12+ characters' },
-  { key: 'upper', label: 'An uppercase letter' },
-  { key: 'lower', label: 'A lowercase letter' },
-  { key: 'digit', label: 'A number' },
-  { key: 'special', label: 'A special character' },
-]
-
-const LABEL_TEXT = { weak: 'Weak', medium: 'Medium', strong: 'Strong' }
 
 export default function SetPassword() {
   usePageTitle('Set your password')
@@ -36,9 +16,9 @@ export default function SetPassword() {
   const navigate = useNavigate()
   const user = getStoredUser()
 
-  const strength = useMemo(() => passwordStrength(newPassword), [newPassword])
   const mismatch = confirmPassword.length > 0 && confirmPassword !== newPassword
-  const canSubmit = strength.label === 'strong' && confirmPassword === newPassword && newPassword.length > 0
+  const canSubmit =
+    passwordStrength(newPassword).ok && confirmPassword === newPassword && newPassword.length > 0
 
   async function submit(e) {
     e.preventDefault()
@@ -81,8 +61,8 @@ export default function SetPassword() {
         </h2>
         <p className="muted" style={{ margin: '4px 0 20px' }}>
           {user?.full_name ? `Welcome, ${user.full_name}. ` : ''}
-          Your administrator gave you a temporary password — choose your own strong password to
-          continue.
+          Your administrator gave you a temporary password — choose your own password (at least
+          8 characters) to continue.
         </p>
 
         {error && (
@@ -101,7 +81,7 @@ export default function SetPassword() {
                 type={showPassword ? 'text' : 'password'}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Choose a strong password"
+                placeholder="Choose a password"
                 autoFocus
                 required
               />
@@ -117,29 +97,7 @@ export default function SetPassword() {
             </div>
           </div>
 
-          {newPassword.length > 0 && (
-            <>
-              <div className="strength-meter">
-                <div className={`strength-bar ${strength.label}`}>
-                  <span className="seg" />
-                  <span className="seg" />
-                  <span className="seg" />
-                </div>
-                <span className={`strength-label ${strength.label}`}>{LABEL_TEXT[strength.label]}</span>
-              </div>
-              <ul className="req-checklist">
-                {REQUIREMENTS.map((r) => {
-                  const met = strength.checks[r.key]
-                  return (
-                    <li key={r.key} className={met ? 'met' : ''}>
-                      {met ? <Check size={14} /> : <X size={14} />}
-                      {r.label}
-                    </li>
-                  )
-                })}
-              </ul>
-            </>
-          )}
+          <PasswordRequirement password={newPassword} />
 
           <div className="field" style={{ marginTop: 16 }}>
             <label>Confirm password</label>

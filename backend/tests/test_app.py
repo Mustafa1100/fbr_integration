@@ -66,7 +66,8 @@ def user_headers(admin_headers):
     assert resp.status_code == 201, resp.text
     user_id = resp.json()["id"]
     shop_temp_password = resp.json()["temp_password"]
-    assert len(shop_temp_password) == 6 and shop_temp_password.isdigit()
+    assert len(shop_temp_password) == 6
+    assert shop_temp_password.isalnum() and shop_temp_password == shop_temp_password.upper()
     # FBR settings are admin-managed only — configure them here so every
     # other test can assume a working seller profile is already in place.
     resp = client.put(
@@ -109,11 +110,12 @@ def user_headers(admin_headers):
 def test_password_strength_scoring():
     from app.auth import password_strength
 
-    assert password_strength("short1!")["label"] == "weak"  # under 8 chars
-    assert password_strength("abcdefgh")["label"] == "weak"  # len==8, lowercase only, score=1
-    assert password_strength("alllowercase")["label"] == "medium"  # len>=12 bonus + lowercase
-    assert password_strength("Lowerupper1")["label"] == "medium"
-    assert password_strength("Str0ng!Passw0rd")["label"] == "strong"
+    # The only real requirement is length >= 8 — no complexity scoring.
+    assert password_strength("short1!")["ok"] is False  # 7 chars
+    assert password_strength("abcdefgh")["ok"] is True  # 8 chars, no complexity needed
+    assert password_strength("alllowercase")["ok"] is True
+    assert password_strength("Str0ng!Passw0rd")["ok"] is True
+    assert password_strength("short1!")["length"] == 7
 
 
 def test_must_change_password_gates_real_actions(admin_headers):
@@ -258,10 +260,10 @@ def test_admin_with_temp_password_blocked_from_admin_routes(admin_headers):
 def test_password_strength_endpoint(user_headers):
     resp = client.post("/api/auth/password-strength", json={"password": "Str0ng!Passw0rd"})
     assert resp.status_code == 200
-    assert resp.json()["label"] == "strong"
+    assert resp.json()["ok"] is True
 
     resp = client.post("/api/auth/password-strength", json={"password": "weak"})
-    assert resp.json()["label"] == "weak"
+    assert resp.json()["ok"] is False
 
 
 def test_call_handles_malformed_json_response_without_crashing(monkeypatch):
@@ -901,7 +903,7 @@ def test_create_user_gets_auto_generated_6_digit_temp_password(admin_headers):
     assert resp.status_code == 201, resp.text
     temp_password = resp.json()["temp_password"]
     assert len(temp_password) == 6
-    assert temp_password.isdigit()
+    assert temp_password.isalnum() and temp_password == temp_password.upper()
     # It's a real, working credential for the one first login.
     login = client.post(
         "/api/auth/login", json={"email": "autogen@example.com", "password": temp_password}
@@ -923,7 +925,7 @@ def test_create_user_gets_auto_generated_6_digit_temp_password(admin_headers):
     assert resp2.status_code == 201, resp2.text
     temp2 = resp2.json()["temp_password"]
     assert temp2 != "ignored-if-sent"
-    assert len(temp2) == 6 and temp2.isdigit()
+    assert len(temp2) == 6 and temp2.isalnum() and temp2 == temp2.upper()
 
 
 def test_users_list_role_filter(admin_headers):
@@ -1375,3 +1377,156 @@ def test_expired_token_rejected_with_clear_message(user_headers):
     )
     assert resp.status_code == 401
     assert "expired" in resp.json()["detail"].lower()
+
+
+def test_change_password_flow(admin_headers):
+    # A dedicated throwaway account — must not touch the shared user_headers
+    # fixture's token, since change-password invalidates it.
+    resp = client.post(
+        "/api/admin/users",
+        json={"email": "changepw@example.com", "full_name": "Change PW"},
+        headers=admin_headers,
+    )
+    temp_password = resp.json()["temp_password"]
+    login = client.post(
+        "/api/auth/login", json={"email": "changepw@example.com", "password": temp_password}
+    )
+    temp_headers = {"Authorization": f"Bearer {login.json()['token']}"}
+    set_resp = client.post(
+        "/api/auth/set-password",
+        json={"new_password": "FirstReal8", "confirm_password": "FirstReal8"},
+        headers=temp_headers,
+    )
+    assert set_resp.status_code == 200, set_resp.text
+    headers = {"Authorization": f"Bearer {set_resp.json()['token']}"}
+
+    # Wrong current password rejected — 400, not 401: the bearer token is
+    # perfectly valid here, so this must not trigger the frontend's
+    # expired-session auto-logout (which fires on any 401 with a token).
+    resp = client.post(
+        "/api/auth/change-password",
+        json={
+            "current_password": "WrongPass1",
+            "new_password": "SecondReal8",
+            "confirm_password": "SecondReal8",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 400
+    assert client.get("/api/auth/me", headers=headers).status_code == 200  # token still valid
+
+    # Mismatched confirmation rejected.
+    resp = client.post(
+        "/api/auth/change-password",
+        json={
+            "current_password": "FirstReal8",
+            "new_password": "SecondReal8",
+            "confirm_password": "Different1",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 400
+
+    # Too-short new password rejected (the only real rule now: 8+ chars).
+    resp = client.post(
+        "/api/auth/change-password",
+        json={
+            "current_password": "FirstReal8",
+            "new_password": "short1",
+            "confirm_password": "short1",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 400
+
+    # Success: old token invalidated, new one works, new password logs in.
+    resp = client.post(
+        "/api/auth/change-password",
+        json={
+            "current_password": "FirstReal8",
+            "new_password": "SecondReal8",
+            "confirm_password": "SecondReal8",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    fresh_headers = {"Authorization": f"Bearer {resp.json()['token']}"}
+
+    assert client.get("/api/auth/me", headers=headers).status_code == 401
+    assert client.get("/api/auth/me", headers=fresh_headers).status_code == 200
+
+    assert (
+        client.post(
+            "/api/auth/login",
+            json={"email": "changepw@example.com", "password": "SecondReal8"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            "/api/auth/login",
+            json={"email": "changepw@example.com", "password": "FirstReal8"},
+        ).status_code
+        == 401
+    )
+
+
+def test_admin_reset_password(admin_headers):
+    resp = client.post(
+        "/api/admin/users",
+        json={"email": "resetpw@example.com", "full_name": "Reset PW"},
+        headers=admin_headers,
+    )
+    user_id = resp.json()["id"]
+    original_temp = resp.json()["temp_password"]
+    login = client.post(
+        "/api/auth/login", json={"email": "resetpw@example.com", "password": original_temp}
+    )
+    old_headers = {"Authorization": f"Bearer {login.json()['token']}"}
+    set_resp = client.post(
+        "/api/auth/set-password",
+        json={"new_password": "RealPassw0rd", "confirm_password": "RealPassw0rd"},
+        headers=old_headers,
+    )
+    real_headers = {"Authorization": f"Bearer {set_resp.json()['token']}"}
+    assert client.get("/api/auth/me", headers=real_headers).status_code == 200
+
+    reset_resp = client.post(
+        f"/api/admin/users/{user_id}/reset-password", headers=admin_headers
+    )
+    assert reset_resp.status_code == 200, reset_resp.text
+    new_temp = reset_resp.json()["temp_password"]
+    assert len(new_temp) == 6
+    assert new_temp.isalnum() and new_temp == new_temp.upper()
+    assert reset_resp.json()["must_change_password"] is True
+
+    # The old session is dead immediately.
+    assert client.get("/api/auth/me", headers=real_headers).status_code == 401
+
+    # Old password no longer works; the new temp code does, and forces
+    # must_change_password again.
+    assert (
+        client.post(
+            "/api/auth/login",
+            json={"email": "resetpw@example.com", "password": "RealPassw0rd"},
+        ).status_code
+        == 401
+    )
+    relogin = client.post(
+        "/api/auth/login", json={"email": "resetpw@example.com", "password": new_temp}
+    )
+    assert relogin.status_code == 200
+    assert relogin.json()["must_change_password"] is True
+
+
+def test_admin_cannot_reset_own_password(admin_headers):
+    me = client.get("/api/auth/me", headers=admin_headers).json()
+    resp = client.post(f"/api/admin/users/{me['id']}/reset-password", headers=admin_headers)
+    assert resp.status_code == 400
+
+
+def test_non_admin_cannot_reset_password(admin_headers, user_headers):
+    users = client.get("/api/admin/users", headers=admin_headers).json()
+    shop = next(u for u in users if u["email"] == "shop@example.com")
+    resp = client.post(f"/api/admin/users/{shop['id']}/reset-password", headers=user_headers)
+    assert resp.status_code == 403

@@ -1,4 +1,5 @@
 import secrets
+import string
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, EmailStr
@@ -53,12 +54,16 @@ def _get_user_or_404(db: Session, user_id: int) -> User:
     return user
 
 
+_TEMP_PASSWORD_ALPHABET = string.ascii_uppercase + string.digits
+
+
 def _generate_temp_password() -> str:
-    """6-digit numeric code, cryptographically random — short and easy to
-    read aloud/type when handing it to a new user. Never actually usable
-    for more than one login: must_change_password forces an immediate
-    replacement with a real, strong password."""
-    return f"{secrets.randbelow(1_000_000):06d}"
+    """6-character alphanumeric code (uppercase + digits — no lowercase, to
+    avoid case-sensitivity confusion when read aloud/typed), cryptographically
+    random. Never actually usable for more than one login: must_change_password
+    forces an immediate replacement with a real password. Shared by both
+    account creation and admin-initiated password resets."""
+    return "".join(secrets.choice(_TEMP_PASSWORD_ALPHABET) for _ in range(6))
 
 
 @router.get("/stats")
@@ -156,10 +161,10 @@ class CreateUserRequest(BaseModel):
 def create_user(body: CreateUserRequest, db: Session = Depends(get_db)):
     if body.role not in ("user", "admin"):
         raise HTTPException(400, "Role must be 'user' or 'admin'")
-    # The admin never types this in — a random 6-digit code is generated
+    # The admin never types this in — a random 6-character code is generated
     # here and returned once in the response for them to hand off. It's
     # only ever valid for the one first login; must_change_password forces
-    # an immediate replacement with a real, strong password.
+    # an immediate replacement with a password of the user's own choosing.
     temp_password = _generate_temp_password()
     existing = db.query(User).filter(User.email == body.email.lower()).first()
     if existing and not existing.is_deleted:
@@ -192,7 +197,6 @@ def create_user(body: CreateUserRequest, db: Session = Depends(get_db)):
 
 class UpdateUserRequest(BaseModel):
     full_name: str | None = None
-    password: str | None = None
     is_active: bool | None = None
 
 
@@ -206,19 +210,34 @@ def update_user(
     user = _get_user_or_404(db, user_id)
     if body.full_name is not None:
         user.full_name = body.full_name.strip()
-    if body.password:
-        if len(body.password) < 6:
-            raise HTTPException(400, "Password must be at least 6 characters")
-        user.password_hash = hash_password(body.password)
-        # Any password an admin sets is a temporary one.
-        user.must_change_password = True
-        user.token_version += 1
     if body.is_active is not None:
         if user.id == admin.id and not body.is_active:
             raise HTTPException(400, "You cannot deactivate your own account")
         user.is_active = body.is_active
     db.commit()
     return _user_out(user)
+
+
+@router.post("/users/{user_id}/reset-password")
+def reset_password(
+    user_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)
+):
+    """Admin-initiated reset: generates a fresh temp password (same
+    generator as account creation — an admin never types a password
+    in). Invalidates the user's current sessions immediately; they must
+    sign in with this code and set their own password before doing
+    anything else."""
+    user = _get_user_or_404(db, user_id)
+    if user.id == admin.id:
+        raise HTTPException(
+            400, "You cannot reset your own password this way — it would log you out."
+        )
+    temp_password = _generate_temp_password()
+    user.password_hash = hash_password(temp_password)
+    user.must_change_password = True
+    user.token_version += 1
+    db.commit()
+    return {**_user_out(user), "temp_password": temp_password}
 
 
 @router.get("/users/{user_id}/fbr-settings")

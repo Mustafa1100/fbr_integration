@@ -130,21 +130,21 @@ export default function Layout() {
               <LayoutDashboard size={18} />
               <span>Dashboard</span>
             </NavLink>
-            <NavLink to="/uploads" className={link} title="Uploads">
+            <NavLink to="/uploads" className={link} title="Generate Invoices">
               <UploadCloud size={18} />
-              <span>Uploads</span>
+              <span>Generate Invoices</span>
             </NavLink>
-            <NavLink to="/invoices" className={link} title="Invoices">
+            <NavLink to="/invoices" className={link} title="Invoices History">
               <ReceiptText size={18} />
-              <span>Invoices</span>
+              <span>Invoices History</span>
             </NavLink>
             <NavLink to="/columns" className={link} title="Column Guide">
               <BookOpenText size={18} />
               <span>Column Guide</span>
             </NavLink>
-            <NavLink to="/settings" className={link} title="FBR Settings">
+            <NavLink to="/settings" className={link} title="Settings">
               <Settings2 size={18} />
-              <span>FBR Settings</span>
+              <span>Settings</span>
             </NavLink>
           </>
         )}

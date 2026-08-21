@@ -586,32 +586,6 @@ pre {
 .set-password-card { width: 100%; max-width: 460px; padding: 32px; }
 .field-error { color: var(--red-600); font-size: 0.78rem; margin: 6px 0 0; font-weight: 500; }
 
-/* ── Password strength meter ──────────────────────────────────────── */
-.strength-meter { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
-.strength-bar { display: flex; gap: 4px; flex: 1; }
-.strength-bar .seg { height: 6px; border-radius: 3px; flex: 1; background: var(--border-strong); transition: background 0.2s; }
-.strength-bar.weak .seg:nth-child(1) { background: var(--red-600); }
-.strength-bar.medium .seg:nth-child(1),
-.strength-bar.medium .seg:nth-child(2) { background: var(--amber-600); }
-.strength-bar.strong .seg { background: var(--brand-600); }
-.strength-label { font-size: 0.78rem; font-weight: 700; white-space: nowrap; width: 52px; }
-.strength-label.weak { color: var(--red-600); }
-.strength-label.medium { color: var(--amber-600); }
-.strength-label.strong { color: var(--brand-600); }
-
-.req-checklist {
-  list-style: none;
-  margin: 12px 0 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 14px;
-}
-.req-checklist li { display: flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--muted); }
-.req-checklist li svg { flex-shrink: 0; color: var(--border-strong); }
-.req-checklist li.met { color: var(--text); }
-.req-checklist li.met svg { color: var(--brand-600); }
-
 /* ── Modal ─────────────────────────────────────────────────────────── */
 .modal-overlay {
   position: fixed;

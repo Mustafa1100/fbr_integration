@@ -90,7 +90,7 @@ export default function AdminAccountsPage({ role }) {
     try {
       const created = await api.post('/api/admin/users', { ...form, role })
       setShowModal(false)
-      setCreatedAccount({ email: created.email, temp_password: created.temp_password })
+      setCreatedAccount({ email: created.email, temp_password: created.temp_password, mode: 'created' })
       setPage(1)
       await refresh()
     } catch (err) {
@@ -124,6 +124,23 @@ export default function AdminAccountsPage({ role }) {
     setError('')
     try {
       await api.delete(`/api/admin/users/${user.id}`)
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function resetPassword(user) {
+    if (
+      !window.confirm(
+        `Reset ${user.email}'s password? Their current session ends immediately — they'll need the new temporary code to sign in.`
+      )
+    )
+      return
+    setError('')
+    try {
+      const result = await api.post(`/api/admin/users/${user.id}/reset-password`)
+      setCreatedAccount({ email: result.email, temp_password: result.temp_password, mode: 'reset' })
       await refresh()
     } catch (err) {
       setError(err.message)
@@ -246,6 +263,9 @@ export default function AdminAccountsPage({ role }) {
                             <Settings2 size={14} /> FBR
                           </Link>
                         )}
+                        <button className="btn btn-secondary btn-sm" onClick={() => resetPassword(u)}>
+                          <KeyRound size={14} /> Reset password
+                        </button>
                         <button className="btn btn-secondary btn-sm" onClick={() => toggleActive(u)}>
                           {u.is_active ? (
                             <>
@@ -320,7 +340,7 @@ export default function AdminAccountsPage({ role }) {
             </div>
             <p className="muted" style={{ margin: '0 0 14px', fontSize: '0.8rem' }}>
               <KeyRound size={13} style={{ verticalAlign: -2, marginRight: 4 }} />
-              A 6-digit temporary password will be generated automatically — you&apos;ll see it
+              A 6-character temporary password will be generated automatically — you&apos;ll see it
               once, right after creating the account, to share with them.
             </p>
             <button className="btn btn-primary" disabled={creating} style={{ width: '100%' }}>
@@ -333,13 +353,24 @@ export default function AdminAccountsPage({ role }) {
 
       {createdAccount && (
         <Modal
-          title={`${isAdmin ? 'Admin' : 'User'} created`}
+          title={createdAccount.mode === 'reset' ? 'Password reset' : `${isAdmin ? 'Admin' : 'User'} created`}
           onClose={() => setCreatedAccount(null)}
           width={420}
         >
           <p className="muted" style={{ margin: '0 0 16px' }}>
-            Share this temporary password with <strong>{createdAccount.email}</strong> — they'll
-            be required to set their own on first sign-in. It won&apos;t be shown again.
+            {createdAccount.mode === 'reset' ? (
+              <>
+                New temporary password for <strong>{createdAccount.email}</strong> — their old
+                session is already signed out, and they'll be required to set their own password
+                on next sign-in.
+              </>
+            ) : (
+              <>
+                Share this temporary password with <strong>{createdAccount.email}</strong> —
+                they'll be required to set their own on first sign-in.
+              </>
+            )}{' '}
+            It won&apos;t be shown again.
           </p>
           <div
             style={{
