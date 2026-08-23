@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
@@ -52,6 +52,8 @@ def query_invoices(
     upload_id: int | None = None,
     status: str | None = None,
     q: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> Query:
     """Shared filter logic for a user's invoices — used by both this
     router's own /api/invoices and the admin per-user read-only view."""
@@ -66,6 +68,10 @@ def query_invoices(
                 400, f"status must be one of: {', '.join(sorted(INVOICE_STATUSES))}"
             )
         query = query.filter(Invoice.status == status)
+    if date_from is not None:
+        query = query.filter(Invoice.invoice_date >= date_from)
+    if date_to is not None:
+        query = query.filter(Invoice.invoice_date <= date_to)
     if q:
         like = f"%{q.strip()}%"
         query = query.filter(
@@ -84,12 +90,22 @@ def list_invoices(
     upload_id: int | None = None,
     status: str | None = None,
     q: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     page: int = 1,
     page_size: int = 1000,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    query = query_invoices(db, user.id, upload_id=upload_id, status=status, q=q)
+    query = query_invoices(
+        db,
+        user.id,
+        upload_id=upload_id,
+        status=status,
+        q=q,
+        date_from=date_from,
+        date_to=date_to,
+    )
     invoices = paginate(query, response, page, page_size)
     return [summary_out(i) for i in invoices]
 

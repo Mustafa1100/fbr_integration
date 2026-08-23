@@ -24,6 +24,8 @@ export default function Invoices() {
   const [qInput, setQInput] = useState('')
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [searchParams] = useSearchParams()
@@ -47,6 +49,8 @@ export default function Invoices() {
     if (uploadId) params.set('upload_id', uploadId)
     if (q.trim()) params.set('q', q.trim())
     if (statusFilter !== 'all') params.set('status', statusFilter)
+    if (dateFrom) params.set('date_from', dateFrom)
+    if (dateTo) params.set('date_to', dateTo)
     const resp = await api.getRaw(`/api/invoices?${params}`)
     setInvoices(await resp.json())
     setTotal(Number(resp.headers.get('x-total-count') || 0))
@@ -56,7 +60,7 @@ export default function Invoices() {
   useEffect(() => {
     refresh().catch((e) => setError(e.message))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, q, statusFilter, uploadId])
+  }, [page, pageSize, q, statusFilter, dateFrom, dateTo, uploadId])
 
   async function retry(inv) {
     setError('')
@@ -90,7 +94,8 @@ export default function Invoices() {
     setConfirmPaidInvoice(null)
   }
 
-  const filtersActive = q.trim() !== '' || statusFilter !== 'all'
+  const filtersActive =
+    q.trim() !== '' || statusFilter !== 'all' || dateFrom !== '' || dateTo !== ''
 
   return (
     <>
@@ -133,6 +138,48 @@ export default function Invoices() {
             <option value="failed">Failed</option>
             <option value="draft">Draft</option>
           </select>
+          <div className="row-actions" style={{ marginLeft: 'auto', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <label className="row-actions" style={{ gap: '0.4rem' }}>
+              <span className="muted">From</span>
+              <input
+                type="date"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={(e) => {
+                  setDateFrom(e.target.value)
+                  setPage(1)
+                }}
+              />
+            </label>
+            <label className="row-actions" style={{ gap: '0.4rem' }}>
+              <span className="muted">To</span>
+              <input
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(e) => {
+                  setDateTo(e.target.value)
+                  setPage(1)
+                }}
+              />
+            </label>
+            {filtersActive && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  setQInput('')
+                  setQ('')
+                  setStatusFilter('all')
+                  setDateFrom('')
+                  setDateTo('')
+                  setPage(1)
+                }}
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -145,7 +192,7 @@ export default function Invoices() {
             <div className="title">{filtersActive ? 'No matching invoices' : 'No invoices yet'}</div>
             <div className="hint">
               {filtersActive ? (
-                'Try a different search term or status filter.'
+                'Try a different search term, status, or date range.'
               ) : (
                 <>
                   <Link to="/uploads">Generate an invoice</Link> to create some.

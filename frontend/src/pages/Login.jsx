@@ -142,17 +142,7 @@ export default function Login() {
           </div>
 
           <div className="field">
-            <div className="row-actions" style={{ justifyContent: 'space-between' }}>
-              <label style={{ margin: 0 }}>Password</label>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                style={{ padding: '2px 6px' }}
-                onClick={() => setShowForgotModal(true)}
-              >
-                Forgot password?
-              </button>
-            </div>
+            <label>Password</label>
             <div className="input-wrap with-toggle">
               <Lock size={16} />
               <input
@@ -182,6 +172,13 @@ export default function Login() {
           <p className="login-footnote">
             Accounts are created by your administrator.
           </p>
+          <button
+            type="button"
+            className="forgot-password-link"
+            onClick={() => setShowForgotModal(true)}
+          >
+            Forgot password?
+          </button>
         </form>
       </div>
 

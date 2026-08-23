@@ -1,5 +1,6 @@
 import secrets
 import string
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, EmailStr
@@ -285,6 +286,8 @@ def user_invoices(
     upload_id: int | None = None,
     status: str | None = None,
     q: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     page: int = 1,
     page_size: int = 1000,
     db: Session = Depends(get_db),
@@ -292,7 +295,15 @@ def user_invoices(
     """A user's invoices — admin read-only view, same data (and same
     filters/pagination) the user sees on their own Invoices page."""
     user = _get_user_or_404(db, user_id)
-    query = query_invoices(db, user.id, upload_id=upload_id, status=status, q=q)
+    query = query_invoices(
+        db,
+        user.id,
+        upload_id=upload_id,
+        status=status,
+        q=q,
+        date_from=date_from,
+        date_to=date_to,
+    )
     invoices = paginate(query, response, page, page_size)
     return [summary_out(i) for i in invoices]
 
