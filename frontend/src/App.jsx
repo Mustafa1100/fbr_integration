@@ -8,6 +8,7 @@ import AdminAdmins from './pages/admin/Admins'
 import AdminColumnGuide from './pages/admin/ColumnGuide'
 import ScenarioGuide from './pages/admin/ScenarioGuide'
 import AdminUsers from './pages/admin/Users'
+import ServerInfo from './pages/admin/ServerInfo'
 import UserFbrSettings from './pages/admin/UserFbrSettings'
 import UserUploads from './pages/admin/UserUploads'
 import UserInvoices from './pages/admin/UserInvoices'
@@ -112,6 +113,14 @@ export default function App() {
           element={
             <RequireAuth role="admin">
               <AdminColumnGuide />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin/server-info"
+          element={
+            <RequireAuth role="admin">
+              <ServerInfo />
             </RequireAuth>
           }
         />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   Settings2,
   Globe,
@@ -140,7 +140,8 @@ export default function UserFbrSettings() {
         </div>
         <p className="muted">
           <KeyRound size={14} /> From IRIS → Digital Invoicing. Sandbox and production tokens are
-          different, and PRAL must whitelist the server IP.
+          different, and PRAL must whitelist the server IP — see{' '}
+          <Link to="/admin/server-info">Server / IP Info</Link> for the current whitelisted IPs.
         </p>
 
         <h2 className="section-title">

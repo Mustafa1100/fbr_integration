@@ -7,6 +7,7 @@ import {
   Menu,
   ReceiptText,
   ScrollText,
+  Server,
   Settings2,
   ShieldCheck,
   UploadCloud,
@@ -122,6 +123,10 @@ export default function Layout() {
             <NavLink to="/admin/columns" className={link} title="Column Guide">
               <BookOpenText size={18} />
               <span>Column Guide</span>
+            </NavLink>
+            <NavLink to="/admin/server-info" className={link} title="Server / IP Info">
+              <Server size={18} />
+              <span>Server / IP Info</span>
             </NavLink>
           </>
         ) : (
