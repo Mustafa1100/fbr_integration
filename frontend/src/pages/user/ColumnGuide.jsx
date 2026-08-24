@@ -12,7 +12,7 @@ export default function ColumnGuide() {
             <BookOpenText size={22} /> Column Guide
           </h1>
           <p className="page-sub">
-            What every column in the upload CSV means for a real sale — this is your production
+            What every column in the upload file means for a real sale — this is your production
             reference, for the invoices you upload every day.
           </p>
         </div>

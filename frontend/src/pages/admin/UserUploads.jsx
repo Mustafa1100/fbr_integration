@@ -62,8 +62,8 @@ export default function UserUploads() {
             <History size={22} /> Upload History
           </h1>
           <p className="page-sub">
-            Pick a user to see every CSV file they&apos;ve uploaded and its outcome — the same
-            history they see on their own Uploads page.
+            Pick a user to see every CSV or Excel file they&apos;ve uploaded and its outcome — the
+            same history they see on their own Uploads page.
           </p>
         </div>
       </div>
@@ -129,7 +129,7 @@ export default function UserUploads() {
                 <div className="hint">
                   {q.trim() || statusFilter !== 'all'
                     ? 'Try a different search term or status filter.'
-                    : "This user hasn't uploaded a CSV."}
+                    : "This user hasn't uploaded a CSV or Excel file."}
                 </div>
               </div>
             </div>

@@ -15,7 +15,7 @@ export default function ColumnGuideView({ scope }) {
           <span>
             <strong>scenario_id is sandbox-only.</strong> In production your invoices
             aren&apos;t tagged with a test scenario at all — FBR just receives the real sale
-            details. Everything else in the CSV maps to what actually happened in the
+            details. Everything else in the file maps to what actually happened in the
             transaction, in both environments.
           </span>
         </div>
@@ -92,7 +92,7 @@ export default function ColumnGuideView({ scope }) {
       <div className="alert error" style={{ marginTop: '1.5rem' }}>
         <AlertTriangle size={17} />
         <span>
-          <strong>Editing the CSV in Excel, Numbers, or Google Sheets?</strong> These apps
+          <strong>Editing your file in Excel, Numbers, or Google Sheets?</strong> These apps
           silently reformat cells that &quot;look like&quot; dates, decimals, or percentages —
           e.g. <code>2026-08-17</code> → <code>8/17/2026</code>, <code>0101.2100</code> →{' '}
           <code>101.21</code>, <code>18%</code> → <code>0.18</code>. If an upload fails with an

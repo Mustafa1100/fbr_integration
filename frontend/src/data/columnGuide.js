@@ -19,7 +19,7 @@ export const COLUMNS = [
     sandboxOnly: false,
     meaning: 'Date of the sale, format YYYY-MM-DD.',
     production:
-      'Use the real date the sale happened. If you edit the CSV in Excel/Numbers/Google Sheets, double-check this cell afterwards — spreadsheet apps love to silently reformat dates (e.g. 2026-08-17 → 8/17/2026), which FBR will reject.',
+      'Use the real date the sale happened. If you edit the file in Excel/Numbers/Google Sheets, double-check this cell afterwards — spreadsheet apps love to silently reformat dates (e.g. 2026-08-17 → 8/17/2026), which FBR will reject.',
     sandbox: "Any valid date works — the downloaded template pre-fills today's date.",
   },
   {

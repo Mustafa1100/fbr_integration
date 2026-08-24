@@ -94,7 +94,7 @@ export default function AdminDashboard() {
             </div>
             <div>
               <div className="stat-value">{stats.total_uploads}</div>
-              <div className="stat-label">CSV uploads</div>
+              <div className="stat-label">CSV/Excel uploads</div>
             </div>
           </div>
           <div className="stat-card">

@@ -75,7 +75,7 @@ export default function Login() {
               <UploadCloud size={19} />
             </div>
             <div>
-              <div className="f-title">CSV in, invoices out</div>
+              <div className="f-title">CSV/Excel in, invoices out</div>
               <div className="f-sub">
                 Drop in your POS export — every sale becomes a compliant digital invoice.
               </div>

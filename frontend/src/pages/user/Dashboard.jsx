@@ -36,7 +36,7 @@ export default function Dashboard() {
           </h1>
           <p className="page-sub">
             {user?.full_name ? `Welcome back, ${user.full_name}. ` : ''}
-            Overview of your CSV uploads and FBR invoicing activity.
+            Overview of your CSV/Excel uploads and FBR invoicing activity.
           </p>
         </div>
       </div>
@@ -62,7 +62,7 @@ export default function Dashboard() {
             </div>
             <div>
               <div className="stat-value">{stats.total_uploads}</div>
-              <div className="stat-label">CSV uploads</div>
+              <div className="stat-label">CSV/Excel uploads</div>
             </div>
           </div>
           <div className="stat-card">
