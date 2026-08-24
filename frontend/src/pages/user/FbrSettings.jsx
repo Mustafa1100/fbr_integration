@@ -4,7 +4,7 @@ import usePageTitle from '../../hooks/usePageTitle'
 import PasswordRequirement from '../../components/PasswordRequirement'
 import { passwordStrength } from '../../passwordStrength'
 import {
-  Settings2,
+  Settings,
   Globe,
   Building2,
   Info,
@@ -65,7 +65,7 @@ function ChangePasswordTab() {
   }
 
   return (
-    <div className="card" style={{ maxWidth: 460 }}>
+    <div className="card" style={{ maxWidth: 460, margin: '0 auto' }}>
       <h2 className="section-title" style={{ marginTop: 0 }}>
         <KeyRound size={17} /> Change password
       </h2>
@@ -164,7 +164,7 @@ export default function FbrSettings() {
       <div className="page-header">
         <div>
           <h1 className="page-title">
-            <Settings2 size={22} /> Settings
+            <Settings size={22} /> Settings
           </h1>
           <p className="page-sub">Your account settings and FBR / PRAL digital invoicing configuration.</p>
         </div>

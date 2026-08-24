@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   UploadCloud,
+  CopyCheck,
   Download,
   Loader2,
   AlertCircle,
@@ -140,7 +141,7 @@ export default function Uploads() {
       <div className="page-header">
         <div>
           <h1 className="page-title">
-            <UploadCloud size={22} /> Generate Invoices
+            <CopyCheck size={22} /> Generate Invoices
           </h1>
           <p className="page-sub">
             Upload your POS product sales as a CSV or Excel file — rows with the same{' '}

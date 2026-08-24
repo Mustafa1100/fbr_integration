@@ -1,5 +1,6 @@
 import {
   BookOpenText,
+  CopyCheck,
   FlaskConical,
   History,
   LayoutDashboard,
@@ -8,9 +9,8 @@ import {
   ReceiptText,
   ScrollText,
   Server,
-  Settings2,
+  Settings,
   ShieldCheck,
-  UploadCloud,
   Users,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -93,7 +93,6 @@ export default function Layout() {
           </div>
         </div>
 
-        <div className="nav-section-label">Menu</div>
         {user?.role === 'admin' ? (
           <>
             <NavLink to="/admin" end className={link} title="Dashboard">
@@ -136,7 +135,7 @@ export default function Layout() {
               <span>Dashboard</span>
             </NavLink>
             <NavLink to="/uploads" className={link} title="Generate Invoices">
-              <UploadCloud size={18} />
+              <CopyCheck size={18} />
               <span>Generate Invoices</span>
             </NavLink>
             <NavLink to="/invoices" className={link} title="Invoices History">
@@ -148,7 +147,7 @@ export default function Layout() {
               <span>Column Guide</span>
             </NavLink>
             <NavLink to="/settings" className={link} title="Settings">
-              <Settings2 size={18} />
+              <Settings size={18} />
               <span>Settings</span>
             </NavLink>
           </>
