@@ -38,6 +38,13 @@
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
+/* Inter has no Arabic-script glyphs — Urdu/Sindhi content (see the Column
+   Guide's language switcher) needs a font stack that actually covers them. */
+[dir='rtl'] {
+  font-family: 'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', 'Noto Sans Arabic', 'Segoe UI',
+    Tahoma, var(--font);
+  line-height: 1.9;
+}
 body {
   margin: 0;
   font-family: var(--font);
@@ -713,7 +720,7 @@ pre {
 }
 
 @media print {
-  .sidebar, .no-print { display: none !important; }
+  .sidebar, .topbar, .no-print { display: none !important; }
   body { background: #fff; }
   .page { padding: 0; max-width: 100%; }
   .card, .table-card { box-shadow: none; border: none; }

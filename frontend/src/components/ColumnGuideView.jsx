@@ -1,22 +1,38 @@
 import { BookOpenText, Info, AlertTriangle } from 'lucide-react'
-import { COLUMNS, SALE_TYPES } from '../data/columnGuide'
+import { LANGUAGES, COLUMN_META, SALE_TYPE_VALUES, COLUMN_GUIDE_TEXT } from '../data/columnGuide'
 
 // scope: 'production' (user dashboard — production behavior only) or
 // 'full' (admin dashboard — production + sandbox behavior side by side).
-export default function ColumnGuideView({ scope }) {
+export default function ColumnGuideView({ scope, lang, onLangChange }) {
   const showSandbox = scope === 'full'
-  const rows = showSandbox ? COLUMNS : COLUMNS.filter((c) => !c.sandboxOnly)
+  const rows = showSandbox ? COLUMN_META : COLUMN_META.filter((c) => !c.sandboxOnly)
+  const { ui, columns, saleTypes } = COLUMN_GUIDE_TEXT[lang]
+  const dir = LANGUAGES.find((l) => l.code === lang)?.dir || 'ltr'
 
   return (
-    <>
+    <div dir={dir} lang={lang}>
+      <div className="row-actions no-print" style={{ gap: 6, marginBottom: '1.25rem' }}>
+        <span className="muted" style={{ fontSize: '0.85rem' }}>
+          {ui.language}:
+        </span>
+        {LANGUAGES.map((l) => (
+          <button
+            key={l.code}
+            type="button"
+            className={`btn btn-sm ${lang === l.code ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ minWidth: 84, height: 27, lineHeight: 1 }}
+            onClick={() => onLangChange(l.code)}
+          >
+            {l.label}
+          </button>
+        ))}
+      </div>
+
       {showSandbox && (
         <div className="alert info">
           <Info size={17} />
           <span>
-            <strong>scenario_id is sandbox-only.</strong> In production your invoices
-            aren&apos;t tagged with a test scenario at all — FBR just receives the real sale
-            details. Everything else in the file maps to what actually happened in the
-            transaction, in both environments.
+            <strong>{ui.sandboxNoteStrong}</strong> {ui.sandboxNoteRest}
           </span>
         </div>
       )}
@@ -25,16 +41,16 @@ export default function ColumnGuideView({ scope }) {
         <table>
           <thead>
             <tr>
-              <th>Column</th>
-              <th>Required</th>
-              <th>What it is</th>
+              <th>{ui.colColumn}</th>
+              <th>{ui.colRequired}</th>
+              <th>{ui.colWhatItIs}</th>
               {showSandbox ? (
                 <>
-                  <th>In sandbox testing</th>
-                  <th>In production</th>
+                  <th>{ui.colInSandbox}</th>
+                  <th>{ui.colInProduction}</th>
                 </>
               ) : (
-                <th>In production</th>
+                <th>{ui.colInProduction}</th>
               )}
             </tr>
           </thead>
@@ -42,18 +58,20 @@ export default function ColumnGuideView({ scope }) {
             {rows.map((c) => (
               <tr key={c.name}>
                 <td>
-                  <code>{c.name}</code>
+                  <bdi dir="ltr">
+                    <code>{c.name}</code>
+                  </bdi>
                 </td>
                 <td>
                   {c.required ? (
-                    <span className="badge failed">required</span>
+                    <span className="badge failed">{ui.badgeRequired}</span>
                   ) : (
-                    <span className="badge draft">optional</span>
+                    <span className="badge draft">{ui.badgeOptional}</span>
                   )}
                 </td>
-                <td>{c.meaning}</td>
-                {showSandbox && <td className="muted">{c.sandbox}</td>}
-                <td className="muted">{c.production}</td>
+                <td>{columns[c.name].meaning}</td>
+                {showSandbox && <td className="muted">{columns[c.name].sandbox}</td>}
+                <td className="muted">{columns[c.name].production}</td>
               </tr>
             ))}
           </tbody>
@@ -61,28 +79,28 @@ export default function ColumnGuideView({ scope }) {
       </div>
 
       <h2 className="section-title">
-        <BookOpenText size={17} /> Sale type reference
+        <BookOpenText size={17} /> {ui.saleTypeSectionTitle}
       </h2>
       <p className="page-sub" style={{ marginBottom: 14 }}>
-        Valid values for the <code>sale_type</code> column and what each one means. Pick whichever
-        genuinely matches what you sold — most everyday sales are &quot;Goods at standard
-        rate (default)&quot;.
+        {ui.saleTypeIntro}
       </p>
       <div className="table-card">
         <table>
           <thead>
             <tr>
-              <th>sale_type value</th>
-              <th>Meaning</th>
+              <th>{ui.colSaleTypeValue}</th>
+              <th>{ui.colMeaning}</th>
             </tr>
           </thead>
           <tbody>
-            {SALE_TYPES.map(([name, desc]) => (
+            {SALE_TYPE_VALUES.map((name) => (
               <tr key={name}>
                 <td>
-                  <span className="strong">{name}</span>
+                  <bdi dir="ltr">
+                    <span className="strong">{name}</span>
+                  </bdi>
                 </td>
-                <td className="muted">{desc}</td>
+                <td className="muted">{saleTypes[name]}</td>
               </tr>
             ))}
           </tbody>
@@ -92,14 +110,9 @@ export default function ColumnGuideView({ scope }) {
       <div className="alert error" style={{ marginTop: '1.5rem' }}>
         <AlertTriangle size={17} />
         <span>
-          <strong>Editing your file in Excel, Numbers, or Google Sheets?</strong> These apps
-          silently reformat cells that &quot;look like&quot; dates, decimals, or percentages —
-          e.g. <code>2026-08-17</code> → <code>8/17/2026</code>, <code>0101.2100</code> →{' '}
-          <code>101.21</code>, <code>18%</code> → <code>0.18</code>. If an upload fails with an
-          odd value mismatch, open the file in a plain text editor first to check for this before
-          re-uploading.
+          <strong>{ui.warningStrong}</strong> {ui.warningRest}
         </span>
       </div>
-    </>
+    </div>
   )
 }

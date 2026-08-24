@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AlertCircle, Loader2, ReceiptText } from 'lucide-react'
 import { api } from '../api'
-import { SALE_TYPES } from '../data/columnGuide'
+import { SALE_TYPE_VALUES } from '../data/columnGuide'
 import Modal from './Modal'
 
 // Column order doesn't matter to the backend (it parses by header name), but
@@ -223,7 +223,7 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, isProduction,
           <div className="field">
             <label>Sale type</label>
             <select value={form.sale_type} onChange={set('sale_type')}>
-              {SALE_TYPES.map(([name]) => (
+              {SALE_TYPE_VALUES.map((name) => (
                 <option key={name} value={name}>
                   {name}
                 </option>
