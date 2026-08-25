@@ -742,6 +742,36 @@ def test_third_schedule_csv_upload_prices_and_taxes_off_fixed_value(user_headers
     assert own_item["fixed_notified_value"] == 1000
 
 
+def test_third_schedule_fixed_value_scales_with_quantity(user_headers):
+    # fixed_notified_value is entered as a per-unit MRP (what's printed on
+    # the package) — selling 4 units must tax 4x the MRP, not 1x. Caught via
+    # a real distributor invoice where our receipt showed the same total for
+    # a qty-1 and a qty-4 line because quantity was silently dropped from
+    # the 3rd Schedule tax basis.
+    csv_text = (
+        "pos_invoice_no,invoice_date,buyer_ntn_cnic,buyer_name,buyer_province,"
+        "buyer_address,buyer_registration_type,product_description,hs_code,"
+        "rate,uom,quantity,unit_price,sale_type,scenario_id,fixed_notified_value\n"
+        "POS-3SCH-QTY,2026-08-25,,Walk-in Customer,Sindh,Karachi,Unregistered,"
+        "Test 3rd Schedule Item,0101.2100,18%,\"Numbers, pieces, units\",4,0,"
+        "3rd Schedule Goods,SN008,271.19\n"
+    )
+    resp = client.post(
+        "/api/uploads",
+        files={"file": ("sn008-qty.csv", csv_text, "text/csv")},
+        headers=user_headers,
+    )
+    assert resp.status_code == 201, resp.text
+
+    invoices = client.get(
+        "/api/invoices?upload_id=" + str(resp.json()["id"]), headers=user_headers
+    ).json()
+    detail = client.get(f"/api/invoices/{invoices[0]['id']}", headers=user_headers).json()
+    item = detail["payload"]["items"][0]
+    assert item["fixedNotifiedValueOrRetailPrice"] == 1084.76
+    assert item["salesTaxApplicable"] == 195.26
+
+
 def test_reduced_rate_goods_send_empty_extra_tax_and_tax_off_sale_value(user_headers):
     # "Goods at Reduced Rate" (SN028) has two FBR quirks confirmed live
     # against the real sandbox:

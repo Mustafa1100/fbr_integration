@@ -162,9 +162,9 @@ const EN_COLUMNS = {
       'Required for sandbox submissions — tells FBR which scenario you\'re proving out. Must match one of the 28 official codes (SN001–SN028).',
   },
   fixed_notified_value: {
-    meaning: 'Government-notified / fixed retail price for the product.',
+    meaning: 'Government-notified / fixed retail price for the product, per unit (e.g. the MRP printed on one pack).',
     production:
-      'Only matters for sale_type "3rd Schedule Goods" — tax is computed off this value instead of your actual sale price. Leave blank for every other sale type, including "Goods at Reduced Rate".',
+      'Only matters for sale_type "3rd Schedule Goods" — enter the per-unit MRP and the app multiplies it by quantity to get the line\'s tax basis, instead of your actual sale price. Leave blank for every other sale type, including "Goods at Reduced Rate".',
     sandbox:
       'Pre-filled by the SN008/SN027 templates — leave as-is unless you know the real notified value you want to test with.',
   },

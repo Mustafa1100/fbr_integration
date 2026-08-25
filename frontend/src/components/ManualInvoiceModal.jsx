@@ -279,7 +279,9 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, isProduction,
             </p>
             <div className="form-grid">
               <div className="field">
-                <label>Fixed / notified value</label>
+                <label>
+                  Fixed / notified value <span className="hint">(per unit — e.g. the MRP on one pack)</span>
+                </label>
                 <input
                   type="number"
                   step="any"
