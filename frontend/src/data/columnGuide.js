@@ -120,7 +120,7 @@ const EN_COLUMNS = {
   hs_code: {
     meaning: 'HS (Harmonized System) tariff code for the product, e.g. 8471.3010.',
     production:
-      'Use the correct code for what you actually sell — FBR cross-checks this against the rate and sale_type, and a wrong code is a common rejection reason.',
+      'Required — FBR cross-checks this against the rate and sale_type, and a wrong code is a common rejection reason. Unsure of the code? Use "Enter a single invoice" and search by product name in the HS code field — it looks up FBR\'s own registered code list.',
     sandbox:
       'Leave the scenario template\'s pre-filled value as-is — it\'s already a code FBR\'s validator accepts for that scenario\'s rate/sale_type combination.',
   },

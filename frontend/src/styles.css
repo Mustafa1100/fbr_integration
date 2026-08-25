@@ -485,6 +485,45 @@ input[type='file'] { width: auto; border: none; padding: 0; background: none; }
 }
 .input-toggle:hover { color: var(--text); background: var(--slate-50); }
 
+/* ── HS code type-ahead picker ─────────────────────────────────────── */
+.hs-picker { position: relative; }
+.hs-picker-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  padding: 4px;
+}
+.hs-picker-option {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  background: none;
+  border-radius: 7px;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font);
+}
+.hs-picker-option:hover { background: var(--brand-50); }
+.hs-picker-code { flex-shrink: 0; font-weight: 600; color: var(--text); font-size: 0.85rem; }
+.hs-picker-desc {
+  color: var(--muted);
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Alerts, empty states, misc ────────────────────────────────────── */
 .alert {
   display: flex;

@@ -10,8 +10,8 @@ CSV format (one row per product/line item; rows sharing the same
     sro_schedule_no,sro_item_serial_no
 
 Required per row: pos_invoice_no, invoice_date (YYYY-MM-DD),
-product_description, quantity, unit_price. Everything else falls back to
-sensible defaults / the user's FBR settings.
+product_description, hs_code, quantity, unit_price. Everything else falls
+back to sensible defaults / the user's FBR settings.
 
 fixed_notified_value / sro_schedule_no / sro_item_serial_no are optional —
 they only matter for retail-reduced-rate goods (FBR scenarios SN008, SN027,
@@ -38,6 +38,7 @@ REQUIRED_COLUMNS = [
     "pos_invoice_no",
     "invoice_date",
     "product_description",
+    "hs_code",
     "quantity",
     "unit_price",
 ]
@@ -411,7 +412,7 @@ def _process_rows(
             invoice.items.append(
                 InvoiceItem(
                     product_description=row["product_description"],
-                    hs_code=row.get("hs_code") or "0101.2100",
+                    hs_code=row["hs_code"],
                     rate=rate,
                     uom=row.get("uom") or "Numbers, pieces, units",
                     quantity=quantity,

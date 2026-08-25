@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AlertCircle, Loader2, ReceiptText } from 'lucide-react'
 import { api } from '../api'
 import { SALE_TYPE_VALUES } from '../data/columnGuide'
+import HsCodePicker from './HsCodePicker'
 import Modal from './Modal'
 
 // Column order doesn't matter to the backend (it parses by header name), but
@@ -217,8 +218,15 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, isProduction,
             />
           </div>
           <div className="field">
-            <label>HS code</label>
-            <input value={form.hs_code} onChange={set('hs_code')} placeholder="8471.3010" />
+            <label>
+              HS code
+              <Req />
+            </label>
+            <HsCodePicker
+              value={form.hs_code}
+              onChange={(v) => setForm({ ...form, hs_code: v })}
+              required
+            />
           </div>
           <div className="field">
             <label>Sale type</label>
