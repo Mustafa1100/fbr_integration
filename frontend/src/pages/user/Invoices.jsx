@@ -213,7 +213,6 @@ export default function Invoices() {
                   <th>POS No.</th>
                   <th>Date</th>
                   <th>Buyer</th>
-                  <th>Scenario</th>
                   <th>Excl. ST</th>
                   <th>Tax</th>
                   <th>Total</th>
@@ -223,17 +222,16 @@ export default function Invoices() {
                 </tr>
               </thead>
               <tbody>
-                {invoices.map((inv) => (
+                {invoices.map((inv, idx) => (
                   <tr key={inv.id}>
                     <td>
                       <Link to={`/invoices/${inv.id}`}>
-                        <span className="strong">{inv.id}</span>
+                        <span className="strong">{(page - 1) * pageSize + idx + 1}</span>
                       </Link>
                     </td>
                     <td>{inv.pos_invoice_no}</td>
                     <td>{inv.invoice_date}</td>
                     <td>{inv.buyer_name}</td>
-                    <td>{inv.scenario_id}</td>
                     <td>{inv.total_excl.toLocaleString()}</td>
                     <td>{inv.total_tax.toLocaleString()}</td>
                     <td>{inv.grand_total.toLocaleString()}</td>
