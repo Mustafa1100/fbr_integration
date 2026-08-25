@@ -279,6 +279,27 @@ def user_uploads(
     return [upload_out(u) for u in uploads]
 
 
+@router.delete("/users/{user_id}/uploads/{upload_id}")
+def delete_user_upload(user_id: int, upload_id: int, db: Session = Depends(get_db)):
+    """Soft delete one of a user's uploads — kept in the DB with
+    is_deleted=True, just hidden from their Submission History. Cascades to
+    the upload's own draft/failed invoices (hidden from Invoices History
+    too); invoices already submitted to FBR are a real tax record and stay
+    visible/untouched."""
+    user = _get_user_or_404(db, user_id)
+    upload = db.get(Upload, upload_id)
+    if not upload or upload.user_id != user.id or upload.is_deleted:
+        raise HTTPException(404, "Upload not found")
+    upload.is_deleted = True
+    invoices_hidden = 0
+    for inv in upload.invoices:
+        if not inv.is_deleted and inv.status != "submitted":
+            inv.is_deleted = True
+            invoices_hidden += 1
+    db.commit()
+    return {"ok": True, "invoices_hidden": invoices_hidden}
+
+
 @router.get("/users/{user_id}/invoices")
 def user_invoices(
     user_id: int,

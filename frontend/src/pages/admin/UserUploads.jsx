@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { History, FileText, ReceiptText, AlertCircle, UploadCloud, Search } from 'lucide-react'
+import { History, FileText, ReceiptText, AlertCircle, UploadCloud, Search, Trash2 } from 'lucide-react'
 import { api } from '../../api'
 import UserPicker from '../../components/UserPicker'
 import PaginationBar from '../../components/PaginationBar'
@@ -35,24 +35,41 @@ export default function UserUploads() {
     setStatusFilter('all')
   }, [userId])
 
-  useEffect(() => {
+  async function refresh() {
     if (!userId) {
       setUploads(null)
       return
     }
-    setUploads(null)
     setError('')
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
     if (q.trim()) params.set('q', q.trim())
     if (statusFilter !== 'all') params.set('status', statusFilter)
-    api
-      .getRaw(`/api/admin/users/${userId}/uploads?${params}`)
-      .then(async (resp) => {
-        setUploads(await resp.json())
-        setTotal(Number(resp.headers.get('x-total-count') || 0))
-      })
-      .catch((e) => setError(e.message))
+    const resp = await api.getRaw(`/api/admin/users/${userId}/uploads?${params}`)
+    setUploads(await resp.json())
+    setTotal(Number(resp.headers.get('x-total-count') || 0))
+  }
+
+  useEffect(() => {
+    setUploads(null)
+    refresh().catch((e) => setError(e.message))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, page, pageSize, q, statusFilter])
+
+  async function removeUpload(u) {
+    if (
+      !window.confirm(
+        `Delete upload "${u.filename}"? This hides it — and its draft/failed invoices — from this user's history. Invoices already submitted to FBR stay untouched. (Soft delete — data is kept.)`
+      )
+    )
+      return
+    setError('')
+    try {
+      await api.delete(`/api/admin/users/${userId}/uploads/${u.id}`)
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
 
   return (
     <>
@@ -191,6 +208,13 @@ export default function UserUploads() {
                                 <ReceiptText size={14} /> invoices
                               </Link>
                             )}
+                            <button
+                              type="button"
+                              className="btn btn-danger btn-sm"
+                              onClick={() => removeUpload(u)}
+                            >
+                              <Trash2 size={14} /> Delete
+                            </button>
                           </div>
                         </td>
                       </tr>

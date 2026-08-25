@@ -1560,3 +1560,116 @@ def test_non_admin_cannot_reset_password(admin_headers, user_headers):
     shop = next(u for u in users if u["email"] == "shop@example.com")
     resp = client.post(f"/api/admin/users/{shop['id']}/reset-password", headers=user_headers)
     assert resp.status_code == 403
+
+
+def test_admin_deletes_upload_cascades_non_submitted_invoices(admin_headers, user_headers):
+    # A dedicated throwaway account so this doesn't disturb invoice counts
+    # other tests assert on via the shared shop@example.com user.
+    resp = client.post(
+        "/api/admin/users",
+        json={"email": "hscascade@example.com", "full_name": "HS Cascade"},
+        headers=admin_headers,
+    )
+    user_id = resp.json()["id"]
+    temp_password = resp.json()["temp_password"]
+    client.put(
+        f"/api/admin/users/{user_id}/fbr-settings",
+        json={
+            "fbr_env": "mock",
+            "seller_ntn_cnic": "1112223",
+            "seller_business_name": "HS Cascade Pvt Ltd",
+            "seller_province": "Punjab",
+            "seller_address": "Lahore",
+            "default_scenario": "SN001",
+        },
+        headers=admin_headers,
+    )
+    login = client.post(
+        "/api/auth/login", json={"email": "hscascade@example.com", "password": temp_password}
+    )
+    temp_headers = {"Authorization": f"Bearer {login.json()['token']}"}
+    set_resp = client.post(
+        "/api/auth/set-password",
+        json={"new_password": "CascadeReal8", "confirm_password": "CascadeReal8"},
+        headers=temp_headers,
+    )
+    cascade_headers = {"Authorization": f"Bearer {set_resp.json()['token']}"}
+
+    # One good row (→ submitted) and one quantity-0 row (→ trips the mock
+    # validator and fails) in the same upload.
+    mixed_csv = (
+        "pos_invoice_no,invoice_date,buyer_ntn_cnic,buyer_name,buyer_province,"
+        "buyer_address,buyer_registration_type,product_description,hs_code,"
+        "rate,uom,quantity,unit_price,sale_type,scenario_id\n"
+        "POS-GOOD,2026-08-17,1234567,Good Buyer,Punjab,Lahore,Registered,"
+        "Good Item,0101.2100,18%,\"Numbers, pieces, units\",1,1000,"
+        "Goods at standard rate (default),SN001\n"
+        "POS-BAD,2026-08-17,1234567,Bad Buyer,Punjab,Lahore,Registered,"
+        "Zero Qty Item,0101.2100,18%,\"Numbers, pieces, units\",0,100,"
+        "Goods at standard rate (default),SN001\n"
+    )
+    upload_resp = client.post(
+        "/api/uploads",
+        files={"file": ("mixed.csv", mixed_csv, "text/csv")},
+        headers=cascade_headers,
+    )
+    assert upload_resp.status_code == 201, upload_resp.text
+    upload = upload_resp.json()
+    assert upload["invoices_submitted"] == 1
+    assert upload["invoices_failed"] == 1
+
+    invoices_before = client.get(
+        f"/api/admin/users/{user_id}/invoices", headers=admin_headers
+    ).json()
+    assert len(invoices_before) == 2
+    submitted_inv = next(i for i in invoices_before if i["status"] == "submitted")
+    failed_inv = next(i for i in invoices_before if i["status"] == "failed")
+
+    del_resp = client.delete(
+        f"/api/admin/users/{user_id}/uploads/{upload['id']}", headers=admin_headers
+    )
+    assert del_resp.status_code == 200, del_resp.text
+    assert del_resp.json() == {"ok": True, "invoices_hidden": 1}
+
+    # Upload itself is gone from history.
+    remaining_uploads = client.get(
+        f"/api/admin/users/{user_id}/uploads", headers=admin_headers
+    ).json()
+    assert all(u["id"] != upload["id"] for u in remaining_uploads)
+
+    # The failed invoice is hidden everywhere; the submitted one is untouched.
+    remaining_invoices = client.get(
+        f"/api/admin/users/{user_id}/invoices", headers=admin_headers
+    ).json()
+    assert [i["id"] for i in remaining_invoices] == [submitted_inv["id"]]
+    assert client.get(
+        f"/api/admin/users/{user_id}/invoices/{failed_inv['id']}", headers=admin_headers
+    ).status_code == 404
+    assert client.get(
+        f"/api/admin/users/{user_id}/invoices/{submitted_inv['id']}", headers=admin_headers
+    ).status_code == 200
+
+    own_invoices = client.get("/api/invoices", headers=cascade_headers).json()
+    assert [i["id"] for i in own_invoices] == [submitted_inv["id"]]
+
+    # Already-deleted upload (and a nonexistent one) both 404 on retry.
+    assert (
+        client.delete(
+            f"/api/admin/users/{user_id}/uploads/{upload['id']}", headers=admin_headers
+        ).status_code
+        == 404
+    )
+    assert (
+        client.delete(
+            f"/api/admin/users/{user_id}/uploads/999999", headers=admin_headers
+        ).status_code
+        == 404
+    )
+
+    # Non-admin can't call this at all.
+    assert (
+        client.delete(
+            f"/api/admin/users/{user_id}/uploads/{upload['id']}", headers=user_headers
+        ).status_code
+        == 403
+    )
