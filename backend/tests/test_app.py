@@ -506,6 +506,7 @@ def test_admin_manages_user_fbr_settings(admin_headers, user_headers):
             json={
                 "fbr_env": "mock",
                 "seller_ntn_cnic": "9999999",
+                "seller_ntn": "1234567",
                 "seller_business_name": "Renamed By Admin",
                 "seller_province": "Sindh",
                 "seller_address": "Karachi",
@@ -515,10 +516,14 @@ def test_admin_manages_user_fbr_settings(admin_headers, user_headers):
         )
         assert resp.status_code == 200
         assert resp.json()["seller_business_name"] == "Renamed By Admin"
+        assert resp.json()["seller_ntn"] == "1234567"
 
         # The user sees the admin's change but still cannot edit it themselves.
         seen = client.get("/api/settings/fbr", headers=user_headers).json()
         assert seen["seller_business_name"] == "Renamed By Admin"
+        assert seen["seller_ntn"] == "1234567"
+        # seller_ntn is display-only — never sent to FBR as sellerNTNCNIC.
+        assert seen["seller_ntn_cnic"] == "9999999"
     finally:
         # Always restore the shared profile, even if an assertion above
         # failed — later tests (e.g. test_csv_upload_and_receipts) hard-code

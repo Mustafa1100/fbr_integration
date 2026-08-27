@@ -150,8 +150,26 @@ export default function UserFbrSettings() {
         <p className="muted">These details appear on every invoice this user submits.</p>
         <div className="form-grid">
           <div className="field">
-            <label>NTN / CNIC</label>
-            <input value={form.seller_ntn_cnic} onChange={set('seller_ntn_cnic')} placeholder="1234567" />
+            <label>CNIC</label>
+            <input
+              value={form.seller_ntn_cnic}
+              onChange={set('seller_ntn_cnic')}
+              placeholder="4210112345678"
+            />
+            <p className="muted" style={{ margin: '4px 0 0' }}>
+              Sent to FBR as the seller identifier.
+            </p>
+          </div>
+          <div className="field">
+            <label>NTN</label>
+            <input
+              value={form.seller_ntn}
+              onChange={set('seller_ntn')}
+              placeholder="1234567"
+            />
+            <p className="muted" style={{ margin: '4px 0 0' }}>
+              Shown on the receipt alongside the CNIC.
+            </p>
           </div>
           <div className="field">
             <label>Business name</label>

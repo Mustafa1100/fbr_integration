@@ -26,6 +26,7 @@ def fbr_settings_out(fbr: FbrSettings) -> dict:
         # token without re-exposing a live FBR credential through our API.
         "token_preview": f"••••••••{fbr.fbr_token[-4:]}" if fbr.fbr_token else None,
         "seller_ntn_cnic": fbr.seller_ntn_cnic,
+        "seller_ntn": fbr.seller_ntn,
         "seller_business_name": fbr.seller_business_name,
         "seller_province": fbr.seller_province,
         "seller_address": fbr.seller_address,
@@ -38,6 +39,7 @@ class FbrSettingsRequest(BaseModel):
     # Empty string keeps the already-saved token (so it is never echoed back).
     fbr_token: str = ""
     seller_ntn_cnic: str = ""
+    seller_ntn: str = ""
     seller_business_name: str = ""
     seller_province: str = "Sindh"
     seller_address: str = ""
@@ -50,6 +52,7 @@ def apply_fbr_settings(fbr: FbrSettings, body: FbrSettingsRequest) -> None:
     if body.fbr_token:
         fbr.fbr_token = body.fbr_token.strip()
     fbr.seller_ntn_cnic = body.seller_ntn_cnic.strip()
+    fbr.seller_ntn = body.seller_ntn.strip()
     fbr.seller_business_name = body.seller_business_name.strip()
     fbr.seller_province = body.seller_province
     fbr.seller_address = body.seller_address.strip()

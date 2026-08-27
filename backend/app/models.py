@@ -48,7 +48,12 @@ class FbrSettings(Base):
     # Bearer token issued via the IRIS portal (sandbox and production differ).
     fbr_token: Mapped[str] = mapped_column(String(500), default="")
 
+    # The identifier sent to FBR as sellerNTNCNIC — in practice the seller's
+    # CNIC for the current accounts. seller_ntn below is a separate,
+    # display-only value so a registered seller can show both NTN and CNIC
+    # on the printed receipt; it is never sent to PRAL.
     seller_ntn_cnic: Mapped[str] = mapped_column(String(15), default="")
+    seller_ntn: Mapped[str] = mapped_column(String(15), default="")
     seller_business_name: Mapped[str] = mapped_column(String(200), default="")
     seller_province: Mapped[str] = mapped_column(String(50), default="Sindh")
     seller_address: Mapped[str] = mapped_column(String(300), default="")

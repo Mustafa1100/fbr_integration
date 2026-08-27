@@ -122,9 +122,13 @@ def detail_out(inv: Invoice, fbr) -> dict:
         "fbr_dated": inv.fbr_dated,
         "seller": {
             "ntn_cnic": fbr.seller_ntn_cnic,
+            "ntn": fbr.seller_ntn,
             "business_name": fbr.seller_business_name,
             "province": fbr.seller_province,
             "address": fbr.seller_address,
+            # The owning user's account email — shown as the seller's
+            # contact on the receipt, not sent to FBR.
+            "email": fbr.user.email,
         },
         "items": [
             {

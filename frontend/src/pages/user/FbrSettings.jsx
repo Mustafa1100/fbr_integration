@@ -235,8 +235,12 @@ export default function FbrSettings() {
                 <p className="muted">These details appear on every invoice you submit.</p>
                 <div className="form-grid">
                   <div className="field">
-                    <label>NTN / CNIC</label>
+                    <label>CNIC</label>
                     <div>{data.seller_ntn_cnic || '—'}</div>
+                  </div>
+                  <div className="field">
+                    <label>NTN</label>
+                    <div>{data.seller_ntn || '—'}</div>
                   </div>
                   <div className="field">
                     <label>Business name</label>

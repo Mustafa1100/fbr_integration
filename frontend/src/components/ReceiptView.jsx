@@ -134,9 +134,21 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
           <div>
             <h2>{inv.seller.business_name || 'Seller business name not set'}</h2>
             <p>
-              NTN: {inv.seller.ntn_cnic || '—'}
+              {inv.seller.ntn && (
+                <>
+                  NTN: {inv.seller.ntn}
+                  <br />
+                </>
+              )}
+              CNIC: {inv.seller.ntn_cnic || '—'}
               <br />
               {inv.seller.address}, {inv.seller.province}
+              {inv.seller.email && (
+                <>
+                  <br />
+                  Email: {inv.seller.email}
+                </>
+              )}
             </p>
             <p>
               <strong>{inv.invoice_type}</strong> — {inv.invoice_date}
@@ -149,15 +161,20 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
             </p>
           </div>
           <div className="fbr-box">
+            <img
+              className="fbr-logo"
+              src="/fbr_logo.png"
+              alt="FBR Digital Invoicing System"
+            />
             {inv.qr ? (
-              <>
+              <div className="fbr-verify">
                 <img src={inv.qr} alt="FBR QR code" />
                 <div className="fbr-number">
                   FBR Invoice No.
                   <br />
                   <span className="mono">{inv.fbr_invoice_number}</span>
                 </div>
-              </>
+              </div>
             ) : (
               <div className="warn">
                 NOT SUBMITTED TO FBR

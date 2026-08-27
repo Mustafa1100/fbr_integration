@@ -54,6 +54,16 @@ def run_light_migrations() -> None:
             conn.execute(
                 text("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0")
             )
+    if "fbr_settings" in inspector.get_table_names():
+        fbr_columns = {c["name"] for c in inspector.get_columns("fbr_settings")}
+        if "seller_ntn" not in fbr_columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE fbr_settings ADD COLUMN seller_ntn "
+                        "VARCHAR(15) NOT NULL DEFAULT ''"
+                    )
+                )
     if "invoices" in inspector.get_table_names():
         invoice_columns = {c["name"] for c in inspector.get_columns("invoices")}
         if "is_paid" not in invoice_columns:
