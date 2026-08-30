@@ -77,3 +77,13 @@ def run_light_migrations() -> None:
         if "paid_at" not in invoice_columns:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE invoices ADD COLUMN paid_at TIMESTAMP NULL"))
+    if "invoice_items" in inspector.get_table_names():
+        item_columns = {c["name"] for c in inspector.get_columns("invoice_items")}
+        if "total_values" not in item_columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE invoice_items ADD COLUMN total_values "
+                        "FLOAT NOT NULL DEFAULT 0"
+                    )
+                )

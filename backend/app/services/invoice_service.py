@@ -2,11 +2,18 @@
 drives the submit flow using the owning user's FBR settings."""
 
 import json
+import re
 
 from sqlalchemy.orm import Session
 
 from app.fbr import client
 from app.models import FbrSettings, Invoice
+
+# The rate string can carry a percentage, a fixed rupee amount per unit, or
+# both (see compute_sales_tax). "18%", "1.43%" -> percentage of the sale
+# value; "Rs.3", "Rs 200", "rupees 60 per kilogram" -> amount per unit.
+_RATE_PERCENT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%")
+_RATE_PER_UNIT_RE = re.compile(r"(?:rs\.?|rupees)\s*(\d+(?:\.\d+)?)", re.IGNORECASE)
 
 
 def build_payload(invoice: Invoice, fbr: FbrSettings) -> dict:
@@ -30,7 +37,9 @@ def build_payload(invoice: Invoice, fbr: FbrSettings) -> dict:
                 "rate": item.rate,
                 "uoM": item.uom,
                 "quantity": item.quantity,
-                "totalValues": round(item.total_value, 2),
+                # Explicit CSV total_values wins; otherwise derive it from
+                # the line (sale value + taxes − discount).
+                "totalValues": round(item.total_values or item.total_value, 2),
                 "valueSalesExcludingST": round(item.value_excl_st, 2),
                 "fixedNotifiedValueOrRetailPrice": item.fixed_notified_value,
                 "salesTaxApplicable": round(item.sales_tax, 2),
@@ -60,15 +69,26 @@ def build_payload(invoice: Invoice, fbr: FbrSettings) -> dict:
     return payload
 
 
-def compute_sales_tax(value_excl_st: float, rate: str) -> float:
-    """Derive sales tax from the rate string ("18%", "Exempt", "0%")."""
-    rate = rate.strip()
-    if rate.endswith("%"):
-        try:
-            return round(value_excl_st * float(rate[:-1]) / 100, 2)
-        except ValueError:
-            return 0.0
-    return 0.0
+def compute_sales_tax(value_excl_st: float, rate: str, quantity: float = 1.0) -> float:
+    """Derive sales tax from the rate string, covering the three shapes FBR
+    uses across the sandbox scenarios:
+
+      - percentage of the sale value:  "18%", "1.43%", "0%"  (also "Exempt" -> 0)
+      - fixed rupees per unit:         "Rs.3", "Rs 200"      -> amount x quantity
+      - both together:                 "18% along with rupees 60 per kilogram"
+                                       -> 18% of value  +  60 x quantity
+
+    A rate with no number in it (e.g. "Exempt") yields 0.
+    """
+    rate = (rate or "").strip()
+    tax = 0.0
+    pct = _RATE_PERCENT_RE.search(rate)
+    if pct:
+        tax += value_excl_st * float(pct.group(1)) / 100
+    per_unit = _RATE_PER_UNIT_RE.search(rate)
+    if per_unit:
+        tax += float(per_unit.group(1)) * quantity
+    return round(tax, 2)
 
 
 def submit(db: Session, invoice: Invoice, fbr: FbrSettings) -> dict:

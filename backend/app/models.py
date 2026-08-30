@@ -179,6 +179,11 @@ class InvoiceItem(Base):
     fixed_notified_value: Mapped[float] = mapped_column(Float, default=0.0)
     # Spec v1.12: Number (Decimal), optional.
     extra_tax: Mapped[float] = mapped_column(Float, default=0.0)
+    # PRAL "totalValues": the whole-line total incl. taxes, less discount.
+    # 0 means "derive it" — build_payload falls back to the computed
+    # total_value property below. A provider whose upstream system already
+    # produced an exact figure can pin it via the CSV total_values column.
+    total_values: Mapped[float] = mapped_column(Float, default=0.0)
     sale_type: Mapped[str] = mapped_column(
         String(100), default="Goods at standard rate (default)"
     )

@@ -7,7 +7,9 @@ CSV format (one row per product/line item; rows sharing the same
     pos_invoice_no,invoice_date,buyer_ntn_cnic,buyer_name,buyer_province,
     buyer_address,buyer_registration_type,product_description,hs_code,
     rate,uom,quantity,unit_price,sale_type,scenario_id,fixed_notified_value,
-    sro_schedule_no,sro_item_serial_no
+    sro_schedule_no,sro_item_serial_no,invoice_ref_no,sales_tax,
+    sales_tax_withheld_at_source,extra_tax,further_tax,fed_payable,discount,
+    total_values
 
 Required per row: pos_invoice_no, invoice_date (YYYY-MM-DD),
 product_description, hs_code, quantity, unit_price. Everything else falls
@@ -21,6 +23,15 @@ unit price (spec error 0090/0102 if missing there). "Goods at Reduced Rate"
 (SN028) still carries fixed_notified_value/SRO fields for reference, but
 tax is computed off the normal sale value — confirmed against FBR's live
 sandbox and PRAL's own SN028 sample.
+
+invoice_ref_no plus the per-line amount columns (sales_tax,
+sales_tax_withheld_at_source, extra_tax, further_tax, fed_payable, discount,
+total_values) map 1:1 to the matching PRAL invoice/item JSON keys. All are
+optional: a blank cell (or the column being absent entirely) keeps the
+previous behaviour — the amount columns default to 0, and sales_tax /
+total_values are derived by the app. They exist so a provider whose POS/ERP
+already carries e.g. a discount or withheld tax can pass those figures
+straight through instead of losing them.
 """
 
 import csv
@@ -43,6 +54,20 @@ REQUIRED_COLUMNS = [
     "unit_price",
 ]
 
+# Item-level amount columns that are optional and, when given, must parse
+# as a number. Blank / absent -> 0 (or -> app-derived for sales_tax and
+# total_values, see _process_rows).
+OPTIONAL_NUMERIC_COLUMNS = [
+    "fixed_notified_value",
+    "sales_tax",
+    "sales_tax_withheld_at_source",
+    "extra_tax",
+    "further_tax",
+    "fed_payable",
+    "discount",
+    "total_values",
+]
+
 ALL_COLUMNS = [
     "pos_invoice_no",
     "invoice_date",
@@ -62,6 +87,17 @@ ALL_COLUMNS = [
     "fixed_notified_value",
     "sro_schedule_no",
     "sro_item_serial_no",
+    # Optional — map straight to the matching PRAL JSON keys. Appended after
+    # the original columns so an existing template/file keeps every column
+    # in the same position.
+    "invoice_ref_no",
+    "sales_tax",
+    "sales_tax_withheld_at_source",
+    "extra_tax",
+    "further_tax",
+    "fed_payable",
+    "discount",
+    "total_values",
 ]
 
 TEMPLATE_ROWS = [
@@ -115,6 +151,9 @@ TEMPLATE_ROWS = [
         "unit_price": "45000",
         "sale_type": "Goods at standard rate (default)",
         "scenario_id": "SN002",
+        # Optional amount columns — shown here only to demonstrate the
+        # format. Leave them blank when they don't apply.
+        "discount": "500",
     },
 ]
 
@@ -194,6 +233,12 @@ class CsvError(Exception):
     pass
 
 
+def _row_amount(row: dict, col: str) -> float:
+    """One optional numeric cell -> float, treating blank/absent as 0.
+    Values are pre-validated as parseable in ``_validate_and_collect``."""
+    return round(float(row.get(col) or 0), 2)
+
+
 def _validate_and_collect(fieldnames: list[str], rows_iter) -> list[dict]:
     """Shared validation core for both CSV and Excel uploads: required
     columns present, then per-row required fields / date format / numeric
@@ -226,12 +271,13 @@ def _validate_and_collect(fieldnames: list[str], rows_iter) -> list[dict]:
         try:
             float(row["quantity"])
             float(row["unit_price"])
-            if row.get("fixed_notified_value"):
-                float(row["fixed_notified_value"])
+            for col in OPTIONAL_NUMERIC_COLUMNS:
+                if row.get(col):
+                    float(row[col])
         except ValueError:
             raise CsvError(
-                f"Row {line_no}: quantity, unit_price, and fixed_notified_value "
-                "(if given) must be numbers."
+                f"Row {line_no}: quantity, unit_price, and the optional amount "
+                "columns (if given) must be numbers."
             )
         rows.append(row)
     if not rows:
@@ -363,6 +409,7 @@ def _process_rows(
             upload=upload,
             pos_invoice_no=pos_no,
             invoice_date=date.fromisoformat(first["invoice_date"]),
+            invoice_ref_no=first.get("invoice_ref_no", ""),
             scenario_id=first.get("scenario_id") or fbr.default_scenario,
             buyer_ntn_cnic=first.get("buyer_ntn_cnic", ""),
             buyer_name=first.get("buyer_name") or "Walk-in Customer",
@@ -409,6 +456,14 @@ def _process_rows(
                 fixed_notified_value > 0 and sale_type == "3rd Schedule Goods"
             )
             tax_base = fixed_notified_value if uses_fixed_value_basis else value_excl
+            # Optional amounts a provider's own POS/ERP may already carry.
+            # Blank -> 0; sales_tax / total_values blank -> app-derived.
+            explicit_tax = row.get("sales_tax")
+            sales_tax = (
+                round(float(explicit_tax), 2)
+                if explicit_tax
+                else invoice_service.compute_sales_tax(tax_base, rate, quantity)
+            )
             invoice.items.append(
                 InvoiceItem(
                     product_description=row["product_description"],
@@ -418,7 +473,13 @@ def _process_rows(
                     quantity=quantity,
                     unit_price=unit_price,
                     value_excl_st=value_excl,
-                    sales_tax=invoice_service.compute_sales_tax(tax_base, rate),
+                    sales_tax=sales_tax,
+                    st_withheld=_row_amount(row, "sales_tax_withheld_at_source"),
+                    extra_tax=_row_amount(row, "extra_tax"),
+                    further_tax=_row_amount(row, "further_tax"),
+                    fed_payable=_row_amount(row, "fed_payable"),
+                    discount=_row_amount(row, "discount"),
+                    total_values=_row_amount(row, "total_values"),
                     fixed_notified_value=fixed_notified_value,
                     sro_schedule_no=row.get("sro_schedule_no") or "",
                     sro_item_serial_no=row.get("sro_item_serial_no") or "",

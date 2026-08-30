@@ -30,7 +30,9 @@ export const COLUMN_META = [
   { name: 'buyer_address', required: false, sandboxOnly: false },
   { name: 'buyer_registration_type', required: false, sandboxOnly: false },
   { name: 'product_description', required: true, sandboxOnly: false },
-  { name: 'hs_code', required: false, sandboxOnly: false },
+  // FBR cross-checks the HS code against rate + sale_type and rejects a
+  // missing one — the upload pipeline enforces it as required.
+  { name: 'hs_code', required: true, sandboxOnly: false },
   { name: 'rate', required: false, sandboxOnly: false },
   { name: 'uom', required: false, sandboxOnly: false },
   { name: 'quantity', required: true, sandboxOnly: false },
@@ -40,6 +42,14 @@ export const COLUMN_META = [
   { name: 'fixed_notified_value', required: false, sandboxOnly: false },
   { name: 'sro_schedule_no', required: false, sandboxOnly: false },
   { name: 'sro_item_serial_no', required: false, sandboxOnly: false },
+  { name: 'invoice_ref_no', required: false, sandboxOnly: false },
+  { name: 'sales_tax', required: false, sandboxOnly: false },
+  { name: 'sales_tax_withheld_at_source', required: false, sandboxOnly: false },
+  { name: 'extra_tax', required: false, sandboxOnly: false },
+  { name: 'further_tax', required: false, sandboxOnly: false },
+  { name: 'fed_payable', required: false, sandboxOnly: false },
+  { name: 'discount', required: false, sandboxOnly: false },
+  { name: 'total_values', required: false, sandboxOnly: false },
 ]
 
 export const SALE_TYPE_VALUES = [
@@ -125,11 +135,12 @@ const EN_COLUMNS = {
       'Leave the scenario template\'s pre-filled value as-is — it\'s already a code FBR\'s validator accepts for that scenario\'s rate/sale_type combination.',
   },
   rate: {
-    meaning: 'Sales tax rate as text, e.g. "18%", "1%", "Exempt".',
+    meaning:
+      'Sales tax rate as text. Usually a percentage ("18%", "1%", "Exempt"), but it can also be a fixed rupee amount per unit ("Rs.3", "Rs 200"), or both ("18% along with rupees 60 per kilogram").',
     production:
-      'Defaults to "18%" if left blank. Must be a rate FBR actually allows for that hs_code/sale_type combination.',
+      'Defaults to "18%" if left blank. Must be a rate FBR actually allows for that hs_code/sale_type combination. The app reads it to work out the tax: a percentage is applied to the sale value; a "Rs." / "rupees … per unit" amount is multiplied by quantity; if the text has both, the two are added. If your rate does not follow one of those shapes, put the tax amount in the sales_tax column yourself.',
     sandbox:
-      'Leave the scenario template\'s pre-filled rate as-is — it matches FBR\'s own official sample for that scenario.',
+      'Leave the scenario template\'s pre-filled rate as-is — it matches FBR\'s own official sample for that scenario (including the fixed-per-unit rates in SN021, SN022 and SN023).',
   },
   uom: {
     meaning: 'Unit of measure, e.g. "Numbers, pieces, units", "KG", "Litre".',
@@ -178,6 +189,56 @@ const EN_COLUMNS = {
     meaning: 'The serial number of the product within that SRO schedule.',
     production: 'Pairs with sro_schedule_no — only needed together with it.',
     sandbox: 'Pre-filled by the SN028 template — leave as-is.',
+  },
+  invoice_ref_no: {
+    meaning: 'Reference to an earlier invoice this row relates to (e.g. the original invoice a debit/credit note adjusts).',
+    production:
+      'Leave blank for an ordinary sale. Set it only when the document points back to a previously issued invoice.',
+    sandbox:
+      "PRAL's samples leave this blank or use a placeholder like \"SI-20250421-001\" — leave blank unless the scenario you're testing calls for it.",
+  },
+  sales_tax: {
+    meaning: 'Sales tax amount for the line, in rupees — overrides the figure the app would work out from rate.',
+    production:
+      'Leave blank to let the app calculate it (quantity × unit_price × rate, or off fixed_notified_value for 3rd Schedule Goods). Fill it only when your POS/ERP already computed the exact amount and FBR must receive that number unchanged — even a one-paisa rounding difference from FBR\'s own calculation can otherwise be rejected.',
+    sandbox:
+      'Leave blank for the scenario templates — they rely on the calculated value. Set it only if you are deliberately testing a specific tax amount.',
+  },
+  sales_tax_withheld_at_source: {
+    meaning: 'Sales tax withheld by the buyer at source, in rupees (PRAL salesTaxWithheldAtSource).',
+    production:
+      'Blank / 0 for an ordinary sale. Fill it when the buyer is a withholding agent who has held back part of the tax — the figure comes from the buyer, it is not calculated here.',
+    sandbox: 'Only a few scenarios use a non-zero value (e.g. SN005, SN012, SN013) — otherwise leave blank.',
+  },
+  extra_tax: {
+    meaning: 'Extra tax on the line, in rupees (PRAL extraTax) — applies to certain specified goods.',
+    production:
+      'Blank / 0 unless the product genuinely attracts extra tax (some regulated categories, e.g. mobile phones). Enter the rupee amount the rules give.',
+    sandbox: 'Leave blank unless the scenario under test specifically exercises extra tax.',
+  },
+  further_tax: {
+    meaning: 'Further tax for supplying to an unregistered buyer, in rupees (PRAL furtherTax).',
+    production:
+      'Blank / 0 for a registered buyer. For an unregistered buyer, further tax (commonly 4%) often applies — enter the rupee amount; it is added to the invoice total.',
+    sandbox: 'Used by a few scenarios (e.g. SN005, SN006). Leave blank where the sample does not set it.',
+  },
+  fed_payable: {
+    meaning: 'Federal Excise Duty payable on the line, in rupees (PRAL fedPayable).',
+    production:
+      'Blank / 0 unless the goods or services carry FED collected in sales-tax mode (e.g. the "… (FED in ST Mode)" sale types). Enter the FED amount; it is added to the invoice total.',
+    sandbox: 'Relevant to SN017 / SN018 and similar — leave blank for scenarios that do not involve FED.',
+  },
+  discount: {
+    meaning: 'Discount given on the line, in rupees (PRAL discount).',
+    production:
+      'Blank / 0 if there was no discount. Otherwise enter the rupee discount for the line — it is subtracted from the line total. Note the sale value and tax are still taken from quantity × unit_price; the discount does not by itself reduce the taxable amount unless your unit_price already reflects it.',
+    sandbox: 'Leave blank unless you are specifically testing a discounted line.',
+  },
+  total_values: {
+    meaning: 'The whole-line total including taxes and less discount, in rupees (PRAL totalValues).',
+    production:
+      'Leave blank — the app adds it up for you (sale value + sales tax + further tax + FED − discount). Set it only when an upstream system produced a specific figure that FBR must receive unchanged.',
+    sandbox: 'Leave blank for the scenario templates.',
   },
 }
 
@@ -290,16 +351,17 @@ const UR_COLUMNS = {
   hs_code: {
     meaning: 'پروڈکٹ کے لیے HS (Harmonized System) ٹیرف کوڈ، مثلاً 8471.3010۔',
     production:
-      'جو کچھ آپ واقعی بیچتے ہیں اس کے لیے درست کوڈ استعمال کریں — FBR اسے rate اور sale_type کے ساتھ کراس چیک کرتا ہے، اور غلط کوڈ مسترد ہونے کی ایک عام وجہ ہے۔',
+      'لازمی — جو کچھ آپ واقعی بیچتے ہیں اس کے لیے درست کوڈ استعمال کریں۔ FBR اسے rate اور sale_type کے ساتھ کراس چیک کرتا ہے، اور غلط یا خالی کوڈ مسترد ہونے کی ایک عام وجہ ہے۔',
     sandbox:
       'سینیریو ٹیمپلیٹ میں پہلے سے موجود ویلیو کو ویسے ہی رہنے دیں — یہ پہلے سے ہی وہ کوڈ ہے جسے FBR کا validator اس سینیریو کے rate/sale_type امتزاج کے لیے قبول کرتا ہے۔',
   },
   rate: {
-    meaning: 'سیلز ٹیکس کی شرح بطور متن، مثلاً "18%"، "1%"، "Exempt"۔',
+    meaning:
+      'سیلز ٹیکس کی شرح بطور متن۔ عام طور پر فیصد ("18%"، "1%"، "Exempt")، لیکن یہ فی یونٹ مقررہ روپیہ رقم بھی ہو سکتی ہے ("Rs.3"، "Rs 200")، یا دونوں ("18% along with rupees 60 per kilogram")۔',
     production:
-      '"18%" پہلے سے طے شدہ ہے اگر خالی چھوڑا جائے۔ یہ ایسی شرح ہونی چاہیے جسے FBR اس hs_code/sale_type امتزاج کے لیے حقیقتاً قبول کرتا ہو۔',
+      '"18%" پہلے سے طے شدہ ہے اگر خالی چھوڑا جائے۔ یہ ایسی شرح ہونی چاہیے جسے FBR اس hs_code/sale_type امتزاج کے لیے حقیقتاً قبول کرتا ہو۔ ایپ ٹیکس نکالنے کے لیے اسے پڑھتی ہے: فیصد سیل ویلیو پر لگتا ہے؛ "Rs." / "rupees … per unit" رقم کو quantity سے ضرب دیا جاتا ہے؛ اگر متن میں دونوں ہوں تو دونوں جمع کر دیے جاتے ہیں۔ اگر آپ کی شرح ان میں سے کسی شکل کی نہ ہو تو ٹیکس کی رقم خود sales_tax کالم میں درج کریں۔',
     sandbox:
-      'سینیریو ٹیمپلیٹ کی پہلے سے موجود شرح کو ویسے ہی رہنے دیں — یہ اس سینیریو کے لیے FBR کے اپنے سرکاری نمونے سے میل کھاتی ہے۔',
+      'سینیریو ٹیمپلیٹ کی پہلے سے موجود شرح کو ویسے ہی رہنے دیں — یہ اس سینیریو کے لیے FBR کے اپنے سرکاری نمونے سے میل کھاتی ہے (بشمول SN021، SN022 اور SN023 میں فی یونٹ مقررہ شرحیں)۔',
   },
   uom: {
     meaning: 'پیمائش کی اکائی، مثلاً "Numbers, pieces, units"، "KG"، "Litre"۔',
@@ -348,6 +410,56 @@ const UR_COLUMNS = {
     meaning: 'اس SRO شیڈول کے اندر پروڈکٹ کا سیریل نمبر۔',
     production: 'sro_schedule_no کے ساتھ جوڑا بنتا ہے — صرف اس کے ساتھ ہی درکار ہے۔',
     sandbox: 'SN028 ٹیمپلیٹ کی طرف سے پہلے سے بھرا جاتا ہے — اسے ویسے ہی رہنے دیں۔',
+  },
+  invoice_ref_no: {
+    meaning: 'کسی پہلے کے انوائس کا حوالہ جس سے یہ قطار متعلق ہے (مثلاً وہ اصل انوائس جسے ڈیبٹ/کریڈٹ نوٹ ایڈجسٹ کرتا ہے)۔',
+    production:
+      'عام سیل کے لیے خالی چھوڑ دیں۔ اسے صرف تب بھریں جب دستاویز کسی پہلے جاری کردہ انوائس کی طرف اشارہ کرے۔',
+    sandbox:
+      'PRAL کے نمونے اسے خالی چھوڑتے ہیں یا "SI-20250421-001" جیسا placeholder استعمال کرتے ہیں — جب تک زیرِ آزمائش سینیریو اس کا تقاضا نہ کرے، خالی چھوڑ دیں۔',
+  },
+  sales_tax: {
+    meaning: 'لائن کے لیے سیلز ٹیکس کی رقم، روپوں میں — یہ اس رقم کو override کرتی ہے جو ایپ rate سے نکالتی۔',
+    production:
+      'خالی چھوڑ دیں تاکہ ایپ خود حساب کرے (quantity × unit_price × rate، یا "3rd Schedule Goods" کے لیے fixed_notified_value سے)۔ اسے صرف تب بھریں جب آپ کے POS/ERP نے پہلے ہی درست رقم نکال لی ہو اور FBR کو وہی عدد بغیر تبدیلی کے ملنا چاہیے — ورنہ FBR کے اپنے حساب سے ایک پیسے کا فرق بھی مسترد ہو سکتا ہے۔',
+    sandbox:
+      'سینیریو ٹیمپلیٹس کے لیے خالی چھوڑ دیں — وہ calculated ویلیو پر انحصار کرتے ہیں۔ اسے صرف تب سیٹ کریں جب آپ جان بوجھ کر کوئی مخصوص ٹیکس رقم ٹیسٹ کر رہے ہوں۔',
+  },
+  sales_tax_withheld_at_source: {
+    meaning: 'خریدار کی جانب سے source پر روکا گیا سیلز ٹیکس، روپوں میں (PRAL salesTaxWithheldAtSource)۔',
+    production:
+      'عام سیل کے لیے خالی / 0۔ اسے تب بھریں جب خریدار withholding agent ہو اور اس نے ٹیکس کا کچھ حصہ روک لیا ہو — یہ عدد خریدار سے آتا ہے، یہاں حساب نہیں ہوتا۔',
+    sandbox: 'صرف چند سینیریوز غیر صفر ویلیو استعمال کرتے ہیں (مثلاً SN005، SN012، SN013) — ورنہ خالی چھوڑ دیں۔',
+  },
+  extra_tax: {
+    meaning: 'لائن پر اضافی ٹیکس، روپوں میں (PRAL extraTax) — بعض مخصوص اشیاء پر لاگو ہوتا ہے۔',
+    production:
+      'خالی / 0 جب تک پروڈکٹ واقعی اضافی ٹیکس نہ رکھتی ہو (کچھ ریگولیٹڈ کیٹیگریز، مثلاً موبائل فون)۔ قواعد کے مطابق روپے کی رقم درج کریں۔',
+    sandbox: 'جب تک زیرِ آزمائش سینیریو خاص طور پر اضافی ٹیکس نہ آزمائے، خالی چھوڑ دیں۔',
+  },
+  further_tax: {
+    meaning: 'غیر رجسٹرڈ خریدار کو سپلائی پر فردر ٹیکس، روپوں میں (PRAL furtherTax)۔',
+    production:
+      'رجسٹرڈ خریدار کے لیے خالی / 0۔ غیر رجسٹرڈ خریدار کے لیے فردر ٹیکس (عام طور پر 4%) اکثر لاگو ہوتا ہے — روپے کی رقم درج کریں؛ یہ انوائس کے کل میں شامل ہو جاتی ہے۔',
+    sandbox: 'چند سینیریوز استعمال کرتے ہیں (مثلاً SN005، SN006)۔ جہاں نمونہ اسے سیٹ نہ کرے وہاں خالی چھوڑ دیں۔',
+  },
+  fed_payable: {
+    meaning: 'لائن پر واجب الادا فیڈرل ایکسائز ڈیوٹی، روپوں میں (PRAL fedPayable)۔',
+    production:
+      'خالی / 0 جب تک اشیاء یا خدمات سیلز ٹیکس موڈ میں وصول ہونے والی FED نہ رکھتی ہوں (مثلاً "… (FED in ST Mode)" سیل ٹائپس)۔ FED کی رقم درج کریں؛ یہ انوائس کے کل میں شامل ہو جاتی ہے۔',
+    sandbox: 'SN017 / SN018 اور اسی طرح کے لیے متعلقہ — جن سینیریوز میں FED شامل نہ ہو ان کے لیے خالی چھوڑ دیں۔',
+  },
+  discount: {
+    meaning: 'لائن پر دی گئی رعایت، روپوں میں (PRAL discount)۔',
+    production:
+      'اگر کوئی رعایت نہ تھی تو خالی / 0۔ ورنہ لائن کے لیے روپے کی رعایت درج کریں — یہ لائن کے کل میں سے منہا ہو جاتی ہے۔ نوٹ: سیل ویلیو اور ٹیکس اب بھی quantity × unit_price سے لیے جاتے ہیں؛ رعایت خود بخود قابلِ ٹیکس رقم کم نہیں کرتی جب تک آپ کی unit_price میں یہ پہلے سے شامل نہ ہو۔',
+    sandbox: 'جب تک آپ خاص طور پر رعایت والی لائن ٹیسٹ نہ کر رہے ہوں، خالی چھوڑ دیں۔',
+  },
+  total_values: {
+    meaning: 'ٹیکس سمیت اور رعایت منہا کر کے پوری لائن کا کل، روپوں میں (PRAL totalValues)۔',
+    production:
+      'خالی چھوڑ دیں — ایپ آپ کے لیے جوڑ دیتی ہے (سیل ویلیو + سیلز ٹیکس + فردر ٹیکس + FED − رعایت)۔ اسے صرف تب سیٹ کریں جب کسی upstream سسٹم نے کوئی مخصوص عدد نکالا ہو جو FBR کو بغیر تبدیلی کے ملنا چاہیے۔',
+    sandbox: 'سینیریو ٹیمپلیٹس کے لیے خالی چھوڑ دیں۔',
   },
 }
 
@@ -460,16 +572,17 @@ const SD_COLUMNS = {
   hs_code: {
     meaning: 'پراڊڪٽ لاءِ HS (Harmonized System) ٽيرف ڪوڊ، مثال طور 8471.3010.',
     production:
-      'جيڪو توهان حقيقت ۾ وڪرو ڪريو ٿا ان لاءِ صحيح ڪوڊ استعمال ڪريو — FBR ان کي rate ۽ sale_type سان ڪراس چيڪ ڪري ٿو، ۽ غلط ڪوڊ رد ٿيڻ جو هڪ عام سبب آهي.',
+      'لازمي — جيڪو توهان حقيقت ۾ وڪرو ڪريو ٿا ان لاءِ صحيح ڪوڊ استعمال ڪريو. FBR ان کي rate ۽ sale_type سان ڪراس چيڪ ڪري ٿو، ۽ غلط يا خالي ڪوڊ رد ٿيڻ جو هڪ عام سبب آهي.',
     sandbox:
       'سيناريو ٽيمپليٽ ۾ اڳ ۾ ئي موجود ويليو کي ائين ئي رهڻ ڏيو — اهو اڳ ۾ ئي اهو ڪوڊ آهي جنهن کي FBR جو validator ان سيناريو جي rate/sale_type ميلاپ لاءِ قبول ڪري ٿو.',
   },
   rate: {
-    meaning: 'سيلز ٽيڪس جي شرح متن طور، مثال طور "18%"، "1%"، "Exempt".',
+    meaning:
+      'سيلز ٽيڪس جي شرح متن طور. عام طور تي سيڪڙو ("18%"، "1%"، "Exempt")، پر هيءَ في يونٽ مقرر ٿيل رپئي رقم به ٿي سگهي ٿي ("Rs.3"، "Rs 200")، يا ٻئي ("18% along with rupees 60 per kilogram").',
     production:
-      '"18%" اڳ ۾ ئي طئي ٿيل آهي جيڪڏهن خالي ڇڏيو وڃي. هيءَ اهڙي شرح هجڻ گهرجي جنهن کي FBR ان hs_code/sale_type ميلاپ لاءِ حقيقت ۾ قبول ڪري ٿو.',
+      '"18%" اڳ ۾ ئي طئي ٿيل آهي جيڪڏهن خالي ڇڏيو وڃي. هيءَ اهڙي شرح هجڻ گهرجي جنهن کي FBR ان hs_code/sale_type ميلاپ لاءِ حقيقت ۾ قبول ڪري ٿو. ايپ ٽيڪس ڪڍڻ لاءِ ان کي پڙهي ٿي: سيڪڙو سيل ويليو تي لاڳو ٿئي ٿو؛ "Rs." / "rupees … per unit" رقم کي quantity سان ضرب ڏنو وڃي ٿو؛ جيڪڏهن متن ۾ ٻئي هجن ته ٻئي گڏي ڏنا وڃن ٿا. جيڪڏهن توهان جي شرح انهن مان ڪنهن شڪل جي نه هجي ته ٽيڪس جي رقم پاڻ sales_tax ڪالم ۾ داخل ڪريو.',
     sandbox:
-      'سيناريو ٽيمپليٽ جي اڳ ۾ ئي موجود شرح کي ائين ئي رهڻ ڏيو — اها ان سيناريو لاءِ FBR جي پنهنجي سرڪاري نموني سان ملي ٿي.',
+      'سيناريو ٽيمپليٽ جي اڳ ۾ ئي موجود شرح کي ائين ئي رهڻ ڏيو — اها ان سيناريو لاءِ FBR جي پنهنجي سرڪاري نموني سان ملي ٿي (بشمول SN021، SN022 ۽ SN023 ۾ في يونٽ مقرر ٿيل شرحون).',
   },
   uom: {
     meaning: 'ماپ جو يونٽ، مثال طور "Numbers, pieces, units"، "KG"، "Litre".',
@@ -518,6 +631,56 @@ const SD_COLUMNS = {
     meaning: 'ان SRO شيڊول اندر پراڊڪٽ جو سيريل نمبر.',
     production: 'sro_schedule_no سان جوڙو ٺاهي ٿو — صرف ان سان گڏ ئي گهربل آهي.',
     sandbox: 'SN028 ٽيمپليٽ پاران اڳ ۾ ئي ڀريل آهي — ان کي ائين ئي رهڻ ڏيو.',
+  },
+  invoice_ref_no: {
+    meaning: 'ڪنهن اڳئين انوائس جو حوالو جنهن سان هيءَ قطار لاڳاپيل آهي (مثال طور اهو اصل انوائس جنهن کي ڊيبٽ/ڪريڊٽ نوٽ ايڊجسٽ ڪري ٿو).',
+    production:
+      'عام وڪري لاءِ خالي ڇڏي ڏيو. ان کي صرف تڏهن سيٽ ڪريو جڏهن دستاويز ڪنهن اڳ ۾ جاري ٿيل انوائس ڏانهن اشارو ڪري.',
+    sandbox:
+      'PRAL جا نمونا ان کي خالي ڇڏين ٿا يا "SI-20250421-001" جهڙو placeholder استعمال ڪن ٿا — جيستائين پرکبل سيناريو ان جو تقاضو نه ڪري، خالي ڇڏي ڏيو.',
+  },
+  sales_tax: {
+    meaning: 'لائن لاءِ سيلز ٽيڪس جي رقم، رپين ۾ — هيءَ ان انگ کي override ڪري ٿي جيڪو ايپ rate مان ڪڍي ها.',
+    production:
+      'خالي ڇڏي ڏيو ته جيئن ايپ پاڻ حساب ڪري (quantity × unit_price × rate، يا "3rd Schedule Goods" لاءِ fixed_notified_value مان). ان کي صرف تڏهن ڀريو جڏهن توهان جي POS/ERP اڳ ۾ ئي صحيح رقم ڪڍي ورتي هجي ۽ FBR کي ساڳيو انگ بغير تبديليءَ جي ملڻ گهرجي — نه ته FBR جي پنهنجي حساب کان هڪ پئسي جو فرق به رد ٿي سگهي ٿو.',
+    sandbox:
+      'سيناريو ٽيمپليٽس لاءِ خالي ڇڏي ڏيو — اهي calculated ويليو تي ڀاڙين ٿا. ان کي صرف تڏهن سيٽ ڪريو جڏهن توهان ڄاڻي واڻي ڪا مخصوص ٽيڪس رقم پرکي رهيا آهيو.',
+  },
+  sales_tax_withheld_at_source: {
+    meaning: 'خريدار پاران source تي روڪيل سيلز ٽيڪس، رپين ۾ (PRAL salesTaxWithheldAtSource).',
+    production:
+      'عام وڪري لاءِ خالي / 0. ان کي تڏهن ڀريو جڏهن خريدار withholding agent هجي ۽ ٽيڪس جو ڪجهه حصو روڪي ورتو هجي — هيءُ انگ خريدار کان اچي ٿو، هتي حساب نٿو ٿئي.',
+    sandbox: 'صرف ڪجهه سيناريو غير صفر ويليو استعمال ڪن ٿا (مثال طور SN005، SN012، SN013) — نه ته خالي ڇڏي ڏيو.',
+  },
+  extra_tax: {
+    meaning: 'لائن تي اضافي ٽيڪس، رپين ۾ (PRAL extraTax) — ڪجهه مخصوص شين تي لاڳو ٿئي ٿو.',
+    production:
+      'خالي / 0 جيستائين پراڊڪٽ واقعي اضافي ٽيڪس نه رکي (ڪجهه ريگيوليٽ ٿيل ڪيٽيگريون، مثال طور موبائل فون). قاعدن مطابق رپئي جي رقم داخل ڪريو.',
+    sandbox: 'جيستائين پرکبل سيناريو خاص طور تي اضافي ٽيڪس نه پرکي، خالي ڇڏي ڏيو.',
+  },
+  further_tax: {
+    meaning: 'غير رجسٽرڊ خريدار کي سپلائي تي فردر ٽيڪس، رپين ۾ (PRAL furtherTax).',
+    production:
+      'رجسٽرڊ خريدار لاءِ خالي / 0. غير رجسٽرڊ خريدار لاءِ فردر ٽيڪس (عام طور تي 4%) اڪثر لاڳو ٿئي ٿو — رپئي جي رقم داخل ڪريو؛ اها انوائس جي ڪل ۾ شامل ٿي وڃي ٿي.',
+    sandbox: 'ڪجهه سيناريو استعمال ڪن ٿا (مثال طور SN005، SN006). جتي نمونو ان کي سيٽ نه ڪري اتي خالي ڇڏي ڏيو.',
+  },
+  fed_payable: {
+    meaning: 'لائن تي واجب الادا فيڊرل ايڪسائيز ڊيوٽي، رپين ۾ (PRAL fedPayable).',
+    production:
+      'خالي / 0 جيستائين شيون يا خدمتون سيلز ٽيڪس موڊ ۾ وصول ٿيندڙ FED نه رکن (مثال طور "… (FED in ST Mode)" سيل ٽائيپس). FED جي رقم داخل ڪريو؛ اها انوائس جي ڪل ۾ شامل ٿي وڃي ٿي.',
+    sandbox: 'SN017 / SN018 ۽ اهڙن لاءِ لاڳاپيل — جن سيناريوز ۾ FED شامل نه هجي انهن لاءِ خالي ڇڏي ڏيو.',
+  },
+  discount: {
+    meaning: 'لائن تي ڏنل رعايت، رپين ۾ (PRAL discount).',
+    production:
+      'جيڪڏهن ڪا رعايت نه هئي ته خالي / 0. نه ته لائن لاءِ رپئي جي رعايت داخل ڪريو — اها لائن جي ڪل مان ڪٽجي وڃي ٿي. نوٽ: سيل ويليو ۽ ٽيڪس اڃا به quantity × unit_price مان ورتا وڃن ٿا؛ رعايت پاڻ مرادو قابلِ ٽيڪس رقم گھٽ نٿي ڪري جيستائين توهان جي unit_price ۾ اها اڳ ۾ شامل نه هجي.',
+    sandbox: 'جيستائين توهان خاص طور تي رعايت واري لائن نه پرکي رهيا آهيو، خالي ڇڏي ڏيو.',
+  },
+  total_values: {
+    meaning: 'ٽيڪس سميت ۽ رعايت ڪٽي پوري لائن جو ڪل، رپين ۾ (PRAL totalValues).',
+    production:
+      'خالي ڇڏي ڏيو — ايپ توهان لاءِ جوڙ ڪري ٿي (سيل ويليو + سيلز ٽيڪس + فردر ٽيڪس + FED − رعايت). ان کي صرف تڏهن سيٽ ڪريو جڏهن ڪنهن upstream سسٽم ڪو مخصوص انگ ڪڍيو هجي جيڪو FBR کي بغير تبديليءَ جي ملڻ گهرجي.',
+    sandbox: 'سيناريو ٽيمپليٽس لاءِ خالي ڇڏي ڏيو.',
   },
 }
 
