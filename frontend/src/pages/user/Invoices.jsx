@@ -312,22 +312,34 @@ export default function Invoices() {
                     <td>
                       <div className="row-actions">
                         {inv.status !== 'submitted' ? (
-                          <button className="btn btn-secondary btn-sm" onClick={() => retry(inv)}>
-                            <RefreshCw size={14} /> Retry
+                          <button
+                            className="btn btn-secondary btn-sm has-tip"
+                            onClick={() => retry(inv)}
+                            data-tip="Retry submission"
+                            aria-label="Retry submission"
+                          >
+                            <RefreshCw size={14} />
                           </button>
                         ) : (
-                          <Link className="btn btn-ghost btn-sm" to={`/invoices/${inv.id}`}>
-                            <QrCode size={14} /> Receipt
+                          <Link
+                            className="btn btn-primary btn-sm has-tip"
+                            to={`/invoices/${inv.id}`}
+                            data-tip="View receipt"
+                            aria-label="View receipt"
+                          >
+                            <QrCode size={14} />
                           </Link>
                         )}
                         {canProd &&
                           inv.status === 'submitted' &&
                           inv.fbr_env !== 'production' && (
                             <button
-                              className="btn btn-secondary btn-sm"
+                              className="btn btn-secondary btn-sm has-tip"
                               onClick={() => setConfirmPromoteInvoice(inv)}
+                              data-tip="Submit to FBR"
+                              aria-label="Submit to FBR"
                             >
-                              <Check size={14} /> Submit to FBR
+                              <Check size={14} />
                             </button>
                           )}
                       </div>
