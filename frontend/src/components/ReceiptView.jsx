@@ -221,11 +221,11 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
               )}
             </p>
             <p>
-              <strong>{inv.invoice_type}</strong> — {inv.invoice_date}
+              <strong>Date:</strong> {inv.invoice_date}
               {inv.pos_invoice_no && (
                 <>
                   <br />
-                  POS ref: {inv.pos_invoice_no}
+                  <strong>Invoice:</strong> {inv.pos_invoice_no}
                 </>
               )}
             </p>
