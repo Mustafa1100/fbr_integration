@@ -16,7 +16,9 @@ import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
 import usePageTitle from '../../hooks/usePageTitle'
 
-const ENV_LABELS = { mock: 'Mock', sandbox: 'Sandbox', production: 'Production' }
+// User-facing wording: "Test" (sandbox / simulated) vs "Live" (real FBR).
+const MODE_LABELS = { mock: 'Test', sandbox: 'Test', production: 'Live' }
+const FILTER_LABELS = { all: 'All', sandbox: 'Test', production: 'Live' }
 
 export default function Invoices() {
   usePageTitle('Invoices History')
@@ -156,7 +158,7 @@ export default function Invoices() {
               setPage(1)
             }}
           >
-            {e === 'all' ? 'All' : ENV_LABELS[e]}
+            {FILTER_LABELS[e]}
           </button>
         ))}
       </div>
@@ -257,7 +259,7 @@ export default function Invoices() {
                 <tr>
                   <th>#</th>
                   <th>POS No.</th>
-                  <th>Env</th>
+                  <th>Mode</th>
                   <th>Date</th>
                   <th>Buyer</th>
                   <th>Excl. ST</th>
@@ -281,7 +283,7 @@ export default function Invoices() {
                       <span
                         className={`badge ${inv.fbr_env === 'production' ? 'submitted' : 'draft'}`}
                       >
-                        {ENV_LABELS[inv.fbr_env] || inv.fbr_env}
+                        {MODE_LABELS[inv.fbr_env] || inv.fbr_env}
                       </span>
                     </td>
                     <td>{inv.invoice_date}</td>
@@ -325,7 +327,7 @@ export default function Invoices() {
                               className="btn btn-secondary btn-sm"
                               onClick={() => setConfirmPromoteInvoice(inv)}
                             >
-                              <Rocket size={14} /> Promote
+                              <Rocket size={14} /> Submit to FBR
                             </button>
                           )}
                       </div>
@@ -351,7 +353,7 @@ export default function Invoices() {
 
       {confirmPromoteInvoice && (
         <Modal
-          title="Promote to production?"
+          title="Submit this invoice to FBR?"
           onClose={() => !promoting && setConfirmPromoteInvoice(null)}
           width={460}
         >
@@ -362,9 +364,8 @@ export default function Invoices() {
               <strong className="mono">
                 {confirmPromoteInvoice.fbr_invoice_number || confirmPromoteInvoice.pos_invoice_no}
               </strong>{' '}
-              ({confirmPromoteInvoice.buyer_name}) will be re-submitted to{' '}
-              <strong>FBR production</strong> as a real, permanent tax record. Its sandbox result
-              is replaced with the production one.
+              ({confirmPromoteInvoice.buyer_name}) will be submitted to <strong>FBR</strong> as a
+              real, permanent tax record. This replaces its test result.
             </span>
           </div>
           <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
@@ -377,7 +378,7 @@ export default function Invoices() {
             </button>
             <button className="btn btn-primary" onClick={confirmPromote} disabled={promoting}>
               {promoting ? <Loader2 size={16} className="spin" /> : <Rocket size={16} />}
-              Confirm, submit to production
+              Confirm, submit to FBR
             </button>
           </div>
         </Modal>

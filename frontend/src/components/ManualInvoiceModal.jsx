@@ -172,7 +172,7 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
           </div>
           {!isProduction && scenarios?.length > 0 && (
             <div className="field">
-              <label>Sandbox scenario</label>
+              <label>Test scenario</label>
               <select value={form.scenario_id} onChange={set('scenario_id')}>
                 <option value="">Use account default…</option>
                 {scenarios.map((s) => (

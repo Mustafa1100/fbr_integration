@@ -22,7 +22,9 @@ import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
 import usePageTitle from '../../hooks/usePageTitle'
 
-const ENV_LABELS = { mock: 'Mock', sandbox: 'Sandbox', production: 'Production' }
+// User-facing wording: "Test" (sandbox / simulated) vs "Live" (real FBR).
+const MODE_LABELS = { mock: 'Test', sandbox: 'Test', production: 'Live' }
+const FILTER_LABELS = { all: 'All', sandbox: 'Test', production: 'Live' }
 
 export default function Uploads() {
   usePageTitle('Generate Invoices')
@@ -158,8 +160,8 @@ export default function Uploads() {
           </h1>
           <p className="page-sub">
             Upload your POS product sales as a CSV or Excel file — rows with the same{' '}
-            <code>pos_invoice_no</code> become one invoice, each invoice is submitted to FBR, and
-            you get a tax receipt with the FBR invoice number and QR code.
+            <code>pos_invoice_no</code> become one invoice. Run a test first to check the figures,
+            then submit to FBR to get a tax receipt with the FBR invoice number and QR code.
           </p>
         </div>
         <div className="page-actions">
@@ -200,29 +202,29 @@ export default function Uploads() {
         <>
           <div className="card" style={{ marginBottom: '1.5rem' }}>
             <div className="field" style={{ margin: 0 }}>
-              <label>Submit to</label>
+              <label>How to submit</label>
               <div className="row-actions" style={{ gap: 8 }}>
                 <button
                   type="button"
                   className={`btn btn-sm ${!isProdTarget ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setSubmitTarget('sandbox')}
                 >
-                  <FlaskConical size={14} /> Sandbox test
+                  <FlaskConical size={14} /> Test before submitting
                 </button>
                 <button
                   type="button"
                   className={`btn btn-sm ${isProdTarget ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => canProd && setSubmitTarget('production')}
                   disabled={!canProd}
-                  title={canProd ? undefined : 'Your account is not enabled for production submission'}
+                  title={canProd ? undefined : "Your account isn't enabled to submit directly to FBR"}
                 >
-                  <ReceiptText size={14} /> Production
+                  <ReceiptText size={14} /> Submit to FBR
                 </button>
               </div>
               <p className="hint" style={{ marginTop: 8 }}>
                 {isProdTarget
-                  ? 'These invoices are submitted straight to FBR production — real, permanent tax records.'
-                  : `Test submission${fbrEnv === 'mock' ? ' (simulated — no FBR credentials configured)' : ' against the FBR sandbox'}. Nothing here is a live tax record; promote an invoice from Invoices History once it looks right.`}
+                  ? 'Invoices go straight to FBR as real, permanent tax records.'
+                  : `A trial run to check everything looks right${fbrEnv === 'mock' ? ' (simulated — no FBR connection set up yet)' : ''}. Nothing here becomes a real FBR record — from Invoices History you can then submit a good one to FBR.`}
               </p>
             </div>
           </div>
@@ -232,7 +234,7 @@ export default function Uploads() {
               <div className="row-actions" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
                 <FlaskConical size={17} style={{ flexShrink: 0, color: 'var(--muted)' }} />
                 <span className="muted" style={{ marginRight: '0.25rem' }}>
-                  Sandbox scenario testing: download a template pre-filled with FBR&apos;s own
+                  Test with a real example: download a template pre-filled with FBR&apos;s own
                   official example for one scenario —
                 </span>
                 <select
@@ -309,8 +311,8 @@ export default function Uploads() {
                   </>
                 ) : (
                   <>
-                    <UploadCloud size={16} /> Upload &amp; submit to{' '}
-                    {isProdTarget ? 'production' : 'sandbox'}
+                    <UploadCloud size={16} /> Upload &amp;{' '}
+                    {isProdTarget ? 'submit to FBR' : 'run a test'}
                   </>
                 )}
               </button>
@@ -329,16 +331,19 @@ export default function Uploads() {
               {lastResult.status === 'failed' ? (
                 <>
                   <AlertCircle size={17} />
-                  <span>Submission failed: {lastResult.error}</span>
+                  <span>{lastResult.error}</span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 size={17} />
                   <span>
                     Processed {lastResult.total_rows} rows → {lastResult.invoices_created} invoices,{' '}
-                    {lastResult.invoices_submitted} submitted to FBR
+                    {lastResult.invoices_submitted}{' '}
+                    {lastResult.fbr_env === 'production' ? 'submitted to FBR' : 'passed the test'}
                     {lastResult.invoices_failed > 0 && <>, {lastResult.invoices_failed} failed</>}.{' '}
-                    <Link to="/invoices">View receipts</Link>
+                    <Link to="/invoices">
+                      {lastResult.fbr_env === 'production' ? 'View receipts' : 'Review them'}
+                    </Link>
                   </span>
                 </>
               )}
@@ -360,7 +365,7 @@ export default function Uploads() {
                   setPage(1)
                 }}
               >
-                {e === 'all' ? 'All' : ENV_LABELS[e]}
+                {FILTER_LABELS[e]}
               </button>
             ))}
           </div>
@@ -417,7 +422,7 @@ export default function Uploads() {
                     <tr>
                       <th>#</th>
                       <th>File</th>
-                      <th>Env</th>
+                      <th>Mode</th>
                       <th>Date</th>
                       <th>Rows</th>
                       <th>Invoices</th>
@@ -440,7 +445,7 @@ export default function Uploads() {
                           <span
                             className={`badge ${u.fbr_env === 'production' ? 'submitted' : 'draft'}`}
                           >
-                            {ENV_LABELS[u.fbr_env] || u.fbr_env}
+                            {MODE_LABELS[u.fbr_env] || u.fbr_env}
                           </span>
                         </td>
                         <td>{new Date(u.created_at).toLocaleString()}</td>
