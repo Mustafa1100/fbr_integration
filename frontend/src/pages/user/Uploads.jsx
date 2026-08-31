@@ -26,7 +26,11 @@ import usePageTitle from '../../hooks/usePageTitle'
 
 // User-facing wording: "Test" (sandbox / simulated) vs "Live" (real FBR).
 const MODE_LABELS = { mock: 'Test', sandbox: 'Test', production: 'Live' }
-const FILTER_LABELS = { all: 'All', sandbox: 'Test', production: 'Live' }
+const ENV_OPTIONS = [
+  { value: 'production', label: 'Live' },
+  { value: 'sandbox', label: 'Test' },
+  { value: 'all', label: 'All (Test + Live)' },
+]
 
 export default function Uploads() {
   usePageTitle('Generate Invoices')
@@ -38,7 +42,7 @@ export default function Uploads() {
   const [qInput, setQInput] = useState('')
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [histEnv, setHistEnv] = useState('all') // 'all' | 'sandbox' | 'production'
+  const [histEnv, setHistEnv] = useState('production') // 'all' | 'sandbox' | 'production'
   const [listLoading, setListLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -373,22 +377,6 @@ export default function Uploads() {
 
       {tab === 'history' && (
         <>
-          <div className="row-actions" style={{ gap: 8, marginBottom: '1rem' }}>
-            {['all', 'sandbox', 'production'].map((e) => (
-              <button
-                key={e}
-                type="button"
-                className={`btn btn-sm ${histEnv === e ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => {
-                  setHistEnv(e)
-                  setPage(1)
-                }}
-              >
-                {FILTER_LABELS[e]}
-              </button>
-            ))}
-          </div>
-
           <div className="card" style={{ marginBottom: '1.25rem' }}>
             <div className="row-actions" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
               <div className="input-wrap" style={{ flex: '1 1 240px', maxWidth: 320 }}>
@@ -411,6 +399,21 @@ export default function Uploads() {
                 <option value="completed">Completed</option>
                 <option value="completed_with_errors">Completed with errors</option>
                 <option value="failed">Failed</option>
+              </select>
+              <select
+                value={histEnv}
+                onChange={(e) => {
+                  setHistEnv(e.target.value)
+                  setPage(1)
+                }}
+                aria-label="Show submissions for"
+                style={{ maxWidth: 180 }}
+              >
+                {ENV_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
