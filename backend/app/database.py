@@ -121,6 +121,15 @@ def run_light_migrations() -> None:
                         "VARCHAR(12) NOT NULL DEFAULT 'sandbox'"
                     )
                 )
+                # Existing batches belong to whatever env their owner's
+                # account is pinned to — a production account's back
+                # catalogue is Live history, everyone else stays Test.
+                conn.execute(
+                    text(
+                        "UPDATE uploads SET fbr_env = 'production' WHERE user_id IN "
+                        "(SELECT user_id FROM fbr_settings WHERE fbr_env = 'production')"
+                    )
+                )
     if "invoices" in inspector.get_table_names():
         invoice_columns = {c["name"] for c in inspector.get_columns("invoices")}
         if "is_paid" not in invoice_columns:
@@ -142,7 +151,15 @@ def run_light_migrations() -> None:
                         "VARCHAR(12) NOT NULL DEFAULT 'sandbox'"
                     )
                 )
-                # Mock submissions are recognisable by their invoice number.
+                # Existing invoices inherit their owner account's env, so a
+                # production account's history shows up as Live.
+                conn.execute(
+                    text(
+                        "UPDATE invoices SET fbr_env = 'production' WHERE user_id IN "
+                        "(SELECT user_id FROM fbr_settings WHERE fbr_env = 'production')"
+                    )
+                )
+                # A mock submission is a test regardless of the account env.
                 conn.execute(
                     text(
                         "UPDATE invoices SET fbr_env = 'mock' "
