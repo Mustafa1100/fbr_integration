@@ -11,6 +11,7 @@ import {
   FileText,
   ReceiptText,
   FlaskConical,
+  Rocket,
   Search,
   X,
   BookOpenText,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react'
 import { api } from '../../api'
 import ManualInvoiceModal from '../../components/ManualInvoiceModal'
+import Modal from '../../components/Modal'
 import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
 import usePageTitle from '../../hooks/usePageTitle'
@@ -149,6 +151,23 @@ export default function Uploads() {
     setLastResult(result)
     if (page === 1) refresh()
     else setPage(1)
+  }
+
+  const [confirmPromote, setConfirmPromote] = useState(null)
+  const [promoting, setPromoting] = useState(false)
+
+  async function promoteUpload() {
+    setPromoting(true)
+    setError('')
+    try {
+      await api.post(`/api/uploads/${confirmPromote.id}/promote`)
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setPromoting(false)
+      setConfirmPromote(null)
+    }
   }
 
   return (
@@ -475,6 +494,16 @@ export default function Uploads() {
                                 <ReceiptText size={14} /> invoices
                               </Link>
                             )}
+                            {canProd &&
+                              u.fbr_env !== 'production' &&
+                              u.invoices_submitted > 0 && (
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => setConfirmPromote(u)}
+                                >
+                                  <Rocket size={14} /> Submit to FBR
+                                </button>
+                              )}
                           </div>
                         </td>
                       </tr>
@@ -496,6 +525,37 @@ export default function Uploads() {
             </>
           )}
         </>
+      )}
+
+      {confirmPromote && (
+        <Modal
+          title="Submit this batch to FBR?"
+          onClose={() => !promoting && setConfirmPromote(null)}
+          width={460}
+        >
+          <div className="alert info" style={{ marginTop: 0 }}>
+            <Rocket size={17} />
+            <span>
+              All {confirmPromote.invoices_submitted} test-passed invoice
+              {confirmPromote.invoices_submitted === 1 ? '' : 's'} in{' '}
+              <strong>{confirmPromote.filename}</strong> will be submitted to <strong>FBR</strong>{' '}
+              as real, permanent tax records. This replaces their test results.
+            </span>
+          </div>
+          <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setConfirmPromote(null)}
+              disabled={promoting}
+            >
+              Cancel
+            </button>
+            <button className="btn btn-primary" onClick={promoteUpload} disabled={promoting}>
+              {promoting ? <Loader2 size={16} className="spin" /> : <Rocket size={16} />}
+              Confirm, submit to FBR
+            </button>
+          </div>
+        </Modal>
       )}
 
       {showManualModal && (

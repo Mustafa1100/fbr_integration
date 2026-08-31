@@ -791,6 +791,55 @@ def test_promote_invoice_to_production(admin_headers):
     )
 
 
+def test_promote_whole_upload_to_production(admin_headers):
+    headers, _ = _make_account(
+        admin_headers, "promotebatch@example.com", can_submit_production=True
+    )
+    two_row = _ENV_CSV + (
+        "POS-ENV-2,2026-08-17,,Walk-in Customer,Sindh,Karachi,Unregistered,"
+        "Widget2,0101.2100,18%,\"Numbers, pieces, units\",3,500,"
+        "Goods at standard rate (default),SN002\n"
+    )
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("batch.csv", two_row, "text/csv")},
+        data={"target": "sandbox"},
+        headers=headers,
+    ).json()
+    assert up["fbr_env"] == "sandbox" and up["invoices_submitted"] == 2
+
+    resp = client.post(f"/api/uploads/{up['id']}/promote", headers=headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["fbr_env"] == "production"
+    assert body["invoices_submitted"] == 2 and body["invoices_failed"] == 0
+
+    # Both invoices moved to production history; batch left the test history.
+    assert client.get("/api/invoices?fbr_env=sandbox", headers=headers).json() == []
+    assert len(client.get("/api/invoices?fbr_env=production", headers=headers).json()) == 2
+    assert client.get("/api/uploads?fbr_env=sandbox", headers=headers).json() == []
+    assert [u["id"] for u in client.get(
+        "/api/uploads?fbr_env=production", headers=headers
+    ).json()] == [up["id"]]
+
+    # Re-promoting the batch → 400.
+    assert (
+        client.post(f"/api/uploads/{up['id']}/promote", headers=headers).status_code == 400
+    )
+
+    # A non-capable account cannot promote a batch.
+    plain, _ = _make_account(admin_headers, "promotebatchno@example.com")
+    up2 = client.post(
+        "/api/uploads",
+        files={"file": ("s.csv", _ENV_CSV, "text/csv")},
+        data={"target": "sandbox"},
+        headers=plain,
+    ).json()
+    assert (
+        client.post(f"/api/uploads/{up2['id']}/promote", headers=plain).status_code == 403
+    )
+
+
 def test_promote_guards(admin_headers):
     # No capability → 403.
     plain, _ = _make_account(admin_headers, "promoteno@example.com")

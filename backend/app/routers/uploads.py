@@ -7,7 +7,7 @@ from app.database import get_db
 from app.models import Upload, User
 from app.pagination import paginate
 from app.routers.settings import get_or_create_fbr_settings
-from app.services import csv_processor
+from app.services import csv_processor, invoice_service
 from app.services.invoice_service import VALID_ENVS
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
@@ -162,6 +162,49 @@ async def upload_csv(
         upload = csv_processor.process_upload(
             db, user, fbr, file.filename, content, target_env=target_env
         )
+    return upload_out(upload)
+
+
+@router.post("/{upload_id}/promote")
+def promote_upload(
+    upload_id: int,
+    user: User = Depends(require_password_already_set),
+    db: Session = Depends(get_db),
+):
+    """Submit a whole tested batch to FBR production — re-submits every
+    non-production invoice in the upload to production and flips the batch's
+    fbr_env. Requires the account's production capability + token."""
+    upload = db.get(Upload, upload_id)
+    if not upload or upload.user_id != user.id or upload.is_deleted:
+        raise HTTPException(404, "Upload not found")
+    fbr = get_or_create_fbr_settings(db, user)
+    if not fbr.can_submit_production:
+        raise HTTPException(
+            403, "This account is not enabled to submit to FBR production."
+        )
+    if not fbr.is_mock and not fbr.production_token:
+        raise HTTPException(400, "No production token configured for this account.")
+    if upload.fbr_env == "production":
+        raise HTTPException(400, "This batch has already been submitted to FBR.")
+
+    candidates = [
+        inv
+        for inv in upload.invoices
+        if not inv.is_deleted and inv.fbr_env != "production"
+    ]
+    if not candidates:
+        raise HTTPException(400, "This batch has no invoices to submit.")
+    for inv in candidates:
+        invoice_service.submit(db, inv, fbr, target_env="production")
+
+    live = [inv for inv in upload.invoices if not inv.is_deleted]
+    upload.invoices_submitted = sum(1 for inv in live if inv.status == "submitted")
+    upload.invoices_failed = sum(1 for inv in live if inv.status == "failed")
+    upload.fbr_env = "production"
+    upload.status = (
+        "completed" if upload.invoices_failed == 0 else "completed_with_errors"
+    )
+    db.commit()
     return upload_out(upload)
 
 
