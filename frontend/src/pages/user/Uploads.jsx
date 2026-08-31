@@ -491,9 +491,9 @@ export default function Uploads() {
                           <div className="row-actions">
                             {u.invoices_created > 0 && (
                               <Link
-                                className="btn btn-primary btn-sm"
+                                className="btn btn-primary btn-sm has-tip"
                                 to={`/invoices?upload=${u.id}`}
-                                title="View invoices"
+                                data-tip="View invoices"
                                 aria-label="View invoices"
                               >
                                 <ReceiptText size={14} />
@@ -503,9 +503,9 @@ export default function Uploads() {
                               u.fbr_env !== 'production' &&
                               u.invoices_submitted > 0 && (
                                 <button
-                                  className="btn btn-secondary btn-sm"
+                                  className="btn btn-secondary btn-sm has-tip"
                                   onClick={() => setConfirmPromote(u)}
-                                  title="Submit this batch to FBR"
+                                  data-tip="Submit this batch to FBR"
                                   aria-label="Submit this batch to FBR"
                                 >
                                   <Rocket size={14} />
