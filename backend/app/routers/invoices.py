@@ -13,7 +13,7 @@ from app.models import Invoice, User
 from app.pagination import paginate
 from app.routers.settings import get_or_create_fbr_settings
 from app.services import invoice_service
-from app.services.invoice_service import VALID_ENVS
+from app.services.invoice_service import ENV_FILTER_ALIASES, resolve_env_filter
 from app.services.qr import qr_data_uri
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
@@ -71,12 +71,12 @@ def query_invoices(
                 400, f"status must be one of: {', '.join(sorted(INVOICE_STATUSES))}"
             )
         query = query.filter(Invoice.status == status)
-    if fbr_env:
-        if fbr_env not in VALID_ENVS:
+    if fbr_env and fbr_env != "all":
+        if fbr_env not in ENV_FILTER_ALIASES:
             raise HTTPException(
-                400, f"fbr_env must be one of: {', '.join(VALID_ENVS)}"
+                400, f"fbr_env must be one of: {', '.join(ENV_FILTER_ALIASES)}"
             )
-        query = query.filter(Invoice.fbr_env == fbr_env)
+        query = query.filter(Invoice.fbr_env.in_(resolve_env_filter(fbr_env)))
     if date_from is not None:
         query = query.filter(Invoice.invoice_date >= date_from)
     if date_to is not None:

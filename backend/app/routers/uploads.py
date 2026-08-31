@@ -8,7 +8,11 @@ from app.models import Upload, User
 from app.pagination import paginate
 from app.routers.settings import get_or_create_fbr_settings
 from app.services import csv_processor, invoice_service
-from app.services.invoice_service import VALID_ENVS
+from app.services.invoice_service import (
+    ENV_FILTER_ALIASES,
+    VALID_ENVS,
+    resolve_env_filter,
+)
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 
@@ -48,12 +52,12 @@ def query_uploads(
                 400, f"status must be one of: {', '.join(sorted(UPLOAD_STATUSES))}"
             )
         query = query.filter(Upload.status == status)
-    if fbr_env:
-        if fbr_env not in VALID_ENVS:
+    if fbr_env and fbr_env != "all":
+        if fbr_env not in ENV_FILTER_ALIASES:
             raise HTTPException(
-                400, f"fbr_env must be one of: {', '.join(VALID_ENVS)}"
+                400, f"fbr_env must be one of: {', '.join(ENV_FILTER_ALIASES)}"
             )
-        query = query.filter(Upload.fbr_env == fbr_env)
+        query = query.filter(Upload.fbr_env.in_(resolve_env_filter(fbr_env)))
     if q:
         query = query.filter(Upload.filename.ilike(f"%{q.strip()}%"))
     return query.order_by(Upload.id.desc())

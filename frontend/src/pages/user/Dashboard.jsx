@@ -17,15 +17,25 @@ import { api, getStoredUser } from '../../api'
 import { TrendChart, DonutChart } from '../../components/Charts'
 import usePageTitle from '../../hooks/usePageTitle'
 
+const ENV_TABS = [
+  { value: 'all', label: 'All' },
+  { value: 'sandbox', label: 'Test' },
+  { value: 'production', label: 'Live' },
+]
+
 export default function Dashboard() {
   usePageTitle('Dashboard')
   const [stats, setStats] = useState(null)
   const [error, setError] = useState('')
+  const [env, setEnv] = useState('all')
   const user = getStoredUser()
 
   useEffect(() => {
-    api.get('/api/stats').then(setStats).catch((e) => setError(e.message))
-  }, [])
+    setStats(null)
+    setError('')
+    const qs = env === 'all' ? '' : `?fbr_env=${env}`
+    api.get(`/api/stats${qs}`).then(setStats).catch((e) => setError(e.message))
+  }, [env])
 
   return (
     <>
@@ -39,6 +49,19 @@ export default function Dashboard() {
             Overview of your CSV/Excel uploads and FBR invoicing activity.
           </p>
         </div>
+      </div>
+
+      <div className="row-actions" style={{ gap: 8, marginBottom: '1.25rem' }}>
+        {ENV_TABS.map((t) => (
+          <button
+            key={t.value}
+            type="button"
+            className={`btn btn-sm ${env === t.value ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setEnv(t.value)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {error && (

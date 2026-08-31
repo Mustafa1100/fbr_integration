@@ -11,6 +11,24 @@ from app.models import FbrSettings, Invoice
 
 VALID_ENVS = ("mock", "sandbox", "production")
 
+# History / stats filters: the user-facing split is "Test" vs "Live".
+# "Test" covers both real sandbox submissions and simulated mock ones.
+ENV_FILTER_ALIASES = {
+    "test": ("sandbox", "mock"),
+    "sandbox": ("sandbox", "mock"),
+    "live": ("production",),
+    "production": ("production",),
+    "mock": ("mock",),
+}
+
+
+def resolve_env_filter(value: str | None) -> tuple[str, ...] | None:
+    """Map an ?fbr_env= query value to the concrete fbr_env values to match,
+    or None for 'all'. Raises KeyError for an unrecognised value."""
+    if not value or value == "all":
+        return None
+    return ENV_FILTER_ALIASES[value]
+
 
 class EffectiveFbr:
     """Read-only view of an ``FbrSettings`` pinned to one target environment

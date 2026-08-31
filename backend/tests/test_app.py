@@ -877,6 +877,40 @@ def test_promote_guards(admin_headers):
     )
 
 
+def test_stats_split_by_test_vs_live(admin_headers):
+    headers, _ = _make_account(
+        admin_headers, "envstats@example.com", can_submit_production=True
+    )
+    # 1 test batch (2 invoices), 1 live batch (1 invoice).
+    two = _ENV_CSV + (
+        "POS-ENV-2,2026-08-17,,W,Sindh,Karachi,Unregistered,Y,0101.2100,18%,"
+        "\"Numbers, pieces, units\",1,500,Goods at standard rate (default),SN002\n"
+    )
+    client.post(
+        "/api/uploads",
+        files={"file": ("t.csv", two, "text/csv")},
+        data={"target": "sandbox"},
+        headers=headers,
+    )
+    client.post(
+        "/api/uploads",
+        files={"file": ("l.csv", _ENV_CSV, "text/csv")},
+        data={"target": "production"},
+        headers=headers,
+    )
+
+    all_s = client.get("/api/stats", headers=headers).json()
+    test_s = client.get("/api/stats?fbr_env=test", headers=headers).json()
+    live_s = client.get("/api/stats?fbr_env=live", headers=headers).json()
+
+    assert all_s["total_invoices"] == 3 and all_s["total_uploads"] == 2
+    assert test_s["total_invoices"] == 2 and test_s["total_uploads"] == 1
+    assert live_s["total_invoices"] == 1 and live_s["total_uploads"] == 1
+    assert test_s["submitted_invoices"] + live_s["submitted_invoices"] == all_s["submitted_invoices"]
+    # "sandbox" is an alias for test (covers mock too).
+    assert client.get("/api/stats?fbr_env=sandbox", headers=headers).json()["total_invoices"] == 2
+    assert client.get("/api/stats?fbr_env=bogus", headers=headers).status_code == 400
+
 
 def test_user_isolation(admin_headers):
     resp = client.post(
