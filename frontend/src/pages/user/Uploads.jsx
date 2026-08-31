@@ -407,7 +407,7 @@ export default function Uploads() {
                   setPage(1)
                 }}
                 aria-label="Show submissions for"
-                style={{ maxWidth: 180 }}
+                style={{ maxWidth: 180, marginLeft: 'auto' }}
               >
                 {ENV_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
