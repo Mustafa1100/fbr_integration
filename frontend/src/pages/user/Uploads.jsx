@@ -493,8 +493,10 @@ export default function Uploads() {
                               <Link
                                 className="btn btn-primary btn-sm"
                                 to={`/invoices?upload=${u.id}`}
+                                title="View invoices"
+                                aria-label="View invoices"
                               >
-                                invoices
+                                <ReceiptText size={14} />
                               </Link>
                             )}
                             {canProd &&
@@ -503,8 +505,10 @@ export default function Uploads() {
                                 <button
                                   className="btn btn-secondary btn-sm"
                                   onClick={() => setConfirmPromote(u)}
+                                  title="Submit this batch to FBR"
+                                  aria-label="Submit this batch to FBR"
                                 >
-                                  Submit to FBR
+                                  <Rocket size={14} />
                                 </button>
                               )}
                           </div>
