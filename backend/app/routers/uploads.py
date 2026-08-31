@@ -210,18 +210,3 @@ def promote_upload(
     )
     db.commit()
     return upload_out(upload)
-
-
-@router.delete("/{upload_id}")
-def delete_upload(
-    upload_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Soft delete — kept in the DB with is_deleted=True."""
-    upload = db.get(Upload, upload_id)
-    if not upload or upload.user_id != user.id or upload.is_deleted:
-        raise HTTPException(404, "Upload not found")
-    upload.is_deleted = True
-    db.commit()
-    return {"ok": True}

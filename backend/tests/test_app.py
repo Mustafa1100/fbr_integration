@@ -635,19 +635,17 @@ def test_csv_upload_bad_format(user_headers):
     assert "Missing required columns" in resp.json()["error"]
 
 
-def test_submitted_invoice_cannot_be_deleted(user_headers):
-    invoices = client.get("/api/invoices", headers=user_headers).json()
-    resp = client.delete(f"/api/invoices/{invoices[0]['id']}", headers=user_headers)
-    assert resp.status_code == 400
-
-
-def test_upload_soft_delete(user_headers):
-    uploads = client.get("/api/uploads", headers=user_headers).json()
+def test_users_have_no_delete_facility(user_headers):
+    # Deleting invoices or uploads is admin-only. There is no user-facing
+    # delete route at all, so the DELETE verb is simply not there.
+    inv_id = client.get("/api/invoices", headers=user_headers).json()[0]["id"]
+    up_id = client.get("/api/uploads", headers=user_headers).json()[0]["id"]
     assert client.delete(
-        f"/api/uploads/{uploads[0]['id']}", headers=user_headers
-    ).json() == {"ok": True}
-    remaining = client.get("/api/uploads", headers=user_headers).json()
-    assert all(u["id"] != uploads[0]["id"] for u in remaining)
+        f"/api/invoices/{inv_id}", headers=user_headers
+    ).status_code in (404, 405)
+    assert client.delete(
+        f"/api/uploads/{up_id}", headers=user_headers
+    ).status_code in (404, 405)
 
 
 def test_admin_stats(admin_headers):
@@ -1412,8 +1410,8 @@ def test_uploads_list_pagination_and_filters(admin_headers, user_headers):
     resp2 = client.get("/api/uploads?page=2&page_size=2", headers=user_headers)
     assert resp2.json() == all_uploads[2:4]
 
-    # Create our own guaranteed-failed upload — an earlier test's malformed
-    # upload may since have been soft-deleted by test_upload_soft_delete.
+    # Create our own guaranteed-failed upload rather than depending on one
+    # an earlier test happened to leave behind.
     client.post(
         "/api/uploads",
         files={"file": ("malformed.csv", "foo,bar\n1,2\n", "text/csv")},

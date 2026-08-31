@@ -260,18 +260,3 @@ def mark_invoice_paid(
     inv.paid_at = datetime.now(timezone.utc) if body.is_paid else None
     db.commit()
     return summary_out(inv)
-
-
-@router.delete("/{invoice_id}")
-def delete_invoice(
-    invoice_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Soft delete — kept in the DB with is_deleted=True (no real deletion)."""
-    inv = _get_owned(db, user, invoice_id)
-    if inv.status == "submitted":
-        raise HTTPException(400, "Submitted invoices are an FBR record — cannot delete")
-    inv.is_deleted = True
-    db.commit()
-    return {"ok": True}
