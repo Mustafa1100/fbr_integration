@@ -9,6 +9,7 @@ import {
   Loader2,
   ShieldCheck,
   Check,
+  CheckCheck,
 } from 'lucide-react'
 import { api } from '../api'
 import usePageTitle from '../hooks/usePageTitle'
@@ -143,34 +144,46 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
           <p className="page-sub">Printable tax receipt for this invoice.</p>
         </div>
         <div className="page-actions">
-          <Link to={backTo} className="btn btn-secondary">
-            <ArrowLeft size={16} /> {backLabel}
+          <Link
+            to={backTo}
+            className="btn btn-secondary has-tip has-tip-below"
+            data-tip={backLabel}
+            aria-label={backLabel}
+          >
+            <ArrowLeft size={16} />
           </Link>
           {allowMarkPaid &&
             canProd &&
             inv.status === 'submitted' &&
             inv.fbr_env !== 'production' && (
               <button
-                className="btn btn-secondary"
+                className="btn btn-secondary has-tip has-tip-below"
                 onClick={() => setConfirmingPromote(true)}
                 disabled={promoting}
+                data-tip="Submit to FBR"
+                aria-label="Submit to FBR"
               >
                 {promoting ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
-                Submit to FBR
               </button>
             )}
           {allowMarkPaid && inv.status === 'submitted' && (
             <button
-              className={`btn ${inv.is_paid ? 'btn-secondary' : 'btn-primary'}`}
+              className={`btn has-tip has-tip-below ${inv.is_paid ? 'btn-secondary' : 'btn-primary'}`}
               onClick={() => (inv.is_paid ? setPaid(false) : setConfirmingPaid(true))}
               disabled={paidBusy}
+              data-tip={inv.is_paid ? 'Mark as unpaid' : 'Mark as paid'}
+              aria-label={inv.is_paid ? 'Mark as unpaid' : 'Mark as paid'}
             >
-              {paidBusy && <Loader2 size={16} className="spin" />}
-              {inv.is_paid ? 'Mark as unpaid' : 'Mark as paid'}
+              {paidBusy ? <Loader2 size={16} className="spin" /> : <CheckCheck size={16} />}
             </button>
           )}
-          <button className="btn btn-primary" onClick={() => window.print()}>
-            <Printer size={16} /> Print receipt
+          <button
+            className="btn btn-primary has-tip has-tip-below"
+            onClick={() => window.print()}
+            data-tip="Print receipt"
+            aria-label="Print receipt"
+          >
+            <Printer size={16} />
           </button>
         </div>
       </div>

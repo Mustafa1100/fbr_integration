@@ -423,6 +423,18 @@ td .strong { color: var(--text); font-weight: 600; }
   opacity: 1;
   transform: translateY(-50%) translateX(0);
 }
+/* Modifier: tooltip below, centred — for horizontal button rows that
+   aren't inside a scroll container (e.g. a page header). */
+.has-tip-below::after {
+  right: auto;
+  left: 50%;
+  top: calc(100% + 7px);
+  transform: translateX(-50%) translateY(-3px);
+}
+.has-tip-below:hover::after,
+.has-tip-below:focus-visible::after {
+  transform: translateX(-50%) translateY(0);
+}
 
 /* ── Forms ─────────────────────────────────────────────────────────── */
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px; }
