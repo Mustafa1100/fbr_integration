@@ -1960,7 +1960,7 @@ def test_non_admin_cannot_reset_password(admin_headers, user_headers):
     assert resp.status_code == 403
 
 
-def test_admin_deletes_upload_cascades_non_submitted_invoices(admin_headers, user_headers):
+def test_admin_deletes_upload_cascades_all_its_invoices(admin_headers, user_headers):
     # A dedicated throwaway account so this doesn't disturb invoice counts
     # other tests assert on via the shared shop@example.com user.
     resp = client.post(
@@ -2027,7 +2027,7 @@ def test_admin_deletes_upload_cascades_non_submitted_invoices(admin_headers, use
         f"/api/admin/users/{user_id}/uploads/{upload['id']}", headers=admin_headers
     )
     assert del_resp.status_code == 200, del_resp.text
-    assert del_resp.json() == {"ok": True, "invoices_hidden": 1}
+    assert del_resp.json() == {"ok": True, "invoices_hidden": 2}
 
     # Upload itself is gone from history.
     remaining_uploads = client.get(
@@ -2035,20 +2035,20 @@ def test_admin_deletes_upload_cascades_non_submitted_invoices(admin_headers, use
     ).json()
     assert all(u["id"] != upload["id"] for u in remaining_uploads)
 
-    # The failed invoice is hidden everywhere; the submitted one is untouched.
+    # The whole batch is hidden — the failed row and the submitted one alike.
     remaining_invoices = client.get(
         f"/api/admin/users/{user_id}/invoices", headers=admin_headers
     ).json()
-    assert [i["id"] for i in remaining_invoices] == [submitted_inv["id"]]
+    assert remaining_invoices == []
     assert client.get(
         f"/api/admin/users/{user_id}/invoices/{failed_inv['id']}", headers=admin_headers
     ).status_code == 404
     assert client.get(
         f"/api/admin/users/{user_id}/invoices/{submitted_inv['id']}", headers=admin_headers
-    ).status_code == 200
+    ).status_code == 404
 
     own_invoices = client.get("/api/invoices", headers=cascade_headers).json()
-    assert [i["id"] for i in own_invoices] == [submitted_inv["id"]]
+    assert own_invoices == []
 
     # Already-deleted upload (and a nonexistent one) both 404 on retry.
     assert (
