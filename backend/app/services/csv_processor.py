@@ -351,10 +351,11 @@ def _parse_excel_rows(raw: bytes) -> list[dict]:
     return _validate_and_collect(fieldnames, rows_iter())
 
 
-def _new_upload(user: User, filename: str) -> Upload:
+def _new_upload(user: User, filename: str, fbr_env: str) -> Upload:
     return Upload(
         user_id=user.id,
         filename=filename,
+        fbr_env=fbr_env,
         total_rows=0,
         invoices_created=0,
         invoices_submitted=0,
@@ -363,9 +364,15 @@ def _new_upload(user: User, filename: str) -> Upload:
 
 
 def process_upload(
-    db: Session, user: User, fbr: FbrSettings, filename: str, content: str
+    db: Session,
+    user: User,
+    fbr: FbrSettings,
+    filename: str,
+    content: str,
+    target_env: str | None = None,
 ) -> Upload:
-    upload = _new_upload(user, filename)
+    target_env = target_env or fbr.fbr_env
+    upload = _new_upload(user, filename, target_env)
     db.add(upload)
     try:
         rows = _parse_rows(content)
@@ -374,13 +381,19 @@ def process_upload(
         upload.error = str(exc)
         db.commit()
         return upload
-    return _process_rows(db, user, fbr, upload, rows)
+    return _process_rows(db, user, fbr, upload, rows, target_env)
 
 
 def process_upload_excel(
-    db: Session, user: User, fbr: FbrSettings, filename: str, raw: bytes
+    db: Session,
+    user: User,
+    fbr: FbrSettings,
+    filename: str,
+    raw: bytes,
+    target_env: str | None = None,
 ) -> Upload:
-    upload = _new_upload(user, filename)
+    target_env = target_env or fbr.fbr_env
+    upload = _new_upload(user, filename, target_env)
     db.add(upload)
     try:
         rows = _parse_excel_rows(raw)
@@ -389,11 +402,16 @@ def process_upload_excel(
         upload.error = str(exc)
         db.commit()
         return upload
-    return _process_rows(db, user, fbr, upload, rows)
+    return _process_rows(db, user, fbr, upload, rows, target_env)
 
 
 def _process_rows(
-    db: Session, user: User, fbr: FbrSettings, upload: Upload, rows: list[dict]
+    db: Session,
+    user: User,
+    fbr: FbrSettings,
+    upload: Upload,
+    rows: list[dict],
+    target_env: str,
 ) -> Upload:
     upload.total_rows = len(rows)
 
@@ -410,6 +428,7 @@ def _process_rows(
             pos_invoice_no=pos_no,
             invoice_date=date.fromisoformat(first["invoice_date"]),
             invoice_ref_no=first.get("invoice_ref_no", ""),
+            fbr_env=target_env,
             scenario_id=first.get("scenario_id") or fbr.default_scenario,
             buyer_ntn_cnic=first.get("buyer_ntn_cnic", ""),
             buyer_name=first.get("buyer_name") or "Walk-in Customer",
@@ -490,7 +509,7 @@ def _process_rows(
         upload.invoices_created += 1
         db.commit()
 
-        invoice_service.submit(db, invoice, fbr)
+        invoice_service.submit(db, invoice, fbr, target_env=target_env)
         if invoice.status == "submitted":
             upload.invoices_submitted += 1
         else:

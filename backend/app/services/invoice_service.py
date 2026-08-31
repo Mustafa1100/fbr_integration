@@ -9,6 +9,47 @@ from sqlalchemy.orm import Session
 from app.fbr import client
 from app.models import FbrSettings, Invoice
 
+VALID_ENVS = ("mock", "sandbox", "production")
+
+
+class EffectiveFbr:
+    """Read-only view of an ``FbrSettings`` pinned to one target environment
+    and its matching token, so ``build_payload`` / ``app.fbr.client`` behave
+    for that env regardless of the account's default ``fbr_env``. Everything
+    else (seller profile, ``.user``) passes straight through.
+
+    ``is_mock`` is true when *either* the account baseline is mock or the
+    target is mock — a mock account never touches the network, whatever the
+    target, so the whole test/promote flow works with no credentials.
+    """
+
+    def __init__(self, fbr: FbrSettings, target_env: str):
+        if target_env not in VALID_ENVS:
+            raise ValueError(f"unknown FBR env: {target_env!r}")
+        self._fbr = fbr
+        self.fbr_env = target_env
+        self.fbr_token = {
+            "mock": "",
+            "sandbox": fbr.sandbox_token,
+            "production": fbr.production_token,
+        }[target_env]
+
+    def __getattr__(self, name):  # seller_*, user, etc.
+        return getattr(self._fbr, name)
+
+    @property
+    def is_mock(self) -> bool:
+        return self._fbr.fbr_env == "mock" or self.fbr_env == "mock"
+
+    @property
+    def is_sandbox(self) -> bool:
+        return self.is_mock or self.fbr_env == "sandbox"
+
+    @property
+    def is_production(self) -> bool:
+        return not self.is_mock and self.fbr_env == "production"
+
+
 # The rate string can carry a percentage, a fixed rupee amount per unit, or
 # both (see compute_sales_tax). "18%", "1.43%" -> percentage of the sale
 # value; "Rs.3", "Rs 200", "rupees 60 per kilogram" -> amount per unit.
@@ -91,10 +132,16 @@ def compute_sales_tax(value_excl_st: float, rate: str, quantity: float = 1.0) ->
     return round(tax, 2)
 
 
-def submit(db: Session, invoice: Invoice, fbr: FbrSettings) -> dict:
-    payload = build_payload(invoice, fbr)
+def submit(
+    db: Session, invoice: Invoice, fbr: FbrSettings, target_env: str | None = None
+) -> dict:
+    """Submit ``invoice`` to ``target_env`` (defaults to the account's
+    ``fbr_env``). Stamps ``invoice.fbr_env`` with where it actually went."""
+    target_env = target_env or fbr.fbr_env
+    eff = EffectiveFbr(fbr, target_env)
+    payload = build_payload(invoice, eff)
     try:
-        response = client.post_invoice(payload, fbr)
+        response = client.post_invoice(payload, eff)
     except client.FBRError as exc:
         response = {
             "validationResponse": {
@@ -103,6 +150,7 @@ def submit(db: Session, invoice: Invoice, fbr: FbrSettings) -> dict:
                 "error": str(exc),
             }
         }
+    invoice.fbr_env = target_env
     invoice.fbr_response = json.dumps(response, indent=2)
     if client.is_valid(response) and response.get("invoiceNumber"):
         invoice.status = "submitted"

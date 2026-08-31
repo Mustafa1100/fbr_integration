@@ -64,6 +64,63 @@ def run_light_migrations() -> None:
                         "VARCHAR(15) NOT NULL DEFAULT ''"
                     )
                 )
+        # Split the single fbr_token into per-env tokens + a production
+        # capability flag. Backfill the legacy token into whichever slot
+        # matches the account's current fbr_env (one-shot, only when the
+        # column was just created).
+        if "sandbox_token" not in fbr_columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE fbr_settings ADD COLUMN sandbox_token "
+                        "VARCHAR(500) NOT NULL DEFAULT ''"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "UPDATE fbr_settings SET sandbox_token = fbr_token "
+                        "WHERE fbr_env IN ('mock', 'sandbox') AND fbr_token <> ''"
+                    )
+                )
+        if "production_token" not in fbr_columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE fbr_settings ADD COLUMN production_token "
+                        "VARCHAR(500) NOT NULL DEFAULT ''"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "UPDATE fbr_settings SET production_token = fbr_token "
+                        "WHERE fbr_env = 'production' AND fbr_token <> ''"
+                    )
+                )
+        if "can_submit_production" not in fbr_columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE fbr_settings ADD COLUMN can_submit_production "
+                        "BOOLEAN NOT NULL DEFAULT FALSE"
+                    )
+                )
+                # A live production account keeps its access after the split.
+                conn.execute(
+                    text(
+                        "UPDATE fbr_settings SET can_submit_production = TRUE "
+                        "WHERE fbr_env = 'production'"
+                    )
+                )
+    if "uploads" in inspector.get_table_names():
+        upload_columns = {c["name"] for c in inspector.get_columns("uploads")}
+        if "fbr_env" not in upload_columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE uploads ADD COLUMN fbr_env "
+                        "VARCHAR(12) NOT NULL DEFAULT 'sandbox'"
+                    )
+                )
     if "invoices" in inspector.get_table_names():
         invoice_columns = {c["name"] for c in inspector.get_columns("invoices")}
         if "is_paid" not in invoice_columns:
@@ -77,6 +134,21 @@ def run_light_migrations() -> None:
         if "paid_at" not in invoice_columns:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE invoices ADD COLUMN paid_at TIMESTAMP NULL"))
+        if "fbr_env" not in invoice_columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE invoices ADD COLUMN fbr_env "
+                        "VARCHAR(12) NOT NULL DEFAULT 'sandbox'"
+                    )
+                )
+                # Mock submissions are recognisable by their invoice number.
+                conn.execute(
+                    text(
+                        "UPDATE invoices SET fbr_env = 'mock' "
+                        "WHERE fbr_invoice_number LIKE 'MOCK%'"
+                    )
+                )
     if "invoice_items" in inspector.get_table_names():
         item_columns = {c["name"] for c in inspector.get_columns("invoice_items")}
         if "total_values" not in item_columns:

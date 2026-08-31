@@ -267,6 +267,7 @@ def user_uploads(
     response: Response,
     status: str | None = None,
     q: str | None = None,
+    fbr_env: str | None = None,
     page: int = 1,
     page_size: int = 1000,
     db: Session = Depends(get_db),
@@ -274,7 +275,7 @@ def user_uploads(
     """A user's CSV upload history — admin read-only view, same data (and
     same filters/pagination) the user sees on their own Uploads page."""
     user = _get_user_or_404(db, user_id)
-    query = query_uploads(db, user.id, status=status, q=q)
+    query = query_uploads(db, user.id, status=status, q=q, fbr_env=fbr_env)
     uploads = paginate(query, response, page, page_size)
     return [upload_out(u) for u in uploads]
 
@@ -309,6 +310,7 @@ def user_invoices(
     q: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    fbr_env: str | None = None,
     page: int = 1,
     page_size: int = 1000,
     db: Session = Depends(get_db),
@@ -324,6 +326,7 @@ def user_invoices(
         q=q,
         date_from=date_from,
         date_to=date_to,
+        fbr_env=fbr_env,
     )
     invoices = paginate(query, response, page, page_size)
     return [summary_out(i) for i in invoices]

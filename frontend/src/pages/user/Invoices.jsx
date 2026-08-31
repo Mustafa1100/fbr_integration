@@ -8,12 +8,15 @@ import {
   Search,
   ShieldCheck,
   Loader2,
+  Rocket,
 } from 'lucide-react'
 import { api } from '../../api'
 import Modal from '../../components/Modal'
 import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
 import usePageTitle from '../../hooks/usePageTitle'
+
+const ENV_LABELS = { mock: 'Mock', sandbox: 'Sandbox', production: 'Production' }
 
 export default function Invoices() {
   usePageTitle('Invoices History')
@@ -24,10 +27,12 @@ export default function Invoices() {
   const [qInput, setQInput] = useState('')
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [envFilter, setEnvFilter] = useState('all') // 'all' | 'sandbox' | 'production'
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [canProd, setCanProd] = useState(false)
   const [searchParams] = useSearchParams()
   const uploadId = searchParams.get('upload')
 
@@ -49,6 +54,7 @@ export default function Invoices() {
     if (uploadId) params.set('upload_id', uploadId)
     if (q.trim()) params.set('q', q.trim())
     if (statusFilter !== 'all') params.set('status', statusFilter)
+    if (envFilter !== 'all') params.set('fbr_env', envFilter)
     if (dateFrom) params.set('date_from', dateFrom)
     if (dateTo) params.set('date_to', dateTo)
     const resp = await api.getRaw(`/api/invoices?${params}`)
@@ -60,7 +66,14 @@ export default function Invoices() {
   useEffect(() => {
     refresh().catch((e) => setError(e.message))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, q, statusFilter, dateFrom, dateTo, uploadId])
+  }, [page, pageSize, q, statusFilter, envFilter, dateFrom, dateTo, uploadId])
+
+  useEffect(() => {
+    api
+      .get('/api/settings/fbr')
+      .then((s) => setCanProd(!!s.can_submit_production))
+      .catch(() => {})
+  }, [])
 
   async function retry(inv) {
     setError('')
@@ -69,6 +82,23 @@ export default function Invoices() {
       await refresh()
     } catch (err) {
       setError(err.message)
+    }
+  }
+
+  const [confirmPromoteInvoice, setConfirmPromoteInvoice] = useState(null)
+  const [promoting, setPromoting] = useState(false)
+
+  async function confirmPromote() {
+    setPromoting(true)
+    setError('')
+    try {
+      await api.post(`/api/invoices/${confirmPromoteInvoice.id}/promote`)
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setPromoting(false)
+      setConfirmPromoteInvoice(null)
     }
   }
 
@@ -114,6 +144,22 @@ export default function Invoices() {
           <span>{error}</span>
         </div>
       )}
+
+      <div className="row-actions" style={{ gap: 8, marginBottom: '1rem' }}>
+        {['all', 'sandbox', 'production'].map((e) => (
+          <button
+            key={e}
+            type="button"
+            className={`btn btn-sm ${envFilter === e ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => {
+              setEnvFilter(e)
+              setPage(1)
+            }}
+          >
+            {e === 'all' ? 'All' : ENV_LABELS[e]}
+          </button>
+        ))}
+      </div>
 
       <div className="card" style={{ marginBottom: '1.25rem' }}>
         <div className="row-actions" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
@@ -211,6 +257,7 @@ export default function Invoices() {
                 <tr>
                   <th>#</th>
                   <th>POS No.</th>
+                  <th>Env</th>
                   <th>Date</th>
                   <th>Buyer</th>
                   <th>Excl. ST</th>
@@ -230,6 +277,13 @@ export default function Invoices() {
                       </Link>
                     </td>
                     <td>{inv.pos_invoice_no}</td>
+                    <td>
+                      <span
+                        className={`badge ${inv.fbr_env === 'production' ? 'submitted' : 'draft'}`}
+                      >
+                        {ENV_LABELS[inv.fbr_env] || inv.fbr_env}
+                      </span>
+                    </td>
                     <td>{inv.invoice_date}</td>
                     <td>{inv.buyer_name}</td>
                     <td>{inv.total_excl.toLocaleString()}</td>
@@ -264,6 +318,16 @@ export default function Invoices() {
                             <QrCode size={14} /> Receipt
                           </Link>
                         )}
+                        {canProd &&
+                          inv.status === 'submitted' &&
+                          inv.fbr_env !== 'production' && (
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => setConfirmPromoteInvoice(inv)}
+                            >
+                              <Rocket size={14} /> Promote
+                            </button>
+                          )}
                       </div>
                     </td>
                   </tr>
@@ -283,6 +347,40 @@ export default function Invoices() {
             itemLabel="invoices"
           />
         </>
+      )}
+
+      {confirmPromoteInvoice && (
+        <Modal
+          title="Promote to production?"
+          onClose={() => !promoting && setConfirmPromoteInvoice(null)}
+          width={460}
+        >
+          <div className="alert info" style={{ marginTop: 0 }}>
+            <Rocket size={17} />
+            <span>
+              Invoice{' '}
+              <strong className="mono">
+                {confirmPromoteInvoice.fbr_invoice_number || confirmPromoteInvoice.pos_invoice_no}
+              </strong>{' '}
+              ({confirmPromoteInvoice.buyer_name}) will be re-submitted to{' '}
+              <strong>FBR production</strong> as a real, permanent tax record. Its sandbox result
+              is replaced with the production one.
+            </span>
+          </div>
+          <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setConfirmPromoteInvoice(null)}
+              disabled={promoting}
+            >
+              Cancel
+            </button>
+            <button className="btn btn-primary" onClick={confirmPromote} disabled={promoting}>
+              {promoting ? <Loader2 size={16} className="spin" /> : <Rocket size={16} />}
+              Confirm, submit to production
+            </button>
+          </div>
+        </Modal>
       )}
 
       {confirmPaidInvoice && (

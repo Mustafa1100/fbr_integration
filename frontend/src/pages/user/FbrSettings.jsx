@@ -216,14 +216,40 @@ export default function FbrSettings() {
                 </h2>
                 <div className="form-grid">
                   <div className="field">
-                    <label>FBR environment</label>
+                    <label>Default environment</label>
                     <div>{ENV_LABELS[data.fbr_env] || data.fbr_env}</div>
                   </div>
                   <div className="field">
-                    <label>Bearer token</label>
+                    <label>Production submission</label>
                     <div>
-                      <span className={`badge ${data.has_token ? 'submitted mono' : 'failed'}`}>
-                        {data.has_token ? `configured · ${data.token_preview}` : 'not set'}
+                      <span
+                        className={`badge ${data.can_submit_production ? 'submitted' : 'draft'}`}
+                      >
+                        {data.can_submit_production ? 'enabled' : 'not enabled'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="field">
+                    <label>Sandbox token</label>
+                    <div>
+                      <span
+                        className={`badge ${data.has_sandbox_token ? 'submitted mono' : 'failed'}`}
+                      >
+                        {data.has_sandbox_token
+                          ? `configured · ${data.sandbox_token_preview}`
+                          : 'not set'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="field">
+                    <label>Production token</label>
+                    <div>
+                      <span
+                        className={`badge ${data.has_production_token ? 'submitted mono' : 'failed'}`}
+                      >
+                        {data.has_production_token
+                          ? `configured · ${data.production_token_preview}`
+                          : 'not set'}
                       </span>
                     </div>
                   </div>

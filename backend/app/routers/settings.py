@@ -18,13 +18,20 @@ def get_or_create_fbr_settings(db: Session, user: User) -> FbrSettings:
     return fbr
 
 
+def _mask(token: str) -> str | None:
+    # Last 4 chars only — enough to visually confirm it's the right token
+    # without re-exposing a live FBR credential through our API.
+    return f"••••••••{token[-4:]}" if token else None
+
+
 def fbr_settings_out(fbr: FbrSettings) -> dict:
     return {
         "fbr_env": fbr.fbr_env,
-        "has_token": bool(fbr.fbr_token),
-        # Last 4 chars only — enough to visually confirm it's the right
-        # token without re-exposing a live FBR credential through our API.
-        "token_preview": f"••••••••{fbr.fbr_token[-4:]}" if fbr.fbr_token else None,
+        "has_sandbox_token": bool(fbr.sandbox_token),
+        "sandbox_token_preview": _mask(fbr.sandbox_token),
+        "has_production_token": bool(fbr.production_token),
+        "production_token_preview": _mask(fbr.production_token),
+        "can_submit_production": fbr.can_submit_production,
         "seller_ntn_cnic": fbr.seller_ntn_cnic,
         "seller_ntn": fbr.seller_ntn,
         "seller_business_name": fbr.seller_business_name,
@@ -37,7 +44,9 @@ def fbr_settings_out(fbr: FbrSettings) -> dict:
 class FbrSettingsRequest(BaseModel):
     fbr_env: str = "mock"
     # Empty string keeps the already-saved token (so it is never echoed back).
-    fbr_token: str = ""
+    sandbox_token: str = ""
+    production_token: str = ""
+    can_submit_production: bool = False
     seller_ntn_cnic: str = ""
     seller_ntn: str = ""
     seller_business_name: str = ""
@@ -49,8 +58,11 @@ class FbrSettingsRequest(BaseModel):
 def apply_fbr_settings(fbr: FbrSettings, body: FbrSettingsRequest) -> None:
     if body.fbr_env in ("mock", "sandbox", "production"):
         fbr.fbr_env = body.fbr_env
-    if body.fbr_token:
-        fbr.fbr_token = body.fbr_token.strip()
+    if body.sandbox_token:
+        fbr.sandbox_token = body.sandbox_token.strip()
+    if body.production_token:
+        fbr.production_token = body.production_token.strip()
+    fbr.can_submit_production = bool(body.can_submit_production)
     fbr.seller_ntn_cnic = body.seller_ntn_cnic.strip()
     fbr.seller_ntn = body.seller_ntn.strip()
     fbr.seller_business_name = body.seller_business_name.strip()

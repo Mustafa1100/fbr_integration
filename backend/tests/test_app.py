@@ -445,7 +445,9 @@ def test_fbr_settings_read_only_for_user(user_headers):
     # GET still works — users can view the settings an admin configured.
     data = client.get("/api/settings/fbr", headers=user_headers).json()
     assert data["seller_business_name"] == "Shop Owner Pvt Ltd"
-    assert data["has_token"] is False
+    assert data["has_sandbox_token"] is False
+    assert data["has_production_token"] is False
+    assert data["can_submit_production"] is False
 
     # PUT is retired for regular users — 403, not a silent no-op.
     resp = client.put(
@@ -653,6 +655,178 @@ def test_admin_stats(admin_headers):
     assert stats["total_users"] == 2
     assert stats["total_invoices"] == 2
     assert stats["submitted_invoices"] == 2
+
+def _make_account(admin_headers, email, **fbr_overrides):
+    """Create a throwaway user with a real password + FBR settings, return
+    its bearer headers and id. Keeps env-specific tests off the shared
+    shop@example.com account whose invoice counts other tests assert on."""
+    resp = client.post(
+        "/api/admin/users",
+        json={"email": email, "full_name": email.split("@")[0]},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    uid = resp.json()["id"]
+    temp = resp.json()["temp_password"]
+    settings = {
+        "fbr_env": "mock",
+        "seller_ntn_cnic": "7654321",
+        "seller_business_name": "Promo Pvt Ltd",
+        "seller_province": "Sindh",
+        "seller_address": "Karachi",
+        "default_scenario": "SN001",
+        **fbr_overrides,
+    }
+    assert (
+        client.put(
+            f"/api/admin/users/{uid}/fbr-settings", json=settings, headers=admin_headers
+        ).status_code
+        == 200
+    )
+    login = client.post(
+        "/api/auth/login", json={"email": email, "password": temp}
+    )
+    th = {"Authorization": f"Bearer {login.json()['token']}"}
+    done = client.post(
+        "/api/auth/set-password",
+        json={"new_password": "Str0ng!Passw0rd99", "confirm_password": "Str0ng!Passw0rd99"},
+        headers=th,
+    )
+    return {"Authorization": f"Bearer {done.json()['token']}"}, uid
+
+
+_ENV_CSV = (
+    "pos_invoice_no,invoice_date,buyer_ntn_cnic,buyer_name,buyer_province,"
+    "buyer_address,buyer_registration_type,product_description,hs_code,"
+    "rate,uom,quantity,unit_price,sale_type,scenario_id\n"
+    "POS-ENV-1,2026-08-17,,Walk-in Customer,Sindh,Karachi,Unregistered,"
+    "Widget,0101.2100,18%,\"Numbers, pieces, units\",1,1000,"
+    "Goods at standard rate (default),SN002\n"
+)
+
+
+def test_upload_target_env_is_stamped_and_history_splits(admin_headers):
+    headers, uid = _make_account(
+        admin_headers, "envsplit@example.com", can_submit_production=True
+    )
+
+    sbx = client.post(
+        "/api/uploads",
+        files={"file": ("s.csv", _ENV_CSV, "text/csv")},
+        data={"target": "sandbox"},
+        headers=headers,
+    ).json()
+    prod = client.post(
+        "/api/uploads",
+        files={"file": ("p.csv", _ENV_CSV, "text/csv")},
+        data={"target": "production"},
+        headers=headers,
+    ).json()
+    assert sbx["fbr_env"] == "sandbox" and sbx["invoices_submitted"] == 1
+    assert prod["fbr_env"] == "production" and prod["invoices_submitted"] == 1
+
+    # Submission History splits by ?fbr_env=
+    only_sbx = client.get("/api/uploads?fbr_env=sandbox", headers=headers).json()
+    only_prod = client.get("/api/uploads?fbr_env=production", headers=headers).json()
+    assert [u["id"] for u in only_sbx] == [sbx["id"]]
+    assert [u["id"] for u in only_prod] == [prod["id"]]
+
+    # Invoices History splits the same way, and each invoice carries its env.
+    inv_sbx = client.get("/api/invoices?fbr_env=sandbox", headers=headers).json()
+    inv_prod = client.get("/api/invoices?fbr_env=production", headers=headers).json()
+    assert len(inv_sbx) == 1 and inv_sbx[0]["fbr_env"] == "sandbox"
+    assert len(inv_prod) == 1 and inv_prod[0]["fbr_env"] == "production"
+    # A mock account simulates production too — invoice number still MOCK…
+    assert inv_prod[0]["fbr_invoice_number"].startswith("MOCK")
+
+    # bad env value → 400
+    assert client.get("/api/invoices?fbr_env=bogus", headers=headers).status_code == 400
+
+
+def test_production_upload_blocked_without_capability(admin_headers):
+    headers, _ = _make_account(admin_headers, "nocap@example.com")  # can_submit_production defaults False
+    resp = client.post(
+        "/api/uploads",
+        files={"file": ("p.csv", _ENV_CSV, "text/csv")},
+        data={"target": "production"},
+        headers=headers,
+    )
+    assert resp.status_code == 403
+
+
+def test_promote_invoice_to_production(admin_headers):
+    headers, _ = _make_account(
+        admin_headers, "promote@example.com", can_submit_production=True
+    )
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("s.csv", _ENV_CSV, "text/csv")},
+        data={"target": "sandbox"},
+        headers=headers,
+    ).json()
+    inv = client.get(
+        f"/api/invoices?upload_id={up['id']}", headers=headers
+    ).json()[0]
+    assert inv["fbr_env"] == "sandbox" and inv["status"] == "submitted"
+    sandbox_number = inv["fbr_invoice_number"]
+
+    promoted = client.post(
+        f"/api/invoices/{inv['id']}/promote", headers=headers
+    )
+    assert promoted.status_code == 200, promoted.text
+    body = promoted.json()
+    assert body["fbr_env"] == "production"
+    assert body["status"] == "submitted"
+    assert body["fbr_invoice_number"] != sandbox_number
+
+    # It has moved out of sandbox history and into production history.
+    assert client.get("/api/invoices?fbr_env=sandbox", headers=headers).json() == []
+    prod_hist = client.get("/api/invoices?fbr_env=production", headers=headers).json()
+    assert [i["id"] for i in prod_hist] == [inv["id"]]
+
+    # Promoting again → 400 (already production).
+    assert (
+        client.post(f"/api/invoices/{inv['id']}/promote", headers=headers).status_code
+        == 400
+    )
+
+
+def test_promote_guards(admin_headers):
+    # No capability → 403.
+    plain, _ = _make_account(admin_headers, "promoteno@example.com")
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("s.csv", _ENV_CSV, "text/csv")},
+        data={"target": "sandbox"},
+        headers=plain,
+    ).json()
+    inv_id = client.get(
+        f"/api/invoices?upload_id={up['id']}", headers=plain
+    ).json()[0]["id"]
+    assert client.post(f"/api/invoices/{inv_id}/promote", headers=plain).status_code == 403
+
+    # Capable, but the invoice never submitted cleanly → 400.
+    cap, _ = _make_account(
+        admin_headers, "promotebad@example.com", can_submit_production=True
+    )
+    bad_csv = _ENV_CSV.replace(
+        "\"Numbers, pieces, units\",1,1000", "\"Numbers, pieces, units\",0,1000"
+    )  # quantity 0 trips the mock validator
+    up2 = client.post(
+        "/api/uploads",
+        files={"file": ("bad.csv", bad_csv, "text/csv")},
+        data={"target": "sandbox"},
+        headers=cap,
+    ).json()
+    bad_inv = client.get(
+        f"/api/invoices?upload_id={up2['id']}", headers=cap
+    ).json()[0]
+    assert bad_inv["status"] == "failed"
+    assert (
+        client.post(f"/api/invoices/{bad_inv['id']}/promote", headers=cap).status_code
+        == 400
+    )
+
 
 
 def test_user_isolation(admin_headers):

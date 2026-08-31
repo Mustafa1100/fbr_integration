@@ -19,6 +19,7 @@ export default function UserInvoices() {
   const [qInput, setQInput] = useState('')
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [envFilter, setEnvFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [error, setError] = useState('')
@@ -51,6 +52,7 @@ export default function UserInvoices() {
     if (uploadId) params.set('upload_id', uploadId)
     if (q.trim()) params.set('q', q.trim())
     if (statusFilter !== 'all') params.set('status', statusFilter)
+    if (envFilter !== 'all') params.set('fbr_env', envFilter)
     if (dateFrom) params.set('date_from', dateFrom)
     if (dateTo) params.set('date_to', dateTo)
     api
@@ -60,7 +62,7 @@ export default function UserInvoices() {
         setTotal(Number(resp.headers.get('x-total-count') || 0))
       })
       .catch((e) => setError(e.message))
-  }, [userId, uploadId, page, pageSize, q, statusFilter, dateFrom, dateTo])
+  }, [userId, uploadId, page, pageSize, q, statusFilter, envFilter, dateFrom, dateTo])
 
   function pickUser(id) {
     setSearchParams(id ? { user: id } : {})
@@ -129,6 +131,19 @@ export default function UserInvoices() {
                 <option value="submitted">Submitted</option>
                 <option value="failed">Failed</option>
                 <option value="draft">Draft</option>
+              </select>
+              <select
+                value={envFilter}
+                onChange={(e) => {
+                  setEnvFilter(e.target.value)
+                  setPage(1)
+                }}
+                style={{ maxWidth: 160 }}
+              >
+                <option value="all">All environments</option>
+                <option value="sandbox">Sandbox</option>
+                <option value="production">Production</option>
+                <option value="mock">Mock</option>
               </select>
               <div className="row-actions" style={{ marginLeft: 'auto', gap: '0.75rem', flexWrap: 'wrap' }}>
                 <label className="row-actions" style={{ gap: '0.4rem' }}>
@@ -201,6 +216,7 @@ export default function UserInvoices() {
                     <tr>
                       <th>#</th>
                       <th>POS No.</th>
+                      <th>Env</th>
                       <th>Date</th>
                       <th>Buyer</th>
                       <th>Scenario</th>
@@ -219,6 +235,13 @@ export default function UserInvoices() {
                           <span className="strong">{inv.id}</span>
                         </td>
                         <td>{inv.pos_invoice_no}</td>
+                        <td>
+                          <span
+                            className={`badge ${inv.fbr_env === 'production' ? 'submitted' : 'draft'}`}
+                          >
+                            {inv.fbr_env}
+                          </span>
+                        </td>
                         <td>{inv.invoice_date}</td>
                         <td>{inv.buyer_name}</td>
                         <td>{inv.scenario_id}</td>

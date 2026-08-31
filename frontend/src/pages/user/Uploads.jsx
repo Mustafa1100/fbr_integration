@@ -22,6 +22,8 @@ import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
 import usePageTitle from '../../hooks/usePageTitle'
 
+const ENV_LABELS = { mock: 'Mock', sandbox: 'Sandbox', production: 'Production' }
+
 export default function Uploads() {
   usePageTitle('Generate Invoices')
   const [tab, setTab] = useState('submit') // 'submit' | 'history'
@@ -32,6 +34,7 @@ export default function Uploads() {
   const [qInput, setQInput] = useState('')
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [histEnv, setHistEnv] = useState('all') // 'all' | 'sandbox' | 'production'
   const [listLoading, setListLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -41,9 +44,11 @@ export default function Uploads() {
   const [fileName, setFileName] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const [fbrEnv, setFbrEnv] = useState(null)
+  const [canProd, setCanProd] = useState(false)
+  const [submitTarget, setSubmitTarget] = useState('sandbox') // 'sandbox' | 'production'
   const [showManualModal, setShowManualModal] = useState(false)
   const fileRef = useRef()
-  const isProduction = fbrEnv === 'production'
+  const isProdTarget = submitTarget === 'production'
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -58,6 +63,7 @@ export default function Uploads() {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
     if (q.trim()) params.set('q', q.trim())
     if (statusFilter !== 'all') params.set('status', statusFilter)
+    if (histEnv !== 'all') params.set('fbr_env', histEnv)
     const resp = await api.getRaw(`/api/uploads?${params}`)
     setUploads(await resp.json())
     setTotal(Number(resp.headers.get('x-total-count') || 0))
@@ -67,13 +73,17 @@ export default function Uploads() {
   useEffect(() => {
     refresh().catch((e) => setError(e.message))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, q, statusFilter])
+  }, [page, pageSize, q, statusFilter, histEnv])
 
   useEffect(() => {
     api.get('/api/uploads/scenario-catalog').then(setScenarios).catch(() => {})
     api
       .get('/api/settings/fbr')
-      .then((s) => setFbrEnv(s.fbr_env))
+      .then((s) => {
+        setFbrEnv(s.fbr_env)
+        setCanProd(!!s.can_submit_production)
+        if (s.fbr_env === 'production' && s.can_submit_production) setSubmitTarget('production')
+      })
       .catch(() => {})
   }, [])
 
@@ -87,6 +97,7 @@ export default function Uploads() {
     try {
       const formData = new FormData()
       formData.append('file', file)
+      formData.append('target', submitTarget)
       const result = await api.upload('/api/uploads', formData)
       setLastResult(result)
       fileRef.current.value = ''
@@ -118,7 +129,9 @@ export default function Uploads() {
   }
 
   async function downloadTemplate(scenario) {
-    const path = scenario ? `/api/uploads/template?scenario=${scenario}` : '/api/uploads/template'
+    const path = scenario
+      ? `/api/uploads/template?scenario=${scenario}`
+      : `/api/uploads/template?target=${submitTarget}`
     const resp = await api.getRaw(path)
     const blob = await resp.blob()
     const objectUrl = URL.createObjectURL(blob)
@@ -153,11 +166,9 @@ export default function Uploads() {
           <button type="button" className="btn btn-secondary" onClick={() => downloadTemplate()}>
             <Download size={16} /> Download template
           </button>
-          {isProduction && (
-            <Link to="/columns" className="btn btn-secondary">
-              <BookOpenText size={16} /> Column guide
-            </Link>
-          )}
+          <Link to="/columns" className="btn btn-secondary">
+            <BookOpenText size={16} /> Column guide
+          </Link>
         </div>
       </div>
 
@@ -187,7 +198,36 @@ export default function Uploads() {
 
       {tab === 'submit' && (
         <>
-          {!isProduction && scenarios.length > 0 && (
+          <div className="card" style={{ marginBottom: '1.5rem' }}>
+            <div className="field" style={{ margin: 0 }}>
+              <label>Submit to</label>
+              <div className="row-actions" style={{ gap: 8 }}>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${!isProdTarget ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setSubmitTarget('sandbox')}
+                >
+                  <FlaskConical size={14} /> Sandbox test
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${isProdTarget ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => canProd && setSubmitTarget('production')}
+                  disabled={!canProd}
+                  title={canProd ? undefined : 'Your account is not enabled for production submission'}
+                >
+                  <ReceiptText size={14} /> Production
+                </button>
+              </div>
+              <p className="hint" style={{ marginTop: 8 }}>
+                {isProdTarget
+                  ? 'These invoices are submitted straight to FBR production — real, permanent tax records.'
+                  : `Test submission${fbrEnv === 'mock' ? ' (simulated — no FBR credentials configured)' : ' against the FBR sandbox'}. Nothing here is a live tax record; promote an invoice from Invoices History once it looks right.`}
+              </p>
+            </div>
+          </div>
+
+          {!isProdTarget && scenarios.length > 0 && (
             <div className="card" style={{ marginBottom: '1.5rem' }}>
               <div className="row-actions" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
                 <FlaskConical size={17} style={{ flexShrink: 0, color: 'var(--muted)' }} />
@@ -269,7 +309,8 @@ export default function Uploads() {
                   </>
                 ) : (
                   <>
-                    <UploadCloud size={16} /> Upload &amp; submit to FBR
+                    <UploadCloud size={16} /> Upload &amp; submit to{' '}
+                    {isProdTarget ? 'production' : 'sandbox'}
                   </>
                 )}
               </button>
@@ -308,6 +349,22 @@ export default function Uploads() {
 
       {tab === 'history' && (
         <>
+          <div className="row-actions" style={{ gap: 8, marginBottom: '1rem' }}>
+            {['all', 'sandbox', 'production'].map((e) => (
+              <button
+                key={e}
+                type="button"
+                className={`btn btn-sm ${histEnv === e ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => {
+                  setHistEnv(e)
+                  setPage(1)
+                }}
+              >
+                {e === 'all' ? 'All' : ENV_LABELS[e]}
+              </button>
+            ))}
+          </div>
+
           <div className="card" style={{ marginBottom: '1.25rem' }}>
             <div className="row-actions" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
               <div className="input-wrap" style={{ flex: '1 1 240px', maxWidth: 320 }}>
@@ -360,6 +417,7 @@ export default function Uploads() {
                     <tr>
                       <th>#</th>
                       <th>File</th>
+                      <th>Env</th>
                       <th>Date</th>
                       <th>Rows</th>
                       <th>Invoices</th>
@@ -376,6 +434,13 @@ export default function Uploads() {
                         <td>
                           <span className="strong">
                             <FileText size={14} /> {u.filename}
+                          </span>
+                        </td>
+                        <td>
+                          <span
+                            className={`badge ${u.fbr_env === 'production' ? 'submitted' : 'draft'}`}
+                          >
+                            {ENV_LABELS[u.fbr_env] || u.fbr_env}
                           </span>
                         </td>
                         <td>{new Date(u.created_at).toLocaleString()}</td>
@@ -432,7 +497,7 @@ export default function Uploads() {
         <ManualInvoiceModal
           onClose={() => setShowManualModal(false)}
           onSubmitted={handleManualSubmitted}
-          isProduction={isProduction}
+          target={submitTarget}
           scenarios={scenarios}
         />
       )}
