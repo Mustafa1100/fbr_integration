@@ -18,10 +18,16 @@ import usePageTitle from '../../hooks/usePageTitle'
 
 // User-facing wording: "Test" (sandbox / simulated) vs "Live" (real FBR).
 const MODE_LABELS = { mock: 'Test', sandbox: 'Test', production: 'Live' }
-const FILTER_LABELS = { all: 'All', sandbox: 'Test', production: 'Live' }
+const ENV_OPTIONS = [
+  { value: 'production', label: 'Live' },
+  { value: 'sandbox', label: 'Test' },
+  { value: 'all', label: 'All (Test + Live)' },
+]
 
 export default function Invoices() {
   usePageTitle('Invoices History')
+  const [searchParams] = useSearchParams()
+  const uploadId = searchParams.get('upload')
   const [invoices, setInvoices] = useState([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -29,14 +35,13 @@ export default function Invoices() {
   const [qInput, setQInput] = useState('')
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [envFilter, setEnvFilter] = useState('all') // 'all' | 'sandbox' | 'production'
+  // Default to Live; a deep-link from an upload shows everything in it.
+  const [envFilter, setEnvFilter] = useState(uploadId ? 'all' : 'production')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [canProd, setCanProd] = useState(false)
-  const [searchParams] = useSearchParams()
-  const uploadId = searchParams.get('upload')
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -139,6 +144,22 @@ export default function Invoices() {
           </h1>
           <p className="page-sub">Review invoice receipts and their FBR invoice numbers.</p>
         </div>
+        <div className="page-actions">
+          <select
+            value={envFilter}
+            onChange={(e) => {
+              setEnvFilter(e.target.value)
+              setPage(1)
+            }}
+            aria-label="Show invoices for"
+          >
+            {ENV_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
       {error && (
         <div className="alert error">
@@ -146,22 +167,6 @@ export default function Invoices() {
           <span>{error}</span>
         </div>
       )}
-
-      <div className="row-actions" style={{ gap: 8, marginBottom: '1rem' }}>
-        {['all', 'sandbox', 'production'].map((e) => (
-          <button
-            key={e}
-            type="button"
-            className={`btn btn-sm ${envFilter === e ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => {
-              setEnvFilter(e)
-              setPage(1)
-            }}
-          >
-            {FILTER_LABELS[e]}
-          </button>
-        ))}
-      </div>
 
       <div className="card" style={{ marginBottom: '1.25rem' }}>
         <div className="row-actions" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
