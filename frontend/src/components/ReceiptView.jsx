@@ -70,18 +70,36 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
       </div>
     )
 
-  // 3rd Schedule Goods are taxed off fixedNotifiedValueOrRetailPrice, not
-  // the sale value — value_excl_st on those items can hold a negligible
-  // FBR-workaround placeholder (0.01) rather than a real price (see
-  // csv_processor.py). Show the real fixed/notified value as the basis
-  // instead, wherever it's set, so the receipt doesn't read as "free."
+  // Per line:
+  //  - displayTotal is the backend's total_value — an explicit total_values
+  //    from the upload when given (so it matches an upstream system to the
+  //    paisa), otherwise sale value + taxes − discount.
+  //  - displayExcl is the pre-tax, pre-discount value, backed out of the
+  //    total so every row reconciles (excl − discount + tax = total). With
+  //    no override / no discount this is just value_excl_st.
+  //  - A 3rd Schedule line entered with unit_price 0 carries only a
+  //    negligible placeholder (0.01) in value_excl_st (see csv_processor.py)
+  //    — show the notified retail price there so it doesn't read as "free."
+  //    Tax on a 3rd Schedule line is still computed on the notified price,
+  //    not this figure — hence the * note.
+  const PLACEHOLDER_EXCL = 0.01
   const items = inv.items.map((it) => {
-    const excl = it.fixed_notified_value > 0 ? it.fixed_notified_value : it.value_excl_st
-    return { ...it, displayExcl: excl, displayTotal: excl + it.sales_tax }
+    const discount = it.discount || 0
+    const lineTax = it.sales_tax + (it.further_tax || 0) + (it.fed_payable || 0)
+    const usePlaceholder =
+      it.fixed_notified_value > 0 && it.value_excl_st <= PLACEHOLDER_EXCL
+    const computed = Math.max(it.value_excl_st - discount, 0) + lineTax
+    const total = usePlaceholder
+      ? it.fixed_notified_value + lineTax
+      : it.total_value ?? computed
+    const excl = usePlaceholder ? it.fixed_notified_value : total - lineTax + discount
+    return { ...it, displayExcl: excl, displayDiscount: discount, displayTotal: total }
   })
   const usesFixedValue = items.some((it) => it.fixed_notified_value > 0)
+  const totalDiscount = items.reduce((sum, it) => sum + it.displayDiscount, 0)
+  const showDiscountCol = totalDiscount > 0
   const displayTotalExcl = items.reduce((sum, it) => sum + it.displayExcl, 0)
-  const displayGrandTotal = displayTotalExcl + inv.total_tax
+  const displayGrandTotal = items.reduce((sum, it) => sum + it.displayTotal, 0)
 
   return (
     <>
@@ -204,6 +222,7 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
                 <th>Unit price</th>
                 <th>Rate</th>
                 <th>Excl. ST</th>
+                {showDiscountCol && <th>Discount</th>}
                 <th>Sales tax</th>
                 <th>Total</th>
               </tr>
@@ -224,6 +243,11 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
                     {it.displayExcl.toLocaleString()}
                     {it.fixed_notified_value > 0 && <sup>*</sup>}
                   </td>
+                  {showDiscountCol && (
+                    <td>
+                      {it.displayDiscount > 0 ? `−${it.displayDiscount.toLocaleString()}` : '—'}
+                    </td>
+                  )}
                   <td>{it.sales_tax.toLocaleString()}</td>
                   <td>
                     <span className="strong">{it.displayTotal.toLocaleString()}</span>
@@ -244,9 +268,15 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
         <div className="totals">
           <div className="totals-box">
             <div className="trow">
-              <span>Total (excl. ST)</span>
+              <span>{showDiscountCol ? 'Subtotal (excl. ST)' : 'Total (excl. ST)'}</span>
               <span>{displayTotalExcl.toLocaleString()}</span>
             </div>
+            {showDiscountCol && (
+              <div className="trow">
+                <span>Discount</span>
+                <span>−{totalDiscount.toLocaleString()}</span>
+              </div>
+            )}
             <div className="trow">
               <span>Sales tax</span>
               <span>{inv.total_tax.toLocaleString()}</span>
