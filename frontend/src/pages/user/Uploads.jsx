@@ -490,8 +490,11 @@ export default function Uploads() {
                         <td>
                           <div className="row-actions">
                             {u.invoices_created > 0 && (
-                              <Link className="btn btn-ghost btn-sm" to={`/invoices?upload=${u.id}`}>
-                                <ReceiptText size={14} /> invoices
+                              <Link
+                                className="btn btn-primary btn-sm"
+                                to={`/invoices?upload=${u.id}`}
+                              >
+                                invoices
                               </Link>
                             )}
                             {canProd &&
@@ -501,7 +504,7 @@ export default function Uploads() {
                                   className="btn btn-secondary btn-sm"
                                   onClick={() => setConfirmPromote(u)}
                                 >
-                                  <Rocket size={14} /> Submit to FBR
+                                  Submit to FBR
                                 </button>
                               )}
                           </div>
