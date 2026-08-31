@@ -70,16 +70,27 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
       </div>
     )
 
-  // 3rd Schedule Goods are taxed off fixedNotifiedValueOrRetailPrice, not
-  // the sale value — value_excl_st on those items can hold a negligible
-  // FBR-workaround placeholder (0.01) rather than a real price (see
-  // csv_processor.py). Show the real fixed/notified value as the basis
-  // instead, wherever it's set, so the receipt doesn't read as "free."
+  // What a line shows as its pre-tax value:
+  //  - A 3rd Schedule line entered with unit_price 0 carries only a
+  //    negligible FBR-workaround placeholder (0.01) in value_excl_st (see
+  //    csv_processor.py) — show the notified retail price there so the
+  //    receipt doesn't read as "free."
+  //  - Otherwise show the actual sale value, net of any line discount. Tax
+  //    on a 3rd Schedule line is still computed on the notified retail
+  //    price, not this figure — hence the * note.
+  const PLACEHOLDER_EXCL = 0.01
   const items = inv.items.map((it) => {
-    const excl = it.fixed_notified_value > 0 ? it.fixed_notified_value : it.value_excl_st
-    return { ...it, displayExcl: excl, displayTotal: excl + it.sales_tax }
+    const discount = it.discount || 0
+    const lineTax = it.sales_tax + (it.further_tax || 0) + (it.fed_payable || 0)
+    const usePlaceholder =
+      it.fixed_notified_value > 0 && it.value_excl_st <= PLACEHOLDER_EXCL
+    const excl = usePlaceholder
+      ? it.fixed_notified_value
+      : Math.max(it.value_excl_st - discount, 0)
+    return { ...it, displayExcl: excl, displayDiscount: discount, displayTotal: excl + lineTax }
   })
   const usesFixedValue = items.some((it) => it.fixed_notified_value > 0)
+  const totalDiscount = items.reduce((sum, it) => sum + it.displayDiscount, 0)
   const displayTotalExcl = items.reduce((sum, it) => sum + it.displayExcl, 0)
   const displayGrandTotal = displayTotalExcl + inv.total_tax
 
@@ -238,6 +249,11 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
           <p className="muted" style={{ marginTop: 8, fontSize: '0.78rem' }}>
             * 3rd Schedule item — taxed on the government-notified retail price, not the sale
             value.
+          </p>
+        )}
+        {totalDiscount > 0 && (
+          <p className="muted" style={{ marginTop: 8, fontSize: '0.78rem' }}>
+            Excl. ST is shown net of {totalDiscount.toLocaleString()} line discount.
           </p>
         )}
 
