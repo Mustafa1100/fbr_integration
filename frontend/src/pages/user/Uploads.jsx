@@ -364,7 +364,7 @@ export default function Uploads() {
                     {lastResult.invoices_submitted}{' '}
                     {lastResult.fbr_env === 'production' ? 'submitted to FBR' : 'passed the test'}
                     {lastResult.invoices_failed > 0 && <>, {lastResult.invoices_failed} failed</>}.{' '}
-                    <Link to="/invoices">
+                    <Link to={`/invoices?upload=${lastResult.id}`}>
                       {lastResult.fbr_env === 'production' ? 'View receipts' : 'Review them'}
                     </Link>
                   </span>
