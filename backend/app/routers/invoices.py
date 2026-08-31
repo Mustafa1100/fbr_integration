@@ -140,7 +140,15 @@ def detail_out(inv: Invoice, fbr) -> dict:
                 "unit_price": it.unit_price,
                 "value_excl_st": round(it.value_excl_st, 2),
                 "sales_tax": round(it.sales_tax, 2),
-                "total_value": round(it.total_value, 2),
+                "st_withheld": round(float(it.st_withheld or 0), 2),
+                # extra_tax is a Float on the model but predates that on some
+                # dev DBs (VARCHAR column, no SQLite migration) — coerce like
+                # build_payload already does rather than round() a str.
+                "extra_tax": round(float(it.extra_tax or 0), 2),
+                "further_tax": round(float(it.further_tax or 0), 2),
+                "fed_payable": round(float(it.fed_payable or 0), 2),
+                "discount": round(float(it.discount or 0), 2),
+                "total_value": round(it.total_values or it.total_value, 2),
                 # Only meaningful (>0) for 3rd Schedule Goods — the receipt
                 # uses this as the real pricing basis instead of
                 # value_excl_st, which can hold a negligible FBR-workaround

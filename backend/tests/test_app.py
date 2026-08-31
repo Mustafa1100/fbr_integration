@@ -842,6 +842,127 @@ def test_reduced_rate_goods_send_empty_extra_tax_and_tax_off_sale_value(user_hea
     assert detail2["payload"]["items"][0]["extraTax"] == 0.0
 
 
+def test_optional_amount_columns_pass_through_to_fbr_payload(user_headers):
+    # A provider whose POS already carries a discount / withheld tax / FED
+    # etc. can now send those columns and have them reach FBR unchanged,
+    # instead of being silently dropped. invoice_ref_no and an explicit
+    # sales_tax / total_values override travel through the same way.
+    csv_text = (
+        "pos_invoice_no,invoice_date,buyer_ntn_cnic,buyer_name,buyer_province,"
+        "buyer_address,buyer_registration_type,product_description,hs_code,"
+        "rate,uom,quantity,unit_price,sale_type,scenario_id,invoice_ref_no,"
+        "sales_tax,sales_tax_withheld_at_source,extra_tax,further_tax,"
+        "fed_payable,discount,total_values\n"
+        "POS-CHG,2026-08-17,,Walk-in Customer,Sindh,Karachi,Unregistered,"
+        "Discounted Item,0101.2100,18%,\"Numbers, pieces, units\",1,1000,"
+        "Goods at standard rate (default),SN002,SI-ORIG-9,180,25,5,40,10,150,1055\n"
+    )
+    resp = client.post(
+        "/api/uploads",
+        files={"file": ("charges.csv", csv_text, "text/csv")},
+        headers=user_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["invoices_submitted"] == 1
+
+    invoices = client.get(
+        "/api/invoices?upload_id=" + str(resp.json()["id"]), headers=user_headers
+    ).json()
+    detail = client.get(f"/api/invoices/{invoices[0]['id']}", headers=user_headers).json()
+    payload = detail["payload"]
+    assert payload["invoiceRefNo"] == "SI-ORIG-9"
+    item = payload["items"][0]
+    assert item["salesTaxApplicable"] == 180
+    assert item["salesTaxWithheldAtSource"] == 25
+    assert item["extraTax"] == 5
+    assert item["furtherTax"] == 40
+    assert item["fedPayable"] == 10
+    assert item["discount"] == 150
+    # Explicit total_values wins over the derived line total.
+    assert item["totalValues"] == 1055
+
+    # An old-style file with none of these columns still works, and the
+    # amounts default to 0 / the derived total.
+    plain = (
+        "pos_invoice_no,invoice_date,buyer_ntn_cnic,buyer_name,buyer_province,"
+        "buyer_address,buyer_registration_type,product_description,hs_code,"
+        "rate,uom,quantity,unit_price,sale_type,scenario_id\n"
+        "POS-PLAIN,2026-08-17,,Walk-in Customer,Sindh,Karachi,Unregistered,"
+        "Plain Item,0101.2100,18%,\"Numbers, pieces, units\",1,1000,"
+        "Goods at standard rate (default),SN002\n"
+    )
+    resp2 = client.post(
+        "/api/uploads",
+        files={"file": ("plain.csv", plain, "text/csv")},
+        headers=user_headers,
+    )
+    inv2 = client.get(
+        "/api/invoices?upload_id=" + str(resp2.json()["id"]), headers=user_headers
+    ).json()
+    d2 = client.get(f"/api/invoices/{inv2[0]['id']}", headers=user_headers).json()
+    it2 = d2["payload"]["items"][0]
+    assert it2["discount"] == 0
+    assert it2["furtherTax"] == 0
+    assert it2["totalValues"] == 1180  # 1000 + 180 sales tax, nothing else
+
+
+def test_csv_template_carries_optional_amount_columns(user_headers):
+    resp = client.get("/api/uploads/template", headers=user_headers)
+    assert resp.status_code == 200
+    header = resp.text.splitlines()[0].split(",")
+    for col in (
+        "invoice_ref_no",
+        "sales_tax",
+        "sales_tax_withheld_at_source",
+        "extra_tax",
+        "further_tax",
+        "fed_payable",
+        "discount",
+        "total_values",
+    ):
+        assert col in header
+
+
+def test_compute_sales_tax_handles_percent_and_fixed_per_unit_rates():
+    from app.services.invoice_service import compute_sales_tax
+
+    # Plain percentage (unchanged behaviour).
+    assert compute_sales_tax(1000, "18%") == 180.0
+    assert compute_sales_tax(100, "1.43%") == 1.43
+    assert compute_sales_tax(1000, "0%") == 0.0
+    assert compute_sales_tax(1000, "Exempt") == 0.0
+    # Fixed rupees per unit x quantity — PRAL SN021 ("Rs.3", qty 12 -> 36)
+    # and SN023 ("Rs.200", qty 123 -> 24600).
+    assert compute_sales_tax(123, "Rs.3", 12) == 36.0
+    assert compute_sales_tax(234, "Rs.200", 123) == 24600.0
+    # Percentage + per-unit together — PRAL SN022 ("18% along with rupees
+    # 60 per kilogram", value 100, qty 1 -> 18 + 60 = 78).
+    assert compute_sales_tax(100, "18% along with rupees 60 per kilogram", 1) == 78.0
+
+
+def test_csv_upload_with_fixed_per_unit_rate(user_headers):
+    # SN023-style: rate is a flat "Rs.200" per unit, so tax must be
+    # 200 x quantity, not 0 (which is what a "%"-only parser produced).
+    csv_text = (
+        "pos_invoice_no,invoice_date,buyer_ntn_cnic,buyer_name,buyer_province,"
+        "buyer_address,buyer_registration_type,product_description,hs_code,"
+        "rate,uom,quantity,unit_price,sale_type,scenario_id\n"
+        "POS-CNG,2026-08-17,,Walk-in Customer,Sindh,Karachi,Unregistered,"
+        "CNG,0101.2100,Rs.200,\"Numbers, pieces, units\",123,234,CNG Sales,SN023\n"
+    )
+    resp = client.post(
+        "/api/uploads",
+        files={"file": ("sn023.csv", csv_text, "text/csv")},
+        headers=user_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    invoices = client.get(
+        "/api/invoices?upload_id=" + str(resp.json()["id"]), headers=user_headers
+    ).json()
+    detail = client.get(f"/api/invoices/{invoices[0]['id']}", headers=user_headers).json()
+    assert detail["payload"]["items"][0]["salesTaxApplicable"] == 24600.0
+
+
 def test_admin_views_user_uploads_and_invoices(admin_headers, user_headers):
     users = client.get("/api/admin/users", headers=admin_headers).json()
     shop = next(u for u in users if u["email"] == "shop@example.com")
@@ -1249,28 +1370,24 @@ def test_excel_upload_happy_path(user_headers):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.append(ALL_COLUMNS)
-    ws.append(
-        [
-            "POS-XL1",
-            "2026-08-19",
-            "1234567",
-            "Excel Buyer",
-            "Punjab",
-            "Lahore",
-            "Registered",
-            "Excel Item",
-            "8471.3010",
-            "18%",
-            "Numbers, pieces, units",
-            3,
-            1000,
-            "Goods at standard rate (default)",
-            "SN001",
-            "",
-            "",
-            "",
-        ]
-    )
+    row = [
+        "POS-XL1",
+        "2026-08-19",
+        "1234567",
+        "Excel Buyer",
+        "Punjab",
+        "Lahore",
+        "Registered",
+        "Excel Item",
+        "8471.3010",
+        "18%",
+        "Numbers, pieces, units",
+        3,
+        1000,
+        "Goods at standard rate (default)",
+        "SN001",
+    ]
+    ws.append(row + [""] * (len(ALL_COLUMNS) - len(row)))
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -1315,28 +1432,24 @@ def test_excel_upload_with_percent_and_date_formatted_cells(user_headers):
     ws = wb.active
     ws.append(ALL_COLUMNS)
     row_idx = 2
-    ws.append(
-        [
-            "POS-XL2",
-            date(2026, 8, 19),
-            "",
-            "Walk-in Customer",
-            "Sindh",
-            "Karachi",
-            "Unregistered",
-            "Formatted Item",
-            "8517.1219",
-            0.18,
-            "Numbers, pieces, units",
-            1,
-            1000,
-            "Goods at standard rate (default)",
-            "SN001",
-            "",
-            "",
-            "",
-        ]
-    )
+    row = [
+        "POS-XL2",
+        date(2026, 8, 19),
+        "",
+        "Walk-in Customer",
+        "Sindh",
+        "Karachi",
+        "Unregistered",
+        "Formatted Item",
+        "8517.1219",
+        0.18,
+        "Numbers, pieces, units",
+        1,
+        1000,
+        "Goods at standard rate (default)",
+        "SN001",
+    ]
+    ws.append(row + [""] * (len(ALL_COLUMNS) - len(row)))
     rate_cell = ws.cell(row=row_idx, column=ALL_COLUMNS.index("rate") + 1)
     rate_cell.number_format = "0%"
     buf = io.BytesIO()

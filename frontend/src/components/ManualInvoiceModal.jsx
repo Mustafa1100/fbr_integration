@@ -27,6 +27,14 @@ const CSV_COLUMNS = [
   'fixed_notified_value',
   'sro_schedule_no',
   'sro_item_serial_no',
+  'invoice_ref_no',
+  'sales_tax',
+  'sales_tax_withheld_at_source',
+  'extra_tax',
+  'further_tax',
+  'fed_payable',
+  'discount',
+  'total_values',
 ]
 
 function csvField(value) {
@@ -59,6 +67,16 @@ function emptyForm() {
     fixed_notified_value: '',
     sro_schedule_no: '',
     sro_item_serial_no: '',
+    invoice_ref_no: '',
+    // Optional amounts — blank means "let the app work it out" for
+    // sales_tax / total_values, and 0 for the rest.
+    sales_tax: '',
+    sales_tax_withheld_at_source: '',
+    extra_tax: '',
+    further_tax: '',
+    fed_payable: '',
+    discount: '',
+    total_values: '',
   }
 }
 
@@ -139,6 +157,16 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, isProduction,
               <Req />
             </label>
             <input type="date" value={form.invoice_date} onChange={set('invoice_date')} required />
+          </div>
+          <div className="field">
+            <label>
+              Invoice ref. no. <span className="hint">(optional)</span>
+            </label>
+            <input
+              value={form.invoice_ref_no}
+              onChange={set('invoice_ref_no')}
+              placeholder="Original invoice this one relates to"
+            />
           </div>
           {!isProduction && scenarios?.length > 0 && (
             <div className="field">
@@ -274,6 +302,95 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, isProduction,
               onChange={set('unit_price')}
               placeholder="150000"
               required
+            />
+          </div>
+        </div>
+
+        <h3 className="section-title">Other taxes &amp; charges</h3>
+        <p className="muted" style={{ margin: '0 0 12px' }}>
+          All optional. Leave blank unless the sale actually carries these — a blank{' '}
+          <code>sales tax</code> is worked out from the rate, everything else defaults to 0.
+        </p>
+        <div className="form-grid">
+          <div className="field">
+            <label>
+              Sales tax <span className="hint">(blank = auto-calculate)</span>
+            </label>
+            <input
+              type="number"
+              step="any"
+              min="0"
+              value={form.sales_tax}
+              onChange={set('sales_tax')}
+              placeholder="auto"
+            />
+          </div>
+          <div className="field">
+            <label>Discount</label>
+            <input
+              type="number"
+              step="any"
+              min="0"
+              value={form.discount}
+              onChange={set('discount')}
+              placeholder="0"
+            />
+          </div>
+          <div className="field">
+            <label>Further tax</label>
+            <input
+              type="number"
+              step="any"
+              min="0"
+              value={form.further_tax}
+              onChange={set('further_tax')}
+              placeholder="0"
+            />
+          </div>
+          <div className="field">
+            <label>FED payable</label>
+            <input
+              type="number"
+              step="any"
+              min="0"
+              value={form.fed_payable}
+              onChange={set('fed_payable')}
+              placeholder="0"
+            />
+          </div>
+          <div className="field">
+            <label>Extra tax</label>
+            <input
+              type="number"
+              step="any"
+              min="0"
+              value={form.extra_tax}
+              onChange={set('extra_tax')}
+              placeholder="0"
+            />
+          </div>
+          <div className="field">
+            <label>Sales tax withheld at source</label>
+            <input
+              type="number"
+              step="any"
+              min="0"
+              value={form.sales_tax_withheld_at_source}
+              onChange={set('sales_tax_withheld_at_source')}
+              placeholder="0"
+            />
+          </div>
+          <div className="field">
+            <label>
+              Total value <span className="hint">(blank = auto-calculate)</span>
+            </label>
+            <input
+              type="number"
+              step="any"
+              min="0"
+              value={form.total_values}
+              onChange={set('total_values')}
+              placeholder="auto"
             />
           </div>
         </div>
