@@ -295,7 +295,7 @@ export default function Invoices() {
                       <span className={`badge ${inv.status}`}>{inv.status}</span>
                     </td>
                     <td>
-                      {inv.status === 'submitted' ? (
+                      {inv.status === 'submitted' && inv.fbr_env === 'production' ? (
                         <button
                           type="button"
                           className={`btn btn-sm ${inv.is_paid ? 'btn-primary' : 'btn-secondary'}`}

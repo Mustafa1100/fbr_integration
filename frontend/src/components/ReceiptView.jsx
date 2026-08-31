@@ -135,7 +135,7 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
           <h1 className="page-title">
             <ReceiptIcon size={22} /> Tax Receipt{' '}
             <span className={`badge ${inv.status}`}>{inv.status}</span>
-            {inv.status === 'submitted' && (
+            {inv.status === 'submitted' && inv.fbr_env === 'production' && (
               <span className={`badge ${inv.is_paid ? 'submitted' : 'draft'}`}>
                 {inv.is_paid ? 'paid' : 'unpaid'}
               </span>
@@ -146,7 +146,7 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
         <div className="page-actions">
           <Link
             to={backTo}
-            className="btn btn-secondary has-tip has-tip-below"
+            className="btn btn-hollow has-tip has-tip-below"
             data-tip={backLabel}
             aria-label={backLabel}
           >
@@ -157,7 +157,7 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
             inv.status === 'submitted' &&
             inv.fbr_env !== 'production' && (
               <button
-                className="btn btn-secondary has-tip has-tip-below"
+                className="btn btn-hollow has-tip has-tip-below"
                 onClick={() => setConfirmingPromote(true)}
                 disabled={promoting}
                 data-tip="Submit to FBR"
@@ -166,9 +166,9 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
                 {promoting ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
               </button>
             )}
-          {allowMarkPaid && inv.status === 'submitted' && (
+          {allowMarkPaid && inv.status === 'submitted' && inv.fbr_env === 'production' && (
             <button
-              className={`btn has-tip has-tip-below ${inv.is_paid ? 'btn-secondary' : 'btn-primary'}`}
+              className="btn btn-hollow has-tip has-tip-below"
               onClick={() => (inv.is_paid ? setPaid(false) : setConfirmingPaid(true))}
               disabled={paidBusy}
               data-tip={inv.is_paid ? 'Mark as unpaid' : 'Mark as paid'}
@@ -178,7 +178,7 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
             </button>
           )}
           <button
-            className="btn btn-primary has-tip has-tip-below"
+            className="btn btn-hollow has-tip has-tip-below"
             onClick={() => window.print()}
             data-tip="Print receipt"
             aria-label="Print receipt"

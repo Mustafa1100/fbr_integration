@@ -391,6 +391,9 @@ td .strong { color: var(--text); font-weight: 600; }
 .btn-danger:hover { background: var(--red-50); }
 .btn-ghost { background: transparent; color: var(--text-2); }
 .btn-ghost:hover { background: var(--slate-50); }
+/* White by default, fills green on hover (icons follow currentColor). */
+.btn-hollow { background: var(--surface); color: var(--text); border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.btn-hollow:hover:not(:disabled) { background: var(--brand-600); border-color: var(--brand-600); color: #fff; }
 .btn-sm { padding: 5px 11px; font-size: 0.78rem; border-radius: 8px; gap: 6px; }
 
 /* Hover tooltip: put data-tip="..." on the element (needs position: relative,

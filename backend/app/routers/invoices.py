@@ -248,10 +248,14 @@ def mark_invoice_paid(
 ):
     """Track whether the buyer has actually paid — independent of FBR
     submission status. Only meaningful once an invoice is a real,
-    FBR-registered record; a draft/failed invoice was never issued."""
+    FBR-registered record; a draft/failed or test invoice was never issued."""
     inv = _get_owned(db, user, invoice_id)
     if inv.status != "submitted":
         raise HTTPException(400, "Only a submitted invoice can be marked as paid")
+    if inv.fbr_env != "production":
+        raise HTTPException(
+            400, "This is a test invoice — only a live FBR invoice can be marked as paid."
+        )
     inv.is_paid = body.is_paid
     inv.paid_at = datetime.now(timezone.utc) if body.is_paid else None
     db.commit()
