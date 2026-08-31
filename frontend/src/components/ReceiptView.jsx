@@ -84,15 +84,23 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
     const lineTax = it.sales_tax + (it.further_tax || 0) + (it.fed_payable || 0)
     const usePlaceholder =
       it.fixed_notified_value > 0 && it.value_excl_st <= PLACEHOLDER_EXCL
-    const excl = usePlaceholder
-      ? it.fixed_notified_value
-      : Math.max(it.value_excl_st - discount, 0)
-    return { ...it, displayExcl: excl, displayDiscount: discount, displayTotal: excl + lineTax }
+    // The line total is the backend's total_value — an explicit total_values
+    // from the upload when given (so it matches an upstream system to the
+    // paisa), otherwise sale value + taxes − discount. The pre-tax figure is
+    // backed out of it so the row always reconciles. A 3rd Schedule line
+    // entered with unit_price 0 has no real sale value — fall back to the
+    // notified retail price there.
+    const computed = Math.max(it.value_excl_st - discount, 0) + lineTax
+    const total = usePlaceholder
+      ? it.fixed_notified_value + lineTax
+      : it.total_value ?? computed
+    const excl = usePlaceholder ? it.fixed_notified_value : total - lineTax
+    return { ...it, displayExcl: excl, displayDiscount: discount, displayTotal: total }
   })
   const usesFixedValue = items.some((it) => it.fixed_notified_value > 0)
   const totalDiscount = items.reduce((sum, it) => sum + it.displayDiscount, 0)
   const displayTotalExcl = items.reduce((sum, it) => sum + it.displayExcl, 0)
-  const displayGrandTotal = displayTotalExcl + inv.total_tax
+  const displayGrandTotal = items.reduce((sum, it) => sum + it.displayTotal, 0)
 
   return (
     <>
