@@ -17,17 +17,17 @@ import { api, getStoredUser } from '../../api'
 import { TrendChart, DonutChart } from '../../components/Charts'
 import usePageTitle from '../../hooks/usePageTitle'
 
-const ENV_TABS = [
-  { value: 'all', label: 'All' },
-  { value: 'sandbox', label: 'Test' },
+const ENV_OPTIONS = [
   { value: 'production', label: 'Live' },
+  { value: 'sandbox', label: 'Test' },
+  { value: 'all', label: 'All (Test + Live)' },
 ]
 
 export default function Dashboard() {
   usePageTitle('Dashboard')
   const [stats, setStats] = useState(null)
   const [error, setError] = useState('')
-  const [env, setEnv] = useState('all')
+  const [env, setEnv] = useState('production')
   const user = getStoredUser()
 
   useEffect(() => {
@@ -49,19 +49,19 @@ export default function Dashboard() {
             Overview of your CSV/Excel uploads and FBR invoicing activity.
           </p>
         </div>
-      </div>
-
-      <div className="row-actions" style={{ gap: 8, marginBottom: '1.25rem' }}>
-        {ENV_TABS.map((t) => (
-          <button
-            key={t.value}
-            type="button"
-            className={`btn btn-sm ${env === t.value ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setEnv(t.value)}
+        <div className="page-actions">
+          <select
+            value={env}
+            onChange={(e) => setEnv(e.target.value)}
+            aria-label="Show stats for"
           >
-            {t.label}
-          </button>
-        ))}
+            {ENV_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {error && (
