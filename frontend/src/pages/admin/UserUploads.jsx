@@ -60,7 +60,7 @@ export default function UserUploads() {
   async function removeUpload(u) {
     if (
       !window.confirm(
-        `Delete upload "${u.filename}"? This hides it — and its draft/failed invoices — from this user's history. Invoices already submitted to FBR stay untouched. (Soft delete — data is kept.)`
+        `Delete upload "${u.filename}"? This hides it — and every invoice in the batch, submitted ones included — from this user's history. (Soft delete — data is kept and the FBR submissions are untouched.)`
       )
     )
       return
