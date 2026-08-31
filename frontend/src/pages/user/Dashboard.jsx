@@ -17,15 +17,25 @@ import { api, getStoredUser } from '../../api'
 import { TrendChart, DonutChart } from '../../components/Charts'
 import usePageTitle from '../../hooks/usePageTitle'
 
+const ENV_OPTIONS = [
+  { value: 'production', label: 'Live' },
+  { value: 'sandbox', label: 'Test' },
+  { value: 'all', label: 'All (Test + Live)' },
+]
+
 export default function Dashboard() {
   usePageTitle('Dashboard')
   const [stats, setStats] = useState(null)
   const [error, setError] = useState('')
+  const [env, setEnv] = useState('production')
   const user = getStoredUser()
 
   useEffect(() => {
-    api.get('/api/stats').then(setStats).catch((e) => setError(e.message))
-  }, [])
+    setStats(null)
+    setError('')
+    const qs = env === 'all' ? '' : `?fbr_env=${env}`
+    api.get(`/api/stats${qs}`).then(setStats).catch((e) => setError(e.message))
+  }, [env])
 
   return (
     <>
@@ -38,6 +48,19 @@ export default function Dashboard() {
             {user?.full_name ? `Welcome back, ${user.full_name}. ` : ''}
             Overview of your CSV/Excel uploads and FBR invoicing activity.
           </p>
+        </div>
+        <div className="page-actions">
+          <select
+            value={env}
+            onChange={(e) => setEnv(e.target.value)}
+            aria-label="Show stats for"
+          >
+            {ENV_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 

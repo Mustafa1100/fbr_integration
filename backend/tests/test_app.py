@@ -445,7 +445,9 @@ def test_fbr_settings_read_only_for_user(user_headers):
     # GET still works — users can view the settings an admin configured.
     data = client.get("/api/settings/fbr", headers=user_headers).json()
     assert data["seller_business_name"] == "Shop Owner Pvt Ltd"
-    assert data["has_token"] is False
+    assert data["has_sandbox_token"] is False
+    assert data["has_production_token"] is False
+    assert data["can_submit_production"] is False
 
     # PUT is retired for regular users — 403, not a silent no-op.
     resp = client.put(
@@ -653,6 +655,261 @@ def test_admin_stats(admin_headers):
     assert stats["total_users"] == 2
     assert stats["total_invoices"] == 2
     assert stats["submitted_invoices"] == 2
+
+def _make_account(admin_headers, email, **fbr_overrides):
+    """Create a throwaway user with a real password + FBR settings, return
+    its bearer headers and id. Keeps env-specific tests off the shared
+    shop@example.com account whose invoice counts other tests assert on."""
+    resp = client.post(
+        "/api/admin/users",
+        json={"email": email, "full_name": email.split("@")[0]},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    uid = resp.json()["id"]
+    temp = resp.json()["temp_password"]
+    settings = {
+        "fbr_env": "mock",
+        "seller_ntn_cnic": "7654321",
+        "seller_business_name": "Promo Pvt Ltd",
+        "seller_province": "Sindh",
+        "seller_address": "Karachi",
+        "default_scenario": "SN001",
+        **fbr_overrides,
+    }
+    assert (
+        client.put(
+            f"/api/admin/users/{uid}/fbr-settings", json=settings, headers=admin_headers
+        ).status_code
+        == 200
+    )
+    login = client.post(
+        "/api/auth/login", json={"email": email, "password": temp}
+    )
+    th = {"Authorization": f"Bearer {login.json()['token']}"}
+    done = client.post(
+        "/api/auth/set-password",
+        json={"new_password": "Str0ng!Passw0rd99", "confirm_password": "Str0ng!Passw0rd99"},
+        headers=th,
+    )
+    return {"Authorization": f"Bearer {done.json()['token']}"}, uid
+
+
+_ENV_CSV = (
+    "pos_invoice_no,invoice_date,buyer_ntn_cnic,buyer_name,buyer_province,"
+    "buyer_address,buyer_registration_type,product_description,hs_code,"
+    "rate,uom,quantity,unit_price,sale_type,scenario_id\n"
+    "POS-ENV-1,2026-08-17,,Walk-in Customer,Sindh,Karachi,Unregistered,"
+    "Widget,0101.2100,18%,\"Numbers, pieces, units\",1,1000,"
+    "Goods at standard rate (default),SN002\n"
+)
+
+
+def test_upload_target_env_is_stamped_and_history_splits(admin_headers):
+    headers, uid = _make_account(
+        admin_headers, "envsplit@example.com", can_submit_production=True
+    )
+
+    sbx = client.post(
+        "/api/uploads",
+        files={"file": ("s.csv", _ENV_CSV, "text/csv")},
+        data={"target": "sandbox"},
+        headers=headers,
+    ).json()
+    prod = client.post(
+        "/api/uploads",
+        files={"file": ("p.csv", _ENV_CSV, "text/csv")},
+        data={"target": "production"},
+        headers=headers,
+    ).json()
+    assert sbx["fbr_env"] == "sandbox" and sbx["invoices_submitted"] == 1
+    assert prod["fbr_env"] == "production" and prod["invoices_submitted"] == 1
+
+    # Submission History splits by ?fbr_env=
+    only_sbx = client.get("/api/uploads?fbr_env=sandbox", headers=headers).json()
+    only_prod = client.get("/api/uploads?fbr_env=production", headers=headers).json()
+    assert [u["id"] for u in only_sbx] == [sbx["id"]]
+    assert [u["id"] for u in only_prod] == [prod["id"]]
+
+    # Invoices History splits the same way, and each invoice carries its env.
+    inv_sbx = client.get("/api/invoices?fbr_env=sandbox", headers=headers).json()
+    inv_prod = client.get("/api/invoices?fbr_env=production", headers=headers).json()
+    assert len(inv_sbx) == 1 and inv_sbx[0]["fbr_env"] == "sandbox"
+    assert len(inv_prod) == 1 and inv_prod[0]["fbr_env"] == "production"
+    # A mock account simulates production too — invoice number still MOCK…
+    assert inv_prod[0]["fbr_invoice_number"].startswith("MOCK")
+
+    # bad env value → 400
+    assert client.get("/api/invoices?fbr_env=bogus", headers=headers).status_code == 400
+
+
+def test_production_upload_blocked_without_capability(admin_headers):
+    headers, _ = _make_account(admin_headers, "nocap@example.com")  # can_submit_production defaults False
+    resp = client.post(
+        "/api/uploads",
+        files={"file": ("p.csv", _ENV_CSV, "text/csv")},
+        data={"target": "production"},
+        headers=headers,
+    )
+    assert resp.status_code == 403
+
+
+def test_promote_invoice_to_production(admin_headers):
+    headers, _ = _make_account(
+        admin_headers, "promote@example.com", can_submit_production=True
+    )
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("s.csv", _ENV_CSV, "text/csv")},
+        data={"target": "sandbox"},
+        headers=headers,
+    ).json()
+    inv = client.get(
+        f"/api/invoices?upload_id={up['id']}", headers=headers
+    ).json()[0]
+    assert inv["fbr_env"] == "sandbox" and inv["status"] == "submitted"
+    sandbox_number = inv["fbr_invoice_number"]
+
+    promoted = client.post(
+        f"/api/invoices/{inv['id']}/promote", headers=headers
+    )
+    assert promoted.status_code == 200, promoted.text
+    body = promoted.json()
+    assert body["fbr_env"] == "production"
+    assert body["status"] == "submitted"
+    assert body["fbr_invoice_number"] != sandbox_number
+
+    # It has moved out of sandbox history and into production history.
+    assert client.get("/api/invoices?fbr_env=sandbox", headers=headers).json() == []
+    prod_hist = client.get("/api/invoices?fbr_env=production", headers=headers).json()
+    assert [i["id"] for i in prod_hist] == [inv["id"]]
+
+    # Promoting again → 400 (already production).
+    assert (
+        client.post(f"/api/invoices/{inv['id']}/promote", headers=headers).status_code
+        == 400
+    )
+
+
+def test_promote_whole_upload_to_production(admin_headers):
+    headers, _ = _make_account(
+        admin_headers, "promotebatch@example.com", can_submit_production=True
+    )
+    two_row = _ENV_CSV + (
+        "POS-ENV-2,2026-08-17,,Walk-in Customer,Sindh,Karachi,Unregistered,"
+        "Widget2,0101.2100,18%,\"Numbers, pieces, units\",3,500,"
+        "Goods at standard rate (default),SN002\n"
+    )
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("batch.csv", two_row, "text/csv")},
+        data={"target": "sandbox"},
+        headers=headers,
+    ).json()
+    assert up["fbr_env"] == "sandbox" and up["invoices_submitted"] == 2
+
+    resp = client.post(f"/api/uploads/{up['id']}/promote", headers=headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["fbr_env"] == "production"
+    assert body["invoices_submitted"] == 2 and body["invoices_failed"] == 0
+
+    # Both invoices moved to production history; batch left the test history.
+    assert client.get("/api/invoices?fbr_env=sandbox", headers=headers).json() == []
+    assert len(client.get("/api/invoices?fbr_env=production", headers=headers).json()) == 2
+    assert client.get("/api/uploads?fbr_env=sandbox", headers=headers).json() == []
+    assert [u["id"] for u in client.get(
+        "/api/uploads?fbr_env=production", headers=headers
+    ).json()] == [up["id"]]
+
+    # Re-promoting the batch → 400.
+    assert (
+        client.post(f"/api/uploads/{up['id']}/promote", headers=headers).status_code == 400
+    )
+
+    # A non-capable account cannot promote a batch.
+    plain, _ = _make_account(admin_headers, "promotebatchno@example.com")
+    up2 = client.post(
+        "/api/uploads",
+        files={"file": ("s.csv", _ENV_CSV, "text/csv")},
+        data={"target": "sandbox"},
+        headers=plain,
+    ).json()
+    assert (
+        client.post(f"/api/uploads/{up2['id']}/promote", headers=plain).status_code == 403
+    )
+
+
+def test_promote_guards(admin_headers):
+    # No capability → 403.
+    plain, _ = _make_account(admin_headers, "promoteno@example.com")
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("s.csv", _ENV_CSV, "text/csv")},
+        data={"target": "sandbox"},
+        headers=plain,
+    ).json()
+    inv_id = client.get(
+        f"/api/invoices?upload_id={up['id']}", headers=plain
+    ).json()[0]["id"]
+    assert client.post(f"/api/invoices/{inv_id}/promote", headers=plain).status_code == 403
+
+    # Capable, but the invoice never submitted cleanly → 400.
+    cap, _ = _make_account(
+        admin_headers, "promotebad@example.com", can_submit_production=True
+    )
+    bad_csv = _ENV_CSV.replace(
+        "\"Numbers, pieces, units\",1,1000", "\"Numbers, pieces, units\",0,1000"
+    )  # quantity 0 trips the mock validator
+    up2 = client.post(
+        "/api/uploads",
+        files={"file": ("bad.csv", bad_csv, "text/csv")},
+        data={"target": "sandbox"},
+        headers=cap,
+    ).json()
+    bad_inv = client.get(
+        f"/api/invoices?upload_id={up2['id']}", headers=cap
+    ).json()[0]
+    assert bad_inv["status"] == "failed"
+    assert (
+        client.post(f"/api/invoices/{bad_inv['id']}/promote", headers=cap).status_code
+        == 400
+    )
+
+
+def test_stats_split_by_test_vs_live(admin_headers):
+    headers, _ = _make_account(
+        admin_headers, "envstats@example.com", can_submit_production=True
+    )
+    # 1 test batch (2 invoices), 1 live batch (1 invoice).
+    two = _ENV_CSV + (
+        "POS-ENV-2,2026-08-17,,W,Sindh,Karachi,Unregistered,Y,0101.2100,18%,"
+        "\"Numbers, pieces, units\",1,500,Goods at standard rate (default),SN002\n"
+    )
+    client.post(
+        "/api/uploads",
+        files={"file": ("t.csv", two, "text/csv")},
+        data={"target": "sandbox"},
+        headers=headers,
+    )
+    client.post(
+        "/api/uploads",
+        files={"file": ("l.csv", _ENV_CSV, "text/csv")},
+        data={"target": "production"},
+        headers=headers,
+    )
+
+    all_s = client.get("/api/stats", headers=headers).json()
+    test_s = client.get("/api/stats?fbr_env=test", headers=headers).json()
+    live_s = client.get("/api/stats?fbr_env=live", headers=headers).json()
+
+    assert all_s["total_invoices"] == 3 and all_s["total_uploads"] == 2
+    assert test_s["total_invoices"] == 2 and test_s["total_uploads"] == 1
+    assert live_s["total_invoices"] == 1 and live_s["total_uploads"] == 1
+    assert test_s["submitted_invoices"] + live_s["submitted_invoices"] == all_s["submitted_invoices"]
+    # "sandbox" is an alias for test (covers mock too).
+    assert client.get("/api/stats?fbr_env=sandbox", headers=headers).json()["total_invoices"] == 2
+    assert client.get("/api/stats?fbr_env=bogus", headers=headers).status_code == 400
 
 
 def test_user_isolation(admin_headers):
@@ -1290,51 +1547,74 @@ def test_my_stats_scoped_to_current_user(admin_headers, user_headers):
     assert client.get("/api/stats").status_code == 401
 
 
-def test_mark_invoice_paid_requires_submitted_status(user_headers):
-    invoices = client.get("/api/invoices?status=submitted", headers=user_headers).json()
-    inv = invoices[0]
-    assert inv["is_paid"] is False
+def _one_invoice(headers, csv_text, target):
+    up = client.post(
+        "/api/uploads",
+        files={"file": (f"{target}.csv", csv_text, "text/csv")},
+        data={"target": target},
+        headers=headers,
+    ).json()
+    return client.get(f"/api/invoices?upload_id={up['id']}", headers=headers).json()[0]
 
-    resp = client.patch(
-        f"/api/invoices/{inv['id']}/paid", json={"is_paid": True}, headers=user_headers
+
+def test_mark_invoice_paid_requires_submitted_live_invoice(admin_headers):
+    headers, _ = _make_account(
+        admin_headers, "paidguard@example.com", can_submit_production=True
     )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["is_paid"] is True
 
-    # Toggling back off works too.
-    resp = client.patch(
-        f"/api/invoices/{inv['id']}/paid", json={"is_paid": False}, headers=user_headers
-    )
-    assert resp.status_code == 200
-    assert resp.json()["is_paid"] is False
-
-    # A draft/failed invoice was never actually issued — can't be marked paid.
-    failed = client.get("/api/invoices?status=failed", headers=user_headers).json()
-    if failed:
-        resp = client.patch(
-            f"/api/invoices/{failed[0]['id']}/paid",
-            json={"is_paid": True},
-            headers=user_headers,
-        )
-        assert resp.status_code == 400
-
-
-def test_paid_tax_reflected_in_stats(admin_headers, user_headers):
-    invoices = client.get("/api/invoices?status=submitted", headers=user_headers).json()
-    inv = invoices[0]
-    client.patch(f"/api/invoices/{inv['id']}/paid", json={"is_paid": True}, headers=user_headers)
-
-    try:
-        stats = client.get("/api/stats", headers=user_headers).json()
-        assert stats["paid_tax"] == inv["total_tax"]
-
-        admin_stats = client.get("/api/admin/stats", headers=admin_headers).json()
-        assert admin_stats["paid_tax"] >= inv["total_tax"]
-        assert admin_stats["total_tax_collected"] >= admin_stats["paid_tax"]
-    finally:
+    # A live (production) submitted invoice: mark paid, toggle back.
+    live = _one_invoice(headers, _ENV_CSV, "production")
+    assert live["fbr_env"] == "production" and live["is_paid"] is False
+    assert (
         client.patch(
-            f"/api/invoices/{inv['id']}/paid", json={"is_paid": False}, headers=user_headers
-        )
+            f"/api/invoices/{live['id']}/paid", json={"is_paid": True}, headers=headers
+        ).json()["is_paid"]
+        is True
+    )
+    assert (
+        client.patch(
+            f"/api/invoices/{live['id']}/paid", json={"is_paid": False}, headers=headers
+        ).json()["is_paid"]
+        is False
+    )
+
+    # A test (sandbox) invoice — submitted, but not a real record → 400.
+    test_inv = _one_invoice(headers, _ENV_CSV, "sandbox")
+    assert test_inv["fbr_env"] == "sandbox" and test_inv["status"] == "submitted"
+    assert (
+        client.patch(
+            f"/api/invoices/{test_inv['id']}/paid", json={"is_paid": True}, headers=headers
+        ).status_code
+        == 400
+    )
+
+    # A failed invoice was never issued → 400.
+    bad_csv = _ENV_CSV.replace(
+        "\"Numbers, pieces, units\",1,1000", "\"Numbers, pieces, units\",0,1000"
+    )
+    bad = _one_invoice(headers, bad_csv, "production")
+    assert bad["status"] == "failed"
+    assert (
+        client.patch(
+            f"/api/invoices/{bad['id']}/paid", json={"is_paid": True}, headers=headers
+        ).status_code
+        == 400
+    )
+
+
+def test_paid_tax_reflected_in_stats(admin_headers):
+    headers, _ = _make_account(
+        admin_headers, "paidstats@example.com", can_submit_production=True
+    )
+    inv = _one_invoice(headers, _ENV_CSV, "production")
+    client.patch(f"/api/invoices/{inv['id']}/paid", json={"is_paid": True}, headers=headers)
+
+    stats = client.get("/api/stats", headers=headers).json()
+    assert stats["paid_tax"] == inv["total_tax"]
+
+    admin_stats = client.get("/api/admin/stats", headers=admin_headers).json()
+    assert admin_stats["paid_tax"] >= inv["total_tax"]
+    assert admin_stats["total_tax_collected"] >= admin_stats["paid_tax"]
 
 
 def test_admin_user_growth_chart(admin_headers):

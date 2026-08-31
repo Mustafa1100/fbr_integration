@@ -13,6 +13,7 @@ from app.models import Invoice, User
 from app.pagination import paginate
 from app.routers.settings import get_or_create_fbr_settings
 from app.services import invoice_service
+from app.services.invoice_service import ENV_FILTER_ALIASES, resolve_env_filter
 from app.services.qr import qr_data_uri
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
@@ -29,6 +30,7 @@ def summary_out(inv: Invoice) -> dict:
         "buyer_name": inv.buyer_name,
         "scenario_id": inv.scenario_id,
         "status": inv.status,
+        "fbr_env": inv.fbr_env,
         "fbr_invoice_number": inv.fbr_invoice_number,
         "total_excl": round(inv.total_excl, 2),
         "total_tax": round(inv.total_tax, 2),
@@ -54,6 +56,7 @@ def query_invoices(
     q: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    fbr_env: str | None = None,
 ) -> Query:
     """Shared filter logic for a user's invoices — used by both this
     router's own /api/invoices and the admin per-user read-only view."""
@@ -68,6 +71,12 @@ def query_invoices(
                 400, f"status must be one of: {', '.join(sorted(INVOICE_STATUSES))}"
             )
         query = query.filter(Invoice.status == status)
+    if fbr_env and fbr_env != "all":
+        if fbr_env not in ENV_FILTER_ALIASES:
+            raise HTTPException(
+                400, f"fbr_env must be one of: {', '.join(ENV_FILTER_ALIASES)}"
+            )
+        query = query.filter(Invoice.fbr_env.in_(resolve_env_filter(fbr_env)))
     if date_from is not None:
         query = query.filter(Invoice.invoice_date >= date_from)
     if date_to is not None:
@@ -92,6 +101,7 @@ def list_invoices(
     q: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    fbr_env: str | None = None,
     page: int = 1,
     page_size: int = 1000,
     user: User = Depends(get_current_user),
@@ -105,6 +115,7 @@ def list_invoices(
         q=q,
         date_from=date_from,
         date_to=date_to,
+        fbr_env=fbr_env,
     )
     invoices = paginate(query, response, page, page_size)
     return [summary_out(i) for i in invoices]
@@ -157,7 +168,11 @@ def detail_out(inv: Invoice, fbr) -> dict:
             }
             for it in inv.items
         ],
-        "payload": invoice_service.build_payload(inv, fbr),
+        # Preview the payload as it went to (or would go to) this invoice's
+        # own environment, not the account's current default.
+        "payload": invoice_service.build_payload(
+            inv, invoice_service.EffectiveFbr(fbr, inv.fbr_env)
+        ),
         "fbr_response": fbr_response,
         "fbr_error": error_text(fbr_response)
         if fbr_response and not is_valid(fbr_response)
@@ -183,12 +198,40 @@ def submit_invoice(
     user: User = Depends(require_password_already_set),
     db: Session = Depends(get_db),
 ):
-    """Submit (or retry) a draft/failed invoice to FBR."""
+    """Retry a draft/failed invoice — against its own environment, not the
+    account's current default."""
     inv = _get_owned(db, user, invoice_id)
     if inv.status == "submitted":
         raise HTTPException(400, "Invoice already submitted to FBR")
     fbr = get_or_create_fbr_settings(db, user)
-    invoice_service.submit(db, inv, fbr)
+    invoice_service.submit(db, inv, fbr, target_env=inv.fbr_env)
+    return summary_out(inv)
+
+
+@router.post("/{invoice_id}/promote")
+def promote_invoice(
+    invoice_id: int,
+    user: User = Depends(require_password_already_set),
+    db: Session = Depends(get_db),
+):
+    """Promote a sandbox-tested invoice to FBR production — re-submits the
+    same record to production and flips its fbr_env. Requires the account's
+    production capability + token, and a clean sandbox submission first."""
+    inv = _get_owned(db, user, invoice_id)
+    fbr = get_or_create_fbr_settings(db, user)
+    if not fbr.can_submit_production:
+        raise HTTPException(
+            403, "This account is not enabled to submit to FBR production."
+        )
+    if not fbr.is_mock and not fbr.production_token:
+        raise HTTPException(400, "No production token configured for this account.")
+    if inv.fbr_env == "production":
+        raise HTTPException(400, "This invoice is already a production invoice.")
+    if inv.status != "submitted":
+        raise HTTPException(
+            400, "Test this invoice in sandbox first — it hasn't been submitted cleanly."
+        )
+    invoice_service.submit(db, inv, fbr, target_env="production")
     return summary_out(inv)
 
 
@@ -205,10 +248,14 @@ def mark_invoice_paid(
 ):
     """Track whether the buyer has actually paid — independent of FBR
     submission status. Only meaningful once an invoice is a real,
-    FBR-registered record; a draft/failed invoice was never issued."""
+    FBR-registered record; a draft/failed or test invoice was never issued."""
     inv = _get_owned(db, user, invoice_id)
     if inv.status != "submitted":
         raise HTTPException(400, "Only a submitted invoice can be marked as paid")
+    if inv.fbr_env != "production":
+        raise HTTPException(
+            400, "This is a test invoice — only a live FBR invoice can be marked as paid."
+        )
     inv.is_paid = body.is_paid
     inv.paid_at = datetime.now(timezone.utc) if body.is_paid else None
     db.commit()

@@ -22,10 +22,17 @@ export default function UserFbrSettings() {
   const [form, setForm] = useState(null)
   const [provinces, setProvinces] = useState([])
   const [scenarios, setScenarios] = useState([])
-  const [hasToken, setHasToken] = useState(false)
-  const [tokenPreview, setTokenPreview] = useState(null)
+  const [tokens, setTokens] = useState({ sandbox: [false, null], production: [false, null] })
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+
+  function loadSettings(s) {
+    setTokens({
+      sandbox: [s.has_sandbox_token, s.sandbox_token_preview],
+      production: [s.has_production_token, s.production_token_preview],
+    })
+    setForm({ ...s, sandbox_token: '', production_token: '' })
+  }
 
   useEffect(() => {
     Promise.all([
@@ -36,9 +43,7 @@ export default function UserFbrSettings() {
     ])
       .then(([users, settings, prov, scen]) => {
         setTargetUser(users.find((u) => u.id === Number(userId)) || null)
-        setHasToken(settings.has_token)
-        setTokenPreview(settings.token_preview)
-        setForm({ ...settings, fbr_token: '' })
+        loadSettings(settings)
         setProvinces(prov)
         setScenarios(scen)
       })
@@ -51,9 +56,7 @@ export default function UserFbrSettings() {
     setNotice('')
     try {
       const saved = await api.put(`/api/admin/users/${userId}/fbr-settings`, form)
-      setHasToken(saved.has_token)
-      setTokenPreview(saved.token_preview)
-      setForm({ ...saved, fbr_token: '' })
+      loadSettings(saved)
       setNotice('FBR settings saved')
     } catch (err) {
       setError(err.message)
@@ -75,6 +78,27 @@ export default function UserFbrSettings() {
     )
 
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value })
+  const tokenField = (which) => {
+    const [has, preview] = tokens[which]
+    return (
+      <div className="field">
+        <label>
+          {which === 'sandbox' ? 'Sandbox' : 'Production'} token{' '}
+          {has ? (
+            <span className="badge submitted mono">saved · {preview}</span>
+          ) : (
+            <span className="badge failed">not set</span>
+          )}
+        </label>
+        <input
+          type="password"
+          placeholder={has ? 'Leave empty to keep the saved token' : 'Paste the PRAL token'}
+          value={form[`${which}_token`]}
+          onChange={set(`${which}_token`)}
+        />
+      </div>
+    )
+  }
 
   return (
     <>
@@ -114,29 +138,31 @@ export default function UserFbrSettings() {
         </h2>
         <div className="form-grid">
           <div className="field">
-            <label>FBR environment</label>
+            <label>Default environment</label>
             <select value={form.fbr_env} onChange={set('fbr_env')}>
               <option value="mock">Mock (no token needed — simulated responses)</option>
               <option value="sandbox">Sandbox (PRAL scenario testing)</option>
               <option value="production">Production (live invoicing)</option>
             </select>
+            <p className="muted" style={{ margin: '4px 0 0' }}>
+              The pre-selected target on the Generate Invoices page.
+            </p>
           </div>
           <div className="field">
-            <label>
-              Bearer token from IRIS portal{' '}
-              {hasToken ? (
-                <span className="badge submitted mono">saved · {tokenPreview}</span>
-              ) : (
-                <span className="badge failed">not set</span>
-              )}
+            <label className="row-actions" style={{ gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={!!form.can_submit_production}
+                onChange={(e) => setForm({ ...form, can_submit_production: e.target.checked })}
+              />
+              <span>Allowed to submit to FBR production</span>
             </label>
-            <input
-              type="password"
-              placeholder={hasToken ? 'Leave empty to keep the saved token' : 'Paste the PRAL token'}
-              value={form.fbr_token}
-              onChange={set('fbr_token')}
-            />
+            <p className="muted" style={{ margin: '4px 0 0' }}>
+              Lets this user upload directly to production and promote sandbox-tested invoices.
+            </p>
           </div>
+          {tokenField('sandbox')}
+          {tokenField('production')}
         </div>
         <p className="muted">
           <KeyRound size={14} /> From IRIS → Digital Invoicing. Sandbox and production tokens are

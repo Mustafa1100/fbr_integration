@@ -18,6 +18,7 @@ export default function UserUploads() {
   const [qInput, setQInput] = useState('')
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [envFilter, setEnvFilter] = useState('all')
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -44,6 +45,7 @@ export default function UserUploads() {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
     if (q.trim()) params.set('q', q.trim())
     if (statusFilter !== 'all') params.set('status', statusFilter)
+    if (envFilter !== 'all') params.set('fbr_env', envFilter)
     const resp = await api.getRaw(`/api/admin/users/${userId}/uploads?${params}`)
     setUploads(await resp.json())
     setTotal(Number(resp.headers.get('x-total-count') || 0))
@@ -53,7 +55,7 @@ export default function UserUploads() {
     setUploads(null)
     refresh().catch((e) => setError(e.message))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, page, pageSize, q, statusFilter])
+  }, [userId, page, pageSize, q, statusFilter, envFilter])
 
   async function removeUpload(u) {
     if (
@@ -131,6 +133,19 @@ export default function UserUploads() {
                 <option value="completed_with_errors">Completed with errors</option>
                 <option value="failed">Failed</option>
               </select>
+              <select
+                value={envFilter}
+                onChange={(e) => {
+                  setEnvFilter(e.target.value)
+                  setPage(1)
+                }}
+                style={{ maxWidth: 160 }}
+              >
+                <option value="all">All environments</option>
+                <option value="sandbox">Sandbox</option>
+                <option value="production">Production</option>
+                <option value="mock">Mock</option>
+              </select>
             </div>
           </div>
 
@@ -160,6 +175,7 @@ export default function UserUploads() {
                     <tr>
                       <th>#</th>
                       <th>File</th>
+                      <th>Env</th>
                       <th>Date</th>
                       <th>Rows</th>
                       <th>Invoices</th>
@@ -176,6 +192,13 @@ export default function UserUploads() {
                         <td>
                           <span className="strong">
                             <FileText size={14} /> {u.filename}
+                          </span>
+                        </td>
+                        <td>
+                          <span
+                            className={`badge ${u.fbr_env === 'production' ? 'submitted' : 'draft'}`}
+                          >
+                            {u.fbr_env}
                           </span>
                         </td>
                         <td>{new Date(u.created_at).toLocaleString()}</td>

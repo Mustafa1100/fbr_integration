@@ -8,6 +8,8 @@ import {
   Code2,
   Loader2,
   ShieldCheck,
+  Check,
+  CheckCheck,
 } from 'lucide-react'
 import { api } from '../api'
 import usePageTitle from '../hooks/usePageTitle'
@@ -26,6 +28,9 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
   const [showJson, setShowJson] = useState(false)
   const [paidBusy, setPaidBusy] = useState(false)
   const [confirmingPaid, setConfirmingPaid] = useState(false)
+  const [canProd, setCanProd] = useState(false)
+  const [confirmingPromote, setConfirmingPromote] = useState(false)
+  const [promoting, setPromoting] = useState(false)
 
   useEffect(() => {
     setInv(null)
@@ -35,6 +40,28 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
       .then(setInv)
       .catch((e) => setError(e.message))
   }, [apiUrl])
+
+  useEffect(() => {
+    if (!allowMarkPaid) return // admin's read-only view can't submit on-behalf
+    api
+      .get('/api/settings/fbr')
+      .then((s) => setCanProd(!!s.can_submit_production))
+      .catch(() => {})
+  }, [allowMarkPaid])
+
+  async function confirmPromote() {
+    setPromoting(true)
+    setError('')
+    try {
+      await api.post(`/api/invoices/${inv.id}/promote`)
+      setInv(await api.get(apiUrl))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setPromoting(false)
+      setConfirmingPromote(false)
+    }
+  }
 
   async function setPaid(isPaid) {
     setPaidBusy(true)
@@ -108,7 +135,7 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
           <h1 className="page-title">
             <ReceiptIcon size={22} /> Tax Receipt{' '}
             <span className={`badge ${inv.status}`}>{inv.status}</span>
-            {inv.status === 'submitted' && (
+            {inv.status === 'submitted' && inv.fbr_env === 'production' && (
               <span className={`badge ${inv.is_paid ? 'submitted' : 'draft'}`}>
                 {inv.is_paid ? 'paid' : 'unpaid'}
               </span>
@@ -117,21 +144,46 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
           <p className="page-sub">Printable tax receipt for this invoice.</p>
         </div>
         <div className="page-actions">
-          <Link to={backTo} className="btn btn-secondary">
-            <ArrowLeft size={16} /> {backLabel}
+          <Link
+            to={backTo}
+            className="btn btn-hollow has-tip has-tip-below"
+            data-tip={backLabel}
+            aria-label={backLabel}
+          >
+            <ArrowLeft size={16} />
           </Link>
-          {allowMarkPaid && inv.status === 'submitted' && (
+          {allowMarkPaid &&
+            canProd &&
+            inv.status === 'submitted' &&
+            inv.fbr_env !== 'production' && (
+              <button
+                className="btn btn-hollow has-tip has-tip-below"
+                onClick={() => setConfirmingPromote(true)}
+                disabled={promoting}
+                data-tip="Submit to FBR"
+                aria-label="Submit to FBR"
+              >
+                {promoting ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
+              </button>
+            )}
+          {allowMarkPaid && inv.status === 'submitted' && inv.fbr_env === 'production' && (
             <button
-              className={`btn ${inv.is_paid ? 'btn-secondary' : 'btn-primary'}`}
+              className="btn btn-hollow has-tip has-tip-below"
               onClick={() => (inv.is_paid ? setPaid(false) : setConfirmingPaid(true))}
               disabled={paidBusy}
+              data-tip={inv.is_paid ? 'Mark as unpaid' : 'Mark as paid'}
+              aria-label={inv.is_paid ? 'Mark as unpaid' : 'Mark as paid'}
             >
-              {paidBusy && <Loader2 size={16} className="spin" />}
-              {inv.is_paid ? 'Mark as unpaid' : 'Mark as paid'}
+              {paidBusy ? <Loader2 size={16} className="spin" /> : <CheckCheck size={16} />}
             </button>
           )}
-          <button className="btn btn-primary" onClick={() => window.print()}>
-            <Printer size={16} /> Print receipt
+          <button
+            className="btn btn-hollow has-tip has-tip-below"
+            onClick={() => window.print()}
+            data-tip="Print receipt"
+            aria-label="Print receipt"
+          >
+            <Printer size={16} />
           </button>
         </div>
       </div>
@@ -311,6 +363,37 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
           </>
         )}
       </div>
+
+      {confirmingPromote && (
+        <Modal
+          title="Submit this invoice to FBR?"
+          onClose={() => !promoting && setConfirmingPromote(false)}
+          width={440}
+        >
+          <div className="alert info" style={{ marginTop: 0 }}>
+            <Check size={17} />
+            <span>
+              Invoice{' '}
+              <strong className="mono">{inv.fbr_invoice_number || inv.pos_invoice_no}</strong> will
+              be submitted to <strong>FBR</strong> as a real, permanent tax record. This replaces
+              its test result.
+            </span>
+          </div>
+          <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setConfirmingPromote(false)}
+              disabled={promoting}
+            >
+              Cancel
+            </button>
+            <button className="btn btn-primary" onClick={confirmPromote} disabled={promoting}>
+              {promoting ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
+              Confirm, submit to FBR
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {confirmingPaid && (
         <Modal

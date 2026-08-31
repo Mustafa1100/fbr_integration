@@ -391,7 +391,53 @@ td .strong { color: var(--text); font-weight: 600; }
 .btn-danger:hover { background: var(--red-50); }
 .btn-ghost { background: transparent; color: var(--text-2); }
 .btn-ghost:hover { background: var(--slate-50); }
+/* White by default, fills green on hover (icons follow currentColor). */
+.btn-hollow { background: var(--surface); color: var(--text); border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.btn-hollow:hover:not(:disabled) { background: var(--brand-600); border-color: var(--brand-600); color: #fff; }
 .btn-sm { padding: 5px 11px; font-size: 0.78rem; border-radius: 8px; gap: 6px; }
+
+/* Hover tooltip: put data-tip="..." on the element (needs position: relative,
+   which .has-tip sets). Icon-only buttons use this instead of the slow,
+   unstyled native title attribute. Positioned to the left so it isn't
+   clipped by a table-card's horizontal scroll container. */
+.has-tip { position: relative; }
+.has-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%) translateX(4px);
+  white-space: nowrap;
+  background: var(--text);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1;
+  padding: 6px 9px;
+  border-radius: 7px;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  z-index: 30;
+}
+.has-tip:hover::after,
+.has-tip:focus-visible::after {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+/* Modifier: tooltip below, centred — for horizontal button rows that
+   aren't inside a scroll container (e.g. a page header). */
+.has-tip-below::after {
+  right: auto;
+  left: 50%;
+  top: calc(100% + 7px);
+  transform: translateX(-50%) translateY(-3px);
+}
+.has-tip-below:hover::after,
+.has-tip-below:focus-visible::after {
+  transform: translateX(-50%) translateY(0);
+}
 
 /* ── Forms ─────────────────────────────────────────────────────────── */
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px; }

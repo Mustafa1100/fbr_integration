@@ -8,6 +8,7 @@ import {
   Search,
   ShieldCheck,
   Loader2,
+  Check,
 } from 'lucide-react'
 import { api } from '../../api'
 import Modal from '../../components/Modal'
@@ -15,8 +16,18 @@ import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
 import usePageTitle from '../../hooks/usePageTitle'
 
+// User-facing wording: "Test" (sandbox / simulated) vs "Live" (real FBR).
+const MODE_LABELS = { mock: 'Test', sandbox: 'Test', production: 'Live' }
+const ENV_OPTIONS = [
+  { value: 'production', label: 'Live' },
+  { value: 'sandbox', label: 'Test' },
+  { value: 'all', label: 'All (Test + Live)' },
+]
+
 export default function Invoices() {
   usePageTitle('Invoices History')
+  const [searchParams] = useSearchParams()
+  const uploadId = searchParams.get('upload')
   const [invoices, setInvoices] = useState([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -24,12 +35,13 @@ export default function Invoices() {
   const [qInput, setQInput] = useState('')
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  // Default to Live; a deep-link from an upload shows everything in it.
+  const [envFilter, setEnvFilter] = useState(uploadId ? 'all' : 'production')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [searchParams] = useSearchParams()
-  const uploadId = searchParams.get('upload')
+  const [canProd, setCanProd] = useState(false)
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -49,6 +61,7 @@ export default function Invoices() {
     if (uploadId) params.set('upload_id', uploadId)
     if (q.trim()) params.set('q', q.trim())
     if (statusFilter !== 'all') params.set('status', statusFilter)
+    if (envFilter !== 'all') params.set('fbr_env', envFilter)
     if (dateFrom) params.set('date_from', dateFrom)
     if (dateTo) params.set('date_to', dateTo)
     const resp = await api.getRaw(`/api/invoices?${params}`)
@@ -60,7 +73,14 @@ export default function Invoices() {
   useEffect(() => {
     refresh().catch((e) => setError(e.message))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, q, statusFilter, dateFrom, dateTo, uploadId])
+  }, [page, pageSize, q, statusFilter, envFilter, dateFrom, dateTo, uploadId])
+
+  useEffect(() => {
+    api
+      .get('/api/settings/fbr')
+      .then((s) => setCanProd(!!s.can_submit_production))
+      .catch(() => {})
+  }, [])
 
   async function retry(inv) {
     setError('')
@@ -69,6 +89,23 @@ export default function Invoices() {
       await refresh()
     } catch (err) {
       setError(err.message)
+    }
+  }
+
+  const [confirmPromoteInvoice, setConfirmPromoteInvoice] = useState(null)
+  const [promoting, setPromoting] = useState(false)
+
+  async function confirmPromote() {
+    setPromoting(true)
+    setError('')
+    try {
+      await api.post(`/api/invoices/${confirmPromoteInvoice.id}/promote`)
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setPromoting(false)
+      setConfirmPromoteInvoice(null)
     }
   }
 
@@ -106,6 +143,22 @@ export default function Invoices() {
             {uploadId && <span className="muted">(upload #{uploadId})</span>}
           </h1>
           <p className="page-sub">Review invoice receipts and their FBR invoice numbers.</p>
+        </div>
+        <div className="page-actions">
+          <select
+            value={envFilter}
+            onChange={(e) => {
+              setEnvFilter(e.target.value)
+              setPage(1)
+            }}
+            aria-label="Show invoices for"
+          >
+            {ENV_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
       {error && (
@@ -211,6 +264,7 @@ export default function Invoices() {
                 <tr>
                   <th>#</th>
                   <th>POS No.</th>
+                  <th>Mode</th>
                   <th>Date</th>
                   <th>Buyer</th>
                   <th>Excl. ST</th>
@@ -230,6 +284,13 @@ export default function Invoices() {
                       </Link>
                     </td>
                     <td>{inv.pos_invoice_no}</td>
+                    <td>
+                      <span
+                        className={`badge ${inv.fbr_env === 'production' ? 'submitted' : 'draft'}`}
+                      >
+                        {MODE_LABELS[inv.fbr_env] || inv.fbr_env}
+                      </span>
+                    </td>
                     <td>{inv.invoice_date}</td>
                     <td>{inv.buyer_name}</td>
                     <td>{inv.total_excl.toLocaleString()}</td>
@@ -239,7 +300,7 @@ export default function Invoices() {
                       <span className={`badge ${inv.status}`}>{inv.status}</span>
                     </td>
                     <td>
-                      {inv.status === 'submitted' ? (
+                      {inv.status === 'submitted' && inv.fbr_env === 'production' ? (
                         <button
                           type="button"
                           className={`btn btn-sm ${inv.is_paid ? 'btn-primary' : 'btn-secondary'}`}
@@ -256,14 +317,36 @@ export default function Invoices() {
                     <td>
                       <div className="row-actions">
                         {inv.status !== 'submitted' ? (
-                          <button className="btn btn-secondary btn-sm" onClick={() => retry(inv)}>
-                            <RefreshCw size={14} /> Retry
+                          <button
+                            className="btn btn-secondary btn-sm has-tip"
+                            onClick={() => retry(inv)}
+                            data-tip="Retry submission"
+                            aria-label="Retry submission"
+                          >
+                            <RefreshCw size={14} />
                           </button>
                         ) : (
-                          <Link className="btn btn-ghost btn-sm" to={`/invoices/${inv.id}`}>
-                            <QrCode size={14} /> Receipt
+                          <Link
+                            className="btn btn-primary btn-sm has-tip"
+                            to={`/invoices/${inv.id}`}
+                            data-tip="View receipt"
+                            aria-label="View receipt"
+                          >
+                            <QrCode size={14} />
                           </Link>
                         )}
+                        {canProd &&
+                          inv.status === 'submitted' &&
+                          inv.fbr_env !== 'production' && (
+                            <button
+                              className="btn btn-secondary btn-sm has-tip"
+                              onClick={() => setConfirmPromoteInvoice(inv)}
+                              data-tip="Submit to FBR"
+                              aria-label="Submit to FBR"
+                            >
+                              <Check size={14} />
+                            </button>
+                          )}
                       </div>
                     </td>
                   </tr>
@@ -283,6 +366,39 @@ export default function Invoices() {
             itemLabel="invoices"
           />
         </>
+      )}
+
+      {confirmPromoteInvoice && (
+        <Modal
+          title="Submit this invoice to FBR?"
+          onClose={() => !promoting && setConfirmPromoteInvoice(null)}
+          width={460}
+        >
+          <div className="alert info" style={{ marginTop: 0 }}>
+            <Check size={17} />
+            <span>
+              Invoice{' '}
+              <strong className="mono">
+                {confirmPromoteInvoice.fbr_invoice_number || confirmPromoteInvoice.pos_invoice_no}
+              </strong>{' '}
+              ({confirmPromoteInvoice.buyer_name}) will be submitted to <strong>FBR</strong> as a
+              real, permanent tax record. This replaces its test result.
+            </span>
+          </div>
+          <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setConfirmPromoteInvoice(null)}
+              disabled={promoting}
+            >
+              Cancel
+            </button>
+            <button className="btn btn-primary" onClick={confirmPromote} disabled={promoting}>
+              {promoting ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
+              Confirm, submit to FBR
+            </button>
+          </div>
+        </Modal>
       )}
 
       {confirmPaidInvoice && (

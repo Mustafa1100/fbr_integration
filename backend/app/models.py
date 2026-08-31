@@ -43,10 +43,18 @@ class FbrSettings(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
 
-    # mock | sandbox | production
+    # mock | sandbox | production — the account's default submission target.
     fbr_env: Mapped[str] = mapped_column(String(12), default="mock")
-    # Bearer token issued via the IRIS portal (sandbox and production differ).
+    # Legacy single token — superseded by sandbox_token / production_token
+    # below (kept so old rows migrate cleanly). No longer read.
     fbr_token: Mapped[str] = mapped_column(String(500), default="")
+    # Bearer tokens issued via the IRIS portal — sandbox and production are
+    # different tokens, and a "test then promote" account needs both at once.
+    sandbox_token: Mapped[str] = mapped_column(String(500), default="")
+    production_token: Mapped[str] = mapped_column(String(500), default="")
+    # Whether this user may submit to FBR production at all (direct upload or
+    # promoting a sandbox-tested invoice). Admin-granted.
+    can_submit_production: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # The identifier sent to FBR as sellerNTNCNIC — in practice the seller's
     # CNIC for the current accounts. seller_ntn below is a separate,
@@ -91,6 +99,8 @@ class Upload(Base):
     invoices_submitted: Mapped[int] = mapped_column(default=0)
     invoices_failed: Mapped[int] = mapped_column(default=0)
     error: Mapped[str] = mapped_column(Text, default="")
+    # mock | sandbox | production — where this batch was submitted.
+    fbr_env: Mapped[str] = mapped_column(String(12), default="sandbox")
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
@@ -112,6 +122,9 @@ class Invoice(Base):
     invoice_date: Mapped[date] = mapped_column(Date, default=date.today)
     invoice_ref_no: Mapped[str] = mapped_column(String(60), default="")
     scenario_id: Mapped[str] = mapped_column(String(10), default="SN001")
+    # mock | sandbox | production — the env this invoice was last submitted
+    # to. Flips to "production" when a sandbox invoice is promoted.
+    fbr_env: Mapped[str] = mapped_column(String(12), default="sandbox")
 
     buyer_ntn_cnic: Mapped[str] = mapped_column(String(15), default="")
     buyer_name: Mapped[str] = mapped_column(String(200), default="")

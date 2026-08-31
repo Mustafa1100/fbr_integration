@@ -74,14 +74,17 @@ MOCK_SALE_TYPES = [
 
 
 def _fetch(path: str, mock_data: list, fbr: FbrSettings | None) -> list:
-    if fbr is None or fbr.is_mock or not fbr.fbr_token:
+    # PRAL's reference data is the same across environments; use whichever
+    # real token the account has (sandbox preferred, else production).
+    token = fbr and (fbr.sandbox_token or fbr.production_token)
+    if fbr is None or fbr.is_mock or not token:
         return mock_data
 
     cached = _CACHE.get(path)
     if cached and time.time() - cached[0] < _CACHE_TTL_SECONDS:
         return cached[1]
 
-    headers = {"Authorization": f"Bearer {fbr.fbr_token}"}
+    headers = {"Authorization": f"Bearer {token}"}
     resp = httpx.get(f"{REFERENCE_BASE_URL}{path}", headers=headers, timeout=TIMEOUT)
     resp.raise_for_status()
     data = resp.json()

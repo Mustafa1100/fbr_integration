@@ -94,7 +94,8 @@ function Req() {
 // the exact same upload pipeline as a bulk CSV/Excel file: build a one-row
 // CSV client-side and POST it through POST /api/uploads, so it gets 100% of
 // the existing validation, FBR submission, and error messages for free.
-export default function ManualInvoiceModal({ onClose, onSubmitted, isProduction, scenarios }) {
+export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'sandbox', scenarios }) {
+  const isProduction = target === 'production'
   const [form, setForm] = useState(emptyForm)
   const [provinces, setProvinces] = useState([])
   const [busy, setBusy] = useState(false)
@@ -116,6 +117,7 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, isProduction,
       const filename = `manual-${form.pos_invoice_no || Date.now()}.csv`
       const formData = new FormData()
       formData.append('file', new Blob([csv], { type: 'text/csv' }), filename)
+      formData.append('target', target)
       const result = await api.upload('/api/uploads', formData)
       onSubmitted(result)
     } catch (err) {
@@ -170,7 +172,7 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, isProduction,
           </div>
           {!isProduction && scenarios?.length > 0 && (
             <div className="field">
-              <label>Sandbox scenario</label>
+              <label>Test scenario</label>
               <select value={form.scenario_id} onChange={set('scenario_id')}>
                 <option value="">Use account default…</option>
                 {scenarios.map((s) => (

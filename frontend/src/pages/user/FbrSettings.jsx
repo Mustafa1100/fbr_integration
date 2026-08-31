@@ -18,9 +18,9 @@ import {
 } from 'lucide-react'
 
 const ENV_LABELS = {
-  mock: 'Mock (simulated responses)',
-  sandbox: 'Sandbox (PRAL scenario testing)',
-  production: 'Production (live invoicing)',
+  mock: 'Test (simulated — no FBR connection)',
+  sandbox: 'Test (against FBR before submitting)',
+  production: 'Live (submits directly to FBR)',
 }
 
 function ChangePasswordTab() {
@@ -212,18 +212,44 @@ export default function FbrSettings() {
 
               <div className="card">
                 <h2 className="section-title" style={{ marginTop: 0 }}>
-                  <Globe size={17} /> Environment
+                  <Globe size={17} /> FBR connection
                 </h2>
                 <div className="form-grid">
                   <div className="field">
-                    <label>FBR environment</label>
+                    <label>Default mode</label>
                     <div>{ENV_LABELS[data.fbr_env] || data.fbr_env}</div>
                   </div>
                   <div className="field">
-                    <label>Bearer token</label>
+                    <label>Submit directly to FBR</label>
                     <div>
-                      <span className={`badge ${data.has_token ? 'submitted mono' : 'failed'}`}>
-                        {data.has_token ? `configured · ${data.token_preview}` : 'not set'}
+                      <span
+                        className={`badge ${data.can_submit_production ? 'submitted' : 'draft'}`}
+                      >
+                        {data.can_submit_production ? 'allowed' : 'not allowed'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="field">
+                    <label>Test connection</label>
+                    <div>
+                      <span
+                        className={`badge ${data.has_sandbox_token ? 'submitted mono' : 'failed'}`}
+                      >
+                        {data.has_sandbox_token
+                          ? `connected · ${data.sandbox_token_preview}`
+                          : 'not set up'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="field">
+                    <label>Live (FBR) connection</label>
+                    <div>
+                      <span
+                        className={`badge ${data.has_production_token ? 'submitted mono' : 'failed'}`}
+                      >
+                        {data.has_production_token
+                          ? `connected · ${data.production_token_preview}`
+                          : 'not set up'}
                       </span>
                     </div>
                   </div>
@@ -255,7 +281,7 @@ export default function FbrSettings() {
                     <div>{data.seller_address || '—'}</div>
                   </div>
                   <div className="field">
-                    <label>Default sandbox scenario</label>
+                    <label>Default test scenario</label>
                     <div>{data.default_scenario || '—'}</div>
                   </div>
                 </div>

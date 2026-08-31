@@ -11,6 +11,7 @@ import {
   FileText,
   ReceiptText,
   FlaskConical,
+  Check,
   Search,
   X,
   BookOpenText,
@@ -18,9 +19,18 @@ import {
 } from 'lucide-react'
 import { api } from '../../api'
 import ManualInvoiceModal from '../../components/ManualInvoiceModal'
+import Modal from '../../components/Modal'
 import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
 import usePageTitle from '../../hooks/usePageTitle'
+
+// User-facing wording: "Test" (sandbox / simulated) vs "Live" (real FBR).
+const MODE_LABELS = { mock: 'Test', sandbox: 'Test', production: 'Live' }
+const ENV_OPTIONS = [
+  { value: 'production', label: 'Live' },
+  { value: 'sandbox', label: 'Test' },
+  { value: 'all', label: 'All (Test + Live)' },
+]
 
 export default function Uploads() {
   usePageTitle('Generate Invoices')
@@ -32,6 +42,7 @@ export default function Uploads() {
   const [qInput, setQInput] = useState('')
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [histEnv, setHistEnv] = useState('production') // 'all' | 'sandbox' | 'production'
   const [listLoading, setListLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -41,9 +52,11 @@ export default function Uploads() {
   const [fileName, setFileName] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const [fbrEnv, setFbrEnv] = useState(null)
+  const [canProd, setCanProd] = useState(false)
+  const [submitTarget, setSubmitTarget] = useState('sandbox') // 'sandbox' | 'production'
   const [showManualModal, setShowManualModal] = useState(false)
   const fileRef = useRef()
-  const isProduction = fbrEnv === 'production'
+  const isProdTarget = submitTarget === 'production'
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -58,6 +71,7 @@ export default function Uploads() {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
     if (q.trim()) params.set('q', q.trim())
     if (statusFilter !== 'all') params.set('status', statusFilter)
+    if (histEnv !== 'all') params.set('fbr_env', histEnv)
     const resp = await api.getRaw(`/api/uploads?${params}`)
     setUploads(await resp.json())
     setTotal(Number(resp.headers.get('x-total-count') || 0))
@@ -67,13 +81,17 @@ export default function Uploads() {
   useEffect(() => {
     refresh().catch((e) => setError(e.message))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, q, statusFilter])
+  }, [page, pageSize, q, statusFilter, histEnv])
 
   useEffect(() => {
     api.get('/api/uploads/scenario-catalog').then(setScenarios).catch(() => {})
     api
       .get('/api/settings/fbr')
-      .then((s) => setFbrEnv(s.fbr_env))
+      .then((s) => {
+        setFbrEnv(s.fbr_env)
+        setCanProd(!!s.can_submit_production)
+        if (s.fbr_env === 'production' && s.can_submit_production) setSubmitTarget('production')
+      })
       .catch(() => {})
   }, [])
 
@@ -87,6 +105,7 @@ export default function Uploads() {
     try {
       const formData = new FormData()
       formData.append('file', file)
+      formData.append('target', submitTarget)
       const result = await api.upload('/api/uploads', formData)
       setLastResult(result)
       fileRef.current.value = ''
@@ -118,7 +137,9 @@ export default function Uploads() {
   }
 
   async function downloadTemplate(scenario) {
-    const path = scenario ? `/api/uploads/template?scenario=${scenario}` : '/api/uploads/template'
+    const path = scenario
+      ? `/api/uploads/template?scenario=${scenario}`
+      : `/api/uploads/template?target=${submitTarget}`
     const resp = await api.getRaw(path)
     const blob = await resp.blob()
     const objectUrl = URL.createObjectURL(blob)
@@ -136,6 +157,23 @@ export default function Uploads() {
     else setPage(1)
   }
 
+  const [confirmPromote, setConfirmPromote] = useState(null)
+  const [promoting, setPromoting] = useState(false)
+
+  async function promoteUpload() {
+    setPromoting(true)
+    setError('')
+    try {
+      await api.post(`/api/uploads/${confirmPromote.id}/promote`)
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setPromoting(false)
+      setConfirmPromote(null)
+    }
+  }
+
   return (
     <>
       <div className="page-header">
@@ -145,19 +183,17 @@ export default function Uploads() {
           </h1>
           <p className="page-sub">
             Upload your POS product sales as a CSV or Excel file — rows with the same{' '}
-            <code>pos_invoice_no</code> become one invoice, each invoice is submitted to FBR, and
-            you get a tax receipt with the FBR invoice number and QR code.
+            <code>pos_invoice_no</code> become one invoice. Run a test first to check the figures,
+            then submit to FBR to get a tax receipt with the FBR invoice number and QR code.
           </p>
         </div>
         <div className="page-actions">
           <button type="button" className="btn btn-secondary" onClick={() => downloadTemplate()}>
             <Download size={16} /> Download template
           </button>
-          {isProduction && (
-            <Link to="/columns" className="btn btn-secondary">
-              <BookOpenText size={16} /> Column guide
-            </Link>
-          )}
+          <Link to="/columns" className="btn btn-secondary">
+            <BookOpenText size={16} /> Column guide
+          </Link>
         </div>
       </div>
 
@@ -187,12 +223,41 @@ export default function Uploads() {
 
       {tab === 'submit' && (
         <>
-          {!isProduction && scenarios.length > 0 && (
+          <div className="card" style={{ marginBottom: '1.5rem' }}>
+            <div className="field" style={{ margin: 0 }}>
+              <label>How to submit</label>
+              <div className="row-actions" style={{ gap: 8 }}>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${!isProdTarget ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setSubmitTarget('sandbox')}
+                >
+                  <FlaskConical size={14} /> Test before submitting
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${isProdTarget ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => canProd && setSubmitTarget('production')}
+                  disabled={!canProd}
+                  title={canProd ? undefined : "Your account isn't enabled to submit directly to FBR"}
+                >
+                  <ReceiptText size={14} /> Submit to FBR
+                </button>
+              </div>
+              <p className="hint" style={{ marginTop: 8 }}>
+                {isProdTarget
+                  ? 'Invoices go straight to FBR as real, permanent tax records.'
+                  : `A trial run to check everything looks right${fbrEnv === 'mock' ? ' (simulated — no FBR connection set up yet)' : ''}. Nothing here becomes a real FBR record — from Invoices History you can then submit a good one to FBR.`}
+              </p>
+            </div>
+          </div>
+
+          {!isProdTarget && scenarios.length > 0 && (
             <div className="card" style={{ marginBottom: '1.5rem' }}>
               <div className="row-actions" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
                 <FlaskConical size={17} style={{ flexShrink: 0, color: 'var(--muted)' }} />
                 <span className="muted" style={{ marginRight: '0.25rem' }}>
-                  Sandbox scenario testing: download a template pre-filled with FBR&apos;s own
+                  Test with a real example: download a template pre-filled with FBR&apos;s own
                   official example for one scenario —
                 </span>
                 <select
@@ -269,7 +334,8 @@ export default function Uploads() {
                   </>
                 ) : (
                   <>
-                    <UploadCloud size={16} /> Upload &amp; submit to FBR
+                    <UploadCloud size={16} /> Upload &amp;{' '}
+                    {isProdTarget ? 'submit to FBR' : 'run a test'}
                   </>
                 )}
               </button>
@@ -288,16 +354,19 @@ export default function Uploads() {
               {lastResult.status === 'failed' ? (
                 <>
                   <AlertCircle size={17} />
-                  <span>Submission failed: {lastResult.error}</span>
+                  <span>{lastResult.error}</span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 size={17} />
                   <span>
                     Processed {lastResult.total_rows} rows → {lastResult.invoices_created} invoices,{' '}
-                    {lastResult.invoices_submitted} submitted to FBR
+                    {lastResult.invoices_submitted}{' '}
+                    {lastResult.fbr_env === 'production' ? 'submitted to FBR' : 'passed the test'}
                     {lastResult.invoices_failed > 0 && <>, {lastResult.invoices_failed} failed</>}.{' '}
-                    <Link to="/invoices">View receipts</Link>
+                    <Link to={`/invoices?upload=${lastResult.id}`}>
+                      {lastResult.fbr_env === 'production' ? 'View receipts' : 'Review them'}
+                    </Link>
                   </span>
                 </>
               )}
@@ -331,6 +400,21 @@ export default function Uploads() {
                 <option value="completed_with_errors">Completed with errors</option>
                 <option value="failed">Failed</option>
               </select>
+              <select
+                value={histEnv}
+                onChange={(e) => {
+                  setHistEnv(e.target.value)
+                  setPage(1)
+                }}
+                aria-label="Show submissions for"
+                style={{ maxWidth: 180, marginLeft: 'auto' }}
+              >
+                {ENV_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -360,6 +444,7 @@ export default function Uploads() {
                     <tr>
                       <th>#</th>
                       <th>File</th>
+                      <th>Mode</th>
                       <th>Date</th>
                       <th>Rows</th>
                       <th>Invoices</th>
@@ -376,6 +461,13 @@ export default function Uploads() {
                         <td>
                           <span className="strong">
                             <FileText size={14} /> {u.filename}
+                          </span>
+                        </td>
+                        <td>
+                          <span
+                            className={`badge ${u.fbr_env === 'production' ? 'submitted' : 'draft'}`}
+                          >
+                            {MODE_LABELS[u.fbr_env] || u.fbr_env}
                           </span>
                         </td>
                         <td>{new Date(u.created_at).toLocaleString()}</td>
@@ -401,10 +493,27 @@ export default function Uploads() {
                         <td>
                           <div className="row-actions">
                             {u.invoices_created > 0 && (
-                              <Link className="btn btn-ghost btn-sm" to={`/invoices?upload=${u.id}`}>
-                                <ReceiptText size={14} /> invoices
+                              <Link
+                                className="btn btn-primary btn-sm has-tip"
+                                to={`/invoices?upload=${u.id}`}
+                                data-tip="View invoices"
+                                aria-label="View invoices"
+                              >
+                                <ReceiptText size={14} />
                               </Link>
                             )}
+                            {canProd &&
+                              u.fbr_env !== 'production' &&
+                              u.invoices_submitted > 0 && (
+                                <button
+                                  className="btn btn-secondary btn-sm has-tip"
+                                  onClick={() => setConfirmPromote(u)}
+                                  data-tip="Submit this batch to FBR"
+                                  aria-label="Submit this batch to FBR"
+                                >
+                                  <Check size={14} />
+                                </button>
+                              )}
                           </div>
                         </td>
                       </tr>
@@ -428,11 +537,42 @@ export default function Uploads() {
         </>
       )}
 
+      {confirmPromote && (
+        <Modal
+          title="Submit this batch to FBR?"
+          onClose={() => !promoting && setConfirmPromote(null)}
+          width={460}
+        >
+          <div className="alert info" style={{ marginTop: 0 }}>
+            <Check size={17} />
+            <span>
+              All {confirmPromote.invoices_submitted} test-passed invoice
+              {confirmPromote.invoices_submitted === 1 ? '' : 's'} in{' '}
+              <strong>{confirmPromote.filename}</strong> will be submitted to <strong>FBR</strong>{' '}
+              as real, permanent tax records. This replaces their test results.
+            </span>
+          </div>
+          <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setConfirmPromote(null)}
+              disabled={promoting}
+            >
+              Cancel
+            </button>
+            <button className="btn btn-primary" onClick={promoteUpload} disabled={promoting}>
+              {promoting ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
+              Confirm, submit to FBR
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {showManualModal && (
         <ManualInvoiceModal
           onClose={() => setShowManualModal(false)}
           onSubmitted={handleManualSubmitted}
-          isProduction={isProduction}
+          target={submitTarget}
           scenarios={scenarios}
         />
       )}
