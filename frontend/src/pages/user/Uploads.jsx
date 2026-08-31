@@ -11,7 +11,7 @@ import {
   FileText,
   ReceiptText,
   FlaskConical,
-  SendHorizontal,
+  Check,
   Search,
   X,
   BookOpenText,
@@ -508,7 +508,7 @@ export default function Uploads() {
                                   data-tip="Submit this batch to FBR"
                                   aria-label="Submit this batch to FBR"
                                 >
-                                  <SendHorizontal size={14} />
+                                  <Check size={14} />
                                 </button>
                               )}
                           </div>
@@ -541,7 +541,7 @@ export default function Uploads() {
           width={460}
         >
           <div className="alert info" style={{ marginTop: 0 }}>
-            <SendHorizontal size={17} />
+            <Check size={17} />
             <span>
               All {confirmPromote.invoices_submitted} test-passed invoice
               {confirmPromote.invoices_submitted === 1 ? '' : 's'} in{' '}
@@ -558,7 +558,7 @@ export default function Uploads() {
               Cancel
             </button>
             <button className="btn btn-primary" onClick={promoteUpload} disabled={promoting}>
-              {promoting ? <Loader2 size={16} className="spin" /> : <SendHorizontal size={16} />}
+              {promoting ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
               Confirm, submit to FBR
             </button>
           </div>

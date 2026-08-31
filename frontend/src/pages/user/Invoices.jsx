@@ -8,7 +8,7 @@ import {
   Search,
   ShieldCheck,
   Loader2,
-  SendHorizontal,
+  Check,
 } from 'lucide-react'
 import { api } from '../../api'
 import Modal from '../../components/Modal'
@@ -327,7 +327,7 @@ export default function Invoices() {
                               className="btn btn-secondary btn-sm"
                               onClick={() => setConfirmPromoteInvoice(inv)}
                             >
-                              <SendHorizontal size={14} /> Submit to FBR
+                              <Check size={14} /> Submit to FBR
                             </button>
                           )}
                       </div>
@@ -358,7 +358,7 @@ export default function Invoices() {
           width={460}
         >
           <div className="alert info" style={{ marginTop: 0 }}>
-            <SendHorizontal size={17} />
+            <Check size={17} />
             <span>
               Invoice{' '}
               <strong className="mono">
@@ -377,7 +377,7 @@ export default function Invoices() {
               Cancel
             </button>
             <button className="btn btn-primary" onClick={confirmPromote} disabled={promoting}>
-              {promoting ? <Loader2 size={16} className="spin" /> : <SendHorizontal size={16} />}
+              {promoting ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
               Confirm, submit to FBR
             </button>
           </div>
