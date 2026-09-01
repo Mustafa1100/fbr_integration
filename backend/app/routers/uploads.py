@@ -201,12 +201,5 @@ def promote_upload(
     for inv in candidates:
         invoice_service.submit(db, inv, fbr, target_env="production")
 
-    live = [inv for inv in upload.invoices if not inv.is_deleted]
-    upload.invoices_submitted = sum(1 for inv in live if inv.status == "submitted")
-    upload.invoices_failed = sum(1 for inv in live if inv.status == "failed")
-    upload.fbr_env = "production"
-    upload.status = (
-        "completed" if upload.invoices_failed == 0 else "completed_with_errors"
-    )
-    db.commit()
+    invoice_service.sync_upload_env(db, upload)
     return upload_out(upload)

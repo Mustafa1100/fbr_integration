@@ -7,7 +7,7 @@ import re
 from sqlalchemy.orm import Session
 
 from app.fbr import client
-from app.models import FbrSettings, Invoice
+from app.models import FbrSettings, Invoice, Upload
 
 VALID_ENVS = ("mock", "sandbox", "production")
 
@@ -178,3 +178,25 @@ def submit(
         invoice.status = "failed"
     db.commit()
     return response
+
+
+def sync_upload_env(db: Session, upload: Upload) -> None:
+    """Roll an upload's per-invoice promotion state back up to the batch.
+
+    Recomputes the submitted/failed counters and, once every live invoice
+    in the batch sits on production, flips the whole upload to 'production'
+    — so Submission History stops showing a batch as 'Test' after its
+    invoices were promoted one by one. A no-op while any test invoice
+    remains. Call it after promoting invoices, individually or as a batch.
+    """
+    live = [inv for inv in upload.invoices if not inv.is_deleted]
+    if not live:
+        return
+    upload.invoices_submitted = sum(1 for inv in live if inv.status == "submitted")
+    upload.invoices_failed = sum(1 for inv in live if inv.status == "failed")
+    if all(inv.fbr_env == "production" for inv in live):
+        upload.fbr_env = "production"
+    upload.status = (
+        "completed" if upload.invoices_failed == 0 else "completed_with_errors"
+    )
+    db.commit()
