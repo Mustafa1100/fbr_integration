@@ -15,6 +15,7 @@ import {
   Lock,
   Eye,
   EyeOff,
+  Hash,
 } from 'lucide-react'
 
 const ENV_LABELS = {
@@ -285,6 +286,35 @@ export default function FbrSettings() {
                     <div>{data.default_scenario || '—'}</div>
                   </div>
                 </div>
+
+                <h2 className="section-title">
+                  <Hash size={17} /> STRNs
+                </h2>
+                <p className="muted">
+                  Sales Tax Registration Numbers shown on your printed receipts.
+                </p>
+                {data.strns && data.strns.length > 0 ? (
+                  <div className="table-card">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Business name</th>
+                          <th>STRN</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.strns.map((s, i) => (
+                          <tr key={i}>
+                            <td>{s.business_name}</td>
+                            <td className="mono">{s.strn}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div>—</div>
+                )}
               </div>
             </>
           )}

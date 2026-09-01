@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -7,6 +9,24 @@ from app.database import get_db
 from app.models import FbrSettings, User
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+MAX_STRNS = 50
+
+
+def parse_strns(raw: str | None) -> list[dict]:
+    """The stored strns JSON as a list of {"business_name", "strn"} dicts,
+    tolerating a null / malformed column."""
+    try:
+        value = json.loads(raw or "[]")
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(value, list):
+        return []
+    return [
+        {"business_name": str(e.get("business_name", "")), "strn": str(e.get("strn", ""))}
+        for e in value
+        if isinstance(e, dict)
+    ]
 
 
 def get_or_create_fbr_settings(db: Session, user: User) -> FbrSettings:
@@ -38,7 +58,13 @@ def fbr_settings_out(fbr: FbrSettings) -> dict:
         "seller_province": fbr.seller_province,
         "seller_address": fbr.seller_address,
         "default_scenario": fbr.default_scenario,
+        "strns": parse_strns(fbr.strns),
     }
+
+
+class StrnEntry(BaseModel):
+    business_name: str = ""
+    strn: str = ""
 
 
 class FbrSettingsRequest(BaseModel):
@@ -53,6 +79,8 @@ class FbrSettingsRequest(BaseModel):
     seller_province: str = "Sindh"
     seller_address: str = ""
     default_scenario: str = "SN001"
+    # None = leave the saved STRNs untouched; [] = clear them.
+    strns: list[StrnEntry] | None = None
 
 
 def apply_fbr_settings(fbr: FbrSettings, body: FbrSettingsRequest) -> None:
@@ -69,6 +97,13 @@ def apply_fbr_settings(fbr: FbrSettings, body: FbrSettingsRequest) -> None:
     fbr.seller_province = body.seller_province
     fbr.seller_address = body.seller_address.strip()
     fbr.default_scenario = body.default_scenario
+    if body.strns is not None:
+        cleaned = [
+            {"business_name": e.business_name.strip(), "strn": e.strn.strip()}
+            for e in body.strns
+            if e.business_name.strip() and e.strn.strip()
+        ]
+        fbr.strns = json.dumps(cleaned[:MAX_STRNS])
 
 
 @router.get("/fbr")

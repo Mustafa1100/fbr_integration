@@ -10,6 +10,9 @@ import {
   AlertCircle,
   CheckCircle2,
   ArrowLeft,
+  Plus,
+  Trash2,
+  Hash,
 } from 'lucide-react'
 import { api } from '../../api'
 import usePageTitle from '../../hooks/usePageTitle'
@@ -78,6 +81,17 @@ export default function UserFbrSettings() {
     )
 
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value })
+
+  const strns = form.strns || []
+  const setStrn = (i, key) => (e) =>
+    setForm({
+      ...form,
+      strns: strns.map((row, idx) => (idx === i ? { ...row, [key]: e.target.value } : row)),
+    })
+  const addStrn = () =>
+    setForm({ ...form, strns: [...strns, { business_name: '', strn: '' }] })
+  const removeStrn = (i) =>
+    setForm({ ...form, strns: strns.filter((_, idx) => idx !== i) })
   const tokenField = (which) => {
     const [has, preview] = tokens[which]
     return (
@@ -231,9 +245,60 @@ export default function UserFbrSettings() {
             </select>
           </div>
         </div>
-        <button className="btn btn-primary">
-          <Save size={16} /> Save settings
+
+        <h2 className="section-title">
+          <Hash size={17} /> STRNs
+        </h2>
+        <p className="muted">
+          Sales Tax Registration Numbers for this seller — shown on the printed receipt,
+          not sent to FBR. With one STRN it prints automatically under the CNIC; with
+          several, the user picks which to show from a dropdown on the invoice view (the
+          list shows the business name only).
+        </p>
+        {strns.length === 0 && (
+          <p className="muted" style={{ marginTop: 0 }}>No STRNs added.</p>
+        )}
+        {strns.map((row, i) => (
+          <div
+            key={i}
+            className="row-actions"
+            style={{ gap: '0.75rem', alignItems: 'flex-end', marginBottom: '0.75rem' }}
+          >
+            <div className="field" style={{ flex: 2, margin: 0 }}>
+              <label>Business name</label>
+              <input
+                value={row.business_name}
+                onChange={setStrn(i, 'business_name')}
+                placeholder="Trade name for this registration"
+              />
+            </div>
+            <div className="field" style={{ flex: 1, margin: 0 }}>
+              <label>STRN</label>
+              <input
+                value={row.strn}
+                onChange={setStrn(i, 'strn')}
+                placeholder="3277876122773"
+              />
+            </div>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => removeStrn(i)}
+              aria-label="Remove STRN"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={addStrn}>
+          <Plus size={14} /> Add STRN
         </button>
+
+        <div style={{ marginTop: '1.5rem' }}>
+          <button className="btn btn-primary">
+            <Save size={16} /> Save settings
+          </button>
+        </div>
       </form>
     </>
   )

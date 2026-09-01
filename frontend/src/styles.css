@@ -745,6 +745,19 @@ pre {
 }
 
 /* ── Receipt ───────────────────────────────────────────────────────── */
+.strn-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.strn-picker label { font-size: 0.82rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.strn-picker select { max-width: 320px; }
 .receipt { padding: 30px 36px; }
 .receipt-head {
   display: flex;

@@ -11,7 +11,7 @@ from app.database import get_db
 from app.fbr.client import error_text, is_valid
 from app.models import Invoice, Upload, User
 from app.pagination import paginate
-from app.routers.settings import get_or_create_fbr_settings
+from app.routers.settings import get_or_create_fbr_settings, parse_strns
 from app.services import invoice_service
 from app.services.invoice_service import ENV_FILTER_ALIASES, resolve_env_filter
 from app.services.qr import qr_data_uri
@@ -140,6 +140,9 @@ def detail_out(inv: Invoice, fbr) -> dict:
             # The owning user's account email — shown as the seller's
             # contact on the receipt, not sent to FBR.
             "email": fbr.user.email,
+            # Sales Tax Registration Numbers — receipt display only. One
+            # shows automatically; with several the user picks on the view.
+            "strns": parse_strns(fbr.strns),
         },
         "items": [
             {
