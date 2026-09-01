@@ -703,6 +703,79 @@ _ENV_CSV = (
 )
 
 
+def test_admin_manages_seller_strns(admin_headers):
+    headers, uid = _make_account(admin_headers, "strns@example.com")
+    base = {
+        "fbr_env": "mock",
+        "seller_ntn_cnic": "7654321",
+        "seller_business_name": "Strn Pvt Ltd",
+        "seller_province": "Sindh",
+        "seller_address": "Karachi",
+        "default_scenario": "SN001",
+    }
+
+    def put(extra):
+        r = client.put(
+            f"/api/admin/users/{uid}/fbr-settings",
+            json={**base, **extra},
+            headers=admin_headers,
+        )
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    # Several entries round-trip; each half is trimmed and rows missing
+    # either half are dropped.
+    out = put(
+        {
+            "strns": [
+                {"business_name": "  Alpha Traders ", "strn": " 111 "},
+                {"business_name": "Beta Foods", "strn": "222"},
+                {"business_name": "", "strn": "333"},
+                {"business_name": "No Number", "strn": ""},
+            ]
+        }
+    )
+    assert out["strns"] == [
+        {"business_name": "Alpha Traders", "strn": "111"},
+        {"business_name": "Beta Foods", "strn": "222"},
+    ]
+
+    # The user sees them, read-only.
+    assert (
+        client.get("/api/settings/fbr", headers=headers).json()["strns"]
+        == out["strns"]
+    )
+
+    # Omitting the key leaves the saved list untouched; [] clears it.
+    assert len(put({})["strns"]) == 2
+    assert put({"strns": []})["strns"] == []
+
+
+def test_invoice_receipt_includes_seller_strns(admin_headers):
+    headers, _ = _make_account(
+        admin_headers,
+        "strnreceipt@example.com",
+        strns=[
+            {"business_name": "Alpha", "strn": "111"},
+            {"business_name": "Beta", "strn": "222"},
+        ],
+    )
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("s.csv", _ENV_CSV, "text/csv")},
+        data={"target": "sandbox"},
+        headers=headers,
+    ).json()
+    inv_id = client.get(
+        f"/api/invoices?upload_id={up['id']}", headers=headers
+    ).json()[0]["id"]
+    detail = client.get(f"/api/invoices/{inv_id}", headers=headers).json()
+    assert detail["seller"]["strns"] == [
+        {"business_name": "Alpha", "strn": "111"},
+        {"business_name": "Beta", "strn": "222"},
+    ]
+
+
 def test_upload_target_env_is_stamped_and_history_splits(admin_headers):
     headers, uid = _make_account(
         admin_headers, "envsplit@example.com", can_submit_production=True

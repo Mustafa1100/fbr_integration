@@ -31,6 +31,8 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
   const [canProd, setCanProd] = useState(false)
   const [confirmingPromote, setConfirmingPromote] = useState(false)
   const [promoting, setPromoting] = useState(false)
+  // Which STRN to print, when the seller has more than one (index as string).
+  const [strnChoice, setStrnChoice] = useState('')
 
   useEffect(() => {
     setInv(null)
@@ -122,6 +124,16 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
     const excl = usePlaceholder ? it.fixed_notified_value : total - lineTax + discount
     return { ...it, displayExcl: excl, displayDiscount: discount, displayTotal: total }
   })
+  // STRN on the receipt: a lone one always prints; with several, only the
+  // one the user picks from the dropdown does; with none, nothing shows.
+  const strns = inv.seller.strns || []
+  const displayStrn =
+    strns.length === 1
+      ? strns[0].strn
+      : strnChoice !== '' && strns[Number(strnChoice)]
+        ? strns[Number(strnChoice)].strn
+        : ''
+
   const usesFixedValue = items.some((it) => it.fixed_notified_value > 0)
   const totalDiscount = items.reduce((sum, it) => sum + it.displayDiscount, 0)
   const showDiscountCol = totalDiscount > 0
@@ -199,6 +211,24 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
         </div>
       )}
 
+      {strns.length > 1 && (
+        <div className="strn-picker no-print">
+          <label htmlFor="strn-picker">STRN on this receipt</label>
+          <select
+            id="strn-picker"
+            value={strnChoice}
+            onChange={(e) => setStrnChoice(e.target.value)}
+          >
+            <option value="">— none —</option>
+            {strns.map((s, i) => (
+              <option key={i} value={i}>
+                {s.business_name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="card receipt">
         <div className="receipt-head">
           <div>
@@ -212,6 +242,12 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
               )}
               CNIC: {inv.seller.ntn_cnic || '—'}
               <br />
+              {displayStrn && (
+                <>
+                  STRN: {displayStrn}
+                  <br />
+                </>
+              )}
               {inv.seller.address}, {inv.seller.province}
               {inv.seller.email && (
                 <>

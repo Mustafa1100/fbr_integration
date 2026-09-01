@@ -111,6 +111,14 @@ def run_light_migrations() -> None:
                         "WHERE fbr_env = 'production'"
                     )
                 )
+        if "strns" not in fbr_columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE fbr_settings ADD COLUMN strns "
+                        "VARCHAR(4000) NOT NULL DEFAULT '[]'"
+                    )
+                )
     if "uploads" in inspector.get_table_names():
         upload_columns = {c["name"] for c in inspector.get_columns("uploads")}
         if "fbr_env" not in upload_columns:

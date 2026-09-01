@@ -66,6 +66,10 @@ class FbrSettings(Base):
     seller_province: Mapped[str] = mapped_column(String(50), default="Sindh")
     seller_address: Mapped[str] = mapped_column(String(300), default="")
     default_scenario: Mapped[str] = mapped_column(String(10), default="SN001")
+    # JSON list of {"business_name", "strn"} — the seller's Sales Tax
+    # Registration Numbers. Display-only on the printed receipt (never sent
+    # to PRAL); with more than one the user picks which to show.
+    strns: Mapped[str] = mapped_column(Text, default="[]")
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow
