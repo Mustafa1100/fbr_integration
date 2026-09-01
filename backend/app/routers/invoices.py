@@ -9,7 +9,7 @@ from sqlalchemy.orm import Query, Session
 from app.auth import get_current_user, require_password_already_set
 from app.database import get_db
 from app.fbr.client import error_text, is_valid
-from app.models import Invoice, User
+from app.models import Invoice, Upload, User
 from app.pagination import paginate
 from app.routers.settings import get_or_create_fbr_settings
 from app.services import invoice_service
@@ -232,6 +232,10 @@ def promote_invoice(
             400, "Test this invoice in sandbox first — it hasn't been submitted cleanly."
         )
     invoice_service.submit(db, inv, fbr, target_env="production")
+    if inv.upload_id:
+        upload = db.get(Upload, inv.upload_id)
+        if upload and not upload.is_deleted:
+            invoice_service.sync_upload_env(db, upload)
     return summary_out(inv)
 
 

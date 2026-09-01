@@ -838,6 +838,65 @@ def test_promote_whole_upload_to_production(admin_headers):
     )
 
 
+def test_promoting_invoices_individually_flips_the_parent_batch(admin_headers):
+    # Reported bug: promoting every invoice in a batch one by one left its
+    # Submission History row stuck on "Test" — only the batch-level promote
+    # flipped the upload. Now the upload rolls up from its invoices.
+    headers, _ = _make_account(
+        admin_headers, "promoteindiv@example.com", can_submit_production=True
+    )
+    two_row = _ENV_CSV + (
+        "POS-ENV-2,2026-08-17,,Walk-in Customer,Sindh,Karachi,Unregistered,"
+        "Widget2,0101.2100,18%,\"Numbers, pieces, units\",3,500,"
+        "Goods at standard rate (default),SN002\n"
+    )
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("batch.csv", two_row, "text/csv")},
+        data={"target": "sandbox"},
+        headers=headers,
+    ).json()
+    assert up["fbr_env"] == "sandbox"
+    inv_ids = [
+        i["id"]
+        for i in client.get(
+            f"/api/invoices?upload_id={up['id']}", headers=headers
+        ).json()
+    ]
+    assert len(inv_ids) == 2
+
+    def batch_env():
+        rows = client.get("/api/uploads?fbr_env=all", headers=headers).json()
+        return next(u for u in rows if u["id"] == up["id"])["fbr_env"]
+
+    # First of two promoted — a test invoice remains, batch stays "Test".
+    assert (
+        client.post(
+            f"/api/invoices/{inv_ids[0]}/promote", headers=headers
+        ).status_code
+        == 200
+    )
+    assert batch_env() == "sandbox"
+
+    # Second (last) promoted — nothing test left, batch flips to Live.
+    assert (
+        client.post(
+            f"/api/invoices/{inv_ids[1]}/promote", headers=headers
+        ).status_code
+        == 200
+    )
+    assert batch_env() == "production"
+    assert client.get("/api/uploads?fbr_env=sandbox", headers=headers).json() == []
+
+    # The now fully-live batch refuses a batch promote.
+    assert (
+        client.post(
+            f"/api/uploads/{up['id']}/promote", headers=headers
+        ).status_code
+        == 400
+    )
+
+
 def test_promote_guards(admin_headers):
     # No capability → 403.
     plain, _ = _make_account(admin_headers, "promoteno@example.com")
