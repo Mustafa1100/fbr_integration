@@ -50,6 +50,7 @@ export const COLUMN_META = [
   { name: 'fed_payable', required: false, sandboxOnly: false },
   { name: 'discount', required: false, sandboxOnly: false },
   { name: 'total_values', required: false, sandboxOnly: false },
+  { name: 'advance_tax', required: false, sandboxOnly: false },
 ]
 
 export const SALE_TYPE_VALUES = [
@@ -239,6 +240,12 @@ const EN_COLUMNS = {
     production:
       'Leave blank — the app adds it up for you (sale value + sales tax + further tax + FED − discount). Set it only when an upstream system produced a specific figure that FBR must receive unchanged.',
     sandbox: 'Leave blank for the scenario templates.',
+  },
+  advance_tax: {
+    meaning: 'Advance income tax (§236) collected on the invoice, in rupees.',
+    production:
+      'Blank / 0 if none. Otherwise enter the advance income tax for the line — it is shown on the receipt after the sales tax and added into the grand total. Rows sharing a pos_invoice_no are added together into one invoice total.',
+    sandbox: 'Leave blank.',
   },
 }
 
@@ -461,6 +468,12 @@ const UR_COLUMNS = {
       'خالی چھوڑ دیں — ایپ آپ کے لیے جوڑ دیتی ہے (سیل ویلیو + سیلز ٹیکس + فردر ٹیکس + FED − رعایت)۔ اسے صرف تب سیٹ کریں جب کسی upstream سسٹم نے کوئی مخصوص عدد نکالا ہو جو FBR کو بغیر تبدیلی کے ملنا چاہیے۔',
     sandbox: 'سینیریو ٹیمپلیٹس کے لیے خالی چھوڑ دیں۔',
   },
+  advance_tax: {
+    meaning: 'انوائس پر وصول کیا گیا ایڈوانس انکم ٹیکس (§236)، روپوں میں۔',
+    production:
+      'اگر نہ ہو تو خالی / 0۔ ورنہ لائن کے لیے ایڈوانس انکم ٹیکس درج کریں — یہ رسید میں سیلز ٹیکس کے بعد دکھایا جاتا ہے اور گرینڈ ٹوٹل میں شامل ہو جاتا ہے۔ ایک ہی pos_invoice_no والی قطاریں جمع ہو کر ایک انوائس ٹوٹل بنتی ہیں۔',
+    sandbox: 'خالی چھوڑ دیں۔',
+  },
 }
 
 const UR_SALE_TYPES = {
@@ -681,6 +694,12 @@ const SD_COLUMNS = {
     production:
       'خالي ڇڏي ڏيو — ايپ توهان لاءِ جوڙ ڪري ٿي (سيل ويليو + سيلز ٽيڪس + فردر ٽيڪس + FED − رعايت). ان کي صرف تڏهن سيٽ ڪريو جڏهن ڪنهن upstream سسٽم ڪو مخصوص انگ ڪڍيو هجي جيڪو FBR کي بغير تبديليءَ جي ملڻ گهرجي.',
     sandbox: 'سيناريو ٽيمپليٽس لاءِ خالي ڇڏي ڏيو.',
+  },
+  advance_tax: {
+    meaning: 'انوائس تي وصول ٿيل ايڊوانس انڪم ٽيڪس (§236)، رپين ۾.',
+    production:
+      'جيڪڏهن ڪونهي ته خالي / 0. نه ته لائن لاءِ ايڊوانس انڪم ٽيڪس داخل ڪريو — اهو رسيد ۾ سيلز ٽيڪس کان پوءِ ڏيکاريو وڃي ٿو ۽ گرينڊ ٽوٽل ۾ شامل ٿي وڃي ٿو. ساڳي pos_invoice_no واريون قطارون گڏجي هڪ انوائس ٽوٽل ٺاهين ٿيون.',
+    sandbox: 'خالي ڇڏي ڏيو.',
   },
 }
 

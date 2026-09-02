@@ -151,6 +151,19 @@ def run_light_migrations() -> None:
         if "paid_at" not in invoice_columns:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE invoices ADD COLUMN paid_at TIMESTAMP NULL"))
+        if "advance_tax" not in invoice_columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE invoices ADD COLUMN advance_tax FLOAT NOT NULL DEFAULT 0")
+                )
+        if "advance_tax_set" not in invoice_columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE invoices ADD COLUMN advance_tax_set "
+                        "BOOLEAN NOT NULL DEFAULT FALSE"
+                    )
+                )
         if "fbr_env" not in invoice_columns:
             with engine.begin() as conn:
                 conn.execute(

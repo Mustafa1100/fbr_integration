@@ -38,6 +38,9 @@ def summary_out(inv: Invoice) -> dict:
         "upload_id": inv.upload_id,
         "is_paid": inv.is_paid,
         "paid_at": inv.paid_at.isoformat() if inv.paid_at else None,
+        # §236 advance income tax — a receipt figure held on the invoice.
+        "advance_tax": round(inv.advance_tax, 2),
+        "advance_tax_set": inv.advance_tax_set,
     }
 
 
@@ -265,5 +268,30 @@ def mark_invoice_paid(
         )
     inv.is_paid = body.is_paid
     inv.paid_at = datetime.now(timezone.utc) if body.is_paid else None
+    db.commit()
+    return summary_out(inv)
+
+
+class AdvanceTaxRequest(BaseModel):
+    advance_tax: float
+
+
+@router.patch("/{invoice_id}/advance-tax")
+def set_invoice_advance_tax(
+    invoice_id: int,
+    body: AdvanceTaxRequest,
+    user: User = Depends(require_password_already_set),
+    db: Session = Depends(get_db),
+):
+    """One-time back-fill of the §236 advance income tax on an older
+    invoice — a receipt figure, set once and not changeable afterwards.
+    Invoices created via CSV/manual already carry it from creation."""
+    inv = _get_owned(db, user, invoice_id)
+    if inv.advance_tax_set:
+        raise HTTPException(400, "Advance tax is already set for this invoice.")
+    if body.advance_tax < 0:
+        raise HTTPException(400, "Advance tax cannot be negative.")
+    inv.advance_tax = round(body.advance_tax, 2)
+    inv.advance_tax_set = True
     db.commit()
     return summary_out(inv)
