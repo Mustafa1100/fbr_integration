@@ -9,7 +9,7 @@ CSV format (one row per product/line item; rows sharing the same
     rate,uom,quantity,unit_price,sale_type,scenario_id,fixed_notified_value,
     sro_schedule_no,sro_item_serial_no,invoice_ref_no,sales_tax,
     sales_tax_withheld_at_source,extra_tax,further_tax,fed_payable,discount,
-    total_values
+    total_values,advance_tax
 
 Required per row: pos_invoice_no, invoice_date (YYYY-MM-DD),
 product_description, hs_code, quantity, unit_price. Everything else falls
@@ -32,6 +32,10 @@ previous behaviour — the amount columns default to 0, and sales_tax /
 total_values are derived by the app. They exist so a provider whose POS/ERP
 already carries e.g. a discount or withheld tax can pass those figures
 straight through instead of losing them.
+
+advance_tax is a receipt figure rather than an item field: the §236 advance
+income tax the distributor collected. Per-row values are summed onto
+Invoice.advance_tax and shown on the receipt after the sales tax. Blank -> 0.
 """
 
 import csv
@@ -66,6 +70,9 @@ OPTIONAL_NUMERIC_COLUMNS = [
     "fed_payable",
     "discount",
     "total_values",
+    # §236 advance income tax collected on the invoice — a receipt figure;
+    # per-row values are summed onto Invoice.advance_tax.
+    "advance_tax",
 ]
 
 ALL_COLUMNS = [
@@ -98,6 +105,7 @@ ALL_COLUMNS = [
     "fed_payable",
     "discount",
     "total_values",
+    "advance_tax",
 ]
 
 TEMPLATE_ROWS = [
@@ -436,6 +444,12 @@ def _process_rows(
             buyer_address=first.get("buyer_address", ""),
             buyer_registration_type=first.get("buyer_registration_type")
             or "Unregistered",
+            # Advance income tax — sum of the group's rows. Marked "set" so
+            # the receipt's one-time back-fill isn't offered for it.
+            advance_tax=round(
+                sum(_row_amount(row, "advance_tax") for row in group), 2
+            ),
+            advance_tax_set=True,
         )
         for row in group:
             quantity = float(row["quantity"])

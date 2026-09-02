@@ -1306,8 +1306,96 @@ def test_csv_template_carries_optional_amount_columns(user_headers):
         "fed_payable",
         "discount",
         "total_values",
+        "advance_tax",
     ):
         assert col in header
+
+
+def test_advance_tax_from_csv_is_summed_and_locked(user_headers):
+    # advance_tax rows sharing a pos_invoice_no add up onto the invoice; it's
+    # a receipt figure (not an item field, so not in the payload), and an
+    # upload invoice is "set" so the receipt back-fill is not offered.
+    csv_text = (
+        "pos_invoice_no,invoice_date,buyer_ntn_cnic,buyer_name,buyer_province,"
+        "buyer_address,buyer_registration_type,product_description,hs_code,"
+        "rate,uom,quantity,unit_price,sale_type,scenario_id,advance_tax\n"
+        "POS-AIT,2026-08-17,,Walk-in Customer,Sindh,Karachi,Unregistered,"
+        "Item A,0101.2100,18%,\"Numbers, pieces, units\",1,1000,"
+        "Goods at standard rate (default),SN002,6.25\n"
+        "POS-AIT,2026-08-17,,Walk-in Customer,Sindh,Karachi,Unregistered,"
+        "Item B,0101.2100,18%,\"Numbers, pieces, units\",1,500,"
+        "Goods at standard rate (default),SN002,3.75\n"
+    )
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("ait.csv", csv_text, "text/csv")},
+        headers=user_headers,
+    ).json()
+    inv = client.get(
+        f"/api/invoices?upload_id={up['id']}", headers=user_headers
+    ).json()[0]
+    detail = client.get(f"/api/invoices/{inv['id']}", headers=user_headers).json()
+    assert detail["advance_tax"] == 10.0          # 6.25 + 3.75
+    assert detail["advance_tax_set"] is True
+    assert "advanceTax" not in detail["payload"]
+    assert "advance_tax" not in str(detail["payload"]).lower()
+
+    # Already set -> the one-time back-fill is refused.
+    resp = client.patch(
+        f"/api/invoices/{inv['id']}/advance-tax",
+        json={"advance_tax": 99},
+        headers=user_headers,
+    )
+    assert resp.status_code == 400
+
+
+def test_advance_tax_backfill_sets_once(user_headers):
+    from app.database import SessionLocal
+    from app.models import Invoice
+
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("bf.csv", CSV_OK, "text/csv")},
+        headers=user_headers,
+    ).json()
+    inv_id = client.get(
+        f"/api/invoices?upload_id={up['id']}", headers=user_headers
+    ).json()[0]["id"]
+
+    # Simulate an older, pre-feature invoice.
+    with SessionLocal() as db:
+        db.get(Invoice, inv_id).advance_tax_set = False
+        db.commit()
+
+    d0 = client.get(f"/api/invoices/{inv_id}", headers=user_headers).json()
+    assert d0["advance_tax"] == 0.0 and d0["advance_tax_set"] is False
+
+    assert (
+        client.patch(
+            f"/api/invoices/{inv_id}/advance-tax",
+            json={"advance_tax": -1},
+            headers=user_headers,
+        ).status_code
+        == 400
+    )
+
+    ok = client.patch(
+        f"/api/invoices/{inv_id}/advance-tax",
+        json={"advance_tax": 123.456},
+        headers=user_headers,
+    )
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["advance_tax"] == 123.46 and ok.json()["advance_tax_set"] is True
+
+    # Locked now.
+    assert (
+        client.patch(
+            f"/api/invoices/{inv_id}/advance-tax",
+            json={"advance_tax": 0},
+            headers=user_headers,
+        ).status_code
+        == 400
+    )
 
 
 def test_compute_sales_tax_handles_percent_and_fixed_per_unit_rates():

@@ -14,6 +14,7 @@ import {
 import { api } from '../api'
 import usePageTitle from '../hooks/usePageTitle'
 import Modal from './Modal'
+import CreditCardPlus from './CreditCardPlusIcon'
 
 // Shared receipt UI for both the user's own view (/invoices/:id) and the
 // admin read-only view (/admin/invoices/:userId/:invoiceId) — same data
@@ -33,6 +34,10 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
   const [promoting, setPromoting] = useState(false)
   // Which STRN to print, when the seller has more than one (index as string).
   const [strnChoice, setStrnChoice] = useState('')
+  // One-time advance-tax back-fill (older invoices only).
+  const [advTaxOpen, setAdvTaxOpen] = useState(false)
+  const [advTaxValue, setAdvTaxValue] = useState('')
+  const [advTaxBusy, setAdvTaxBusy] = useState(false)
 
   useEffect(() => {
     setInv(null)
@@ -62,6 +67,22 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
     } finally {
       setPromoting(false)
       setConfirmingPromote(false)
+    }
+  }
+
+  async function saveAdvanceTax() {
+    setAdvTaxBusy(true)
+    setError('')
+    try {
+      await api.patch(`/api/invoices/${inv.id}/advance-tax`, {
+        advance_tax: Number(advTaxValue) || 0,
+      })
+      setInv(await api.get(apiUrl))
+      setAdvTaxOpen(false)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setAdvTaxBusy(false)
     }
   }
 
@@ -187,6 +208,19 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
               aria-label={inv.is_paid ? 'Mark as unpaid' : 'Mark as paid'}
             >
               {paidBusy ? <Loader2 size={16} className="spin" /> : <CheckCheck size={16} />}
+            </button>
+          )}
+          {allowMarkPaid && !inv.advance_tax_set && (
+            <button
+              className="btn btn-hollow has-tip has-tip-below"
+              onClick={() => {
+                setAdvTaxValue('')
+                setAdvTaxOpen(true)
+              }}
+              data-tip="Add advance tax"
+              aria-label="Add advance tax"
+            >
+              <CreditCardPlus size={16} />
             </button>
           )}
           <button
@@ -369,9 +403,15 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
               <span>Sales tax</span>
               <span>{inv.total_tax.toLocaleString()}</span>
             </div>
+            {inv.advance_tax > 0 && (
+              <div className="trow">
+                <span>Advance tax</span>
+                <span>{inv.advance_tax.toLocaleString()}</span>
+              </div>
+            )}
             <div className="trow grand">
               <span>Grand total</span>
-              <span>{displayGrandTotal.toLocaleString()}</span>
+              <span>{(displayGrandTotal + inv.advance_tax).toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -458,6 +498,51 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
             <button className="btn btn-primary" onClick={confirmMarkPaid} disabled={paidBusy}>
               {paidBusy ? <Loader2 size={16} className="spin" /> : <ShieldCheck size={16} />}
               Confirm, mark as paid
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {advTaxOpen && (
+        <Modal
+          title="Add advance tax"
+          onClose={() => !advTaxBusy && setAdvTaxOpen(false)}
+          width={440}
+        >
+          <div className="alert info" style={{ marginTop: 0 }}>
+            <CreditCardPlus size={17} />
+            <span>
+              Enter the advance income tax collected on this invoice.{' '}
+              <strong>It can't be changed once saved.</strong>
+            </span>
+          </div>
+          <div className="field">
+            <label>Advance tax (Rs.)</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              autoFocus
+              value={advTaxValue}
+              onChange={(e) => setAdvTaxValue(e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
+          <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setAdvTaxOpen(false)}
+              disabled={advTaxBusy}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={saveAdvanceTax}
+              disabled={advTaxBusy || advTaxValue === '' || Number(advTaxValue) < 0}
+            >
+              {advTaxBusy ? <Loader2 size={16} className="spin" /> : <CreditCardPlus size={16} />}
+              Save
             </button>
           </div>
         </Modal>

@@ -35,6 +35,7 @@ const CSV_COLUMNS = [
   'fed_payable',
   'discount',
   'total_values',
+  'advance_tax',
 ]
 
 function csvField(value) {
@@ -77,6 +78,8 @@ function emptyForm() {
     fed_payable: '',
     discount: '',
     total_values: '',
+    // §236 advance income tax — a receipt figure, held on the invoice.
+    advance_tax: '',
   }
 }
 
@@ -393,6 +396,17 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
               value={form.total_values}
               onChange={set('total_values')}
               placeholder="auto"
+            />
+          </div>
+          <div className="field">
+            <label>Advance tax</label>
+            <input
+              type="number"
+              step="any"
+              min="0"
+              value={form.advance_tax}
+              onChange={set('advance_tax')}
+              placeholder="0"
             />
           </div>
         </div>

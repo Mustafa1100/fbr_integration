@@ -150,6 +150,13 @@ class Invoice(Base):
     is_paid: Mapped[bool] = mapped_column(Boolean, default=False)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # §236 advance income tax the distributor collected on this invoice — a
+    # receipt figure held on the invoice. advance_tax_set locks the value
+    # once entered: CSV/manual invoices set it at creation; older invoices
+    # get a one-time back-fill on the receipt.
+    advance_tax: Mapped[float] = mapped_column(Float, default=0.0)
+    advance_tax_set: Mapped[bool] = mapped_column(Boolean, default=False)
+
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
