@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   Loader2,
   Check,
+  Trash2,
 } from 'lucide-react'
 import { api } from '../../api'
 import Modal from '../../components/Modal'
@@ -111,6 +112,23 @@ export default function Invoices() {
 
   const [confirmPaidInvoice, setConfirmPaidInvoice] = useState(null)
   const [markingPaid, setMarkingPaid] = useState(false)
+
+  const [confirmDeleteInvoice, setConfirmDeleteInvoice] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+
+  async function confirmDelete() {
+    setDeleting(true)
+    setError('')
+    try {
+      await api.delete(`/api/invoices/${confirmDeleteInvoice.id}`)
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setDeleting(false)
+      setConfirmDeleteInvoice(null)
+    }
+  }
 
   async function setPaid(inv, isPaid) {
     setError('')
@@ -347,6 +365,16 @@ export default function Invoices() {
                               <Check size={14} />
                             </button>
                           )}
+                        {inv.fbr_env !== 'production' && (
+                          <button
+                            className="btn btn-ghost btn-sm has-tip"
+                            onClick={() => setConfirmDeleteInvoice(inv)}
+                            data-tip="Delete"
+                            aria-label="Delete invoice"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -429,6 +457,38 @@ export default function Invoices() {
             <button className="btn btn-primary" onClick={confirmMarkPaid} disabled={markingPaid}>
               {markingPaid ? <Loader2 size={16} className="spin" /> : <ShieldCheck size={16} />}
               Confirm, mark as paid
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {confirmDeleteInvoice && (
+        <Modal
+          title="Delete this invoice?"
+          onClose={() => !deleting && setConfirmDeleteInvoice(null)}
+          width={440}
+        >
+          <div className="alert info" style={{ marginTop: 0 }}>
+            <Trash2 size={17} />
+            <span>
+              Invoice{' '}
+              <strong className="mono">
+                {confirmDeleteInvoice.fbr_invoice_number || confirmDeleteInvoice.pos_invoice_no}
+              </strong>{' '}
+              ({confirmDeleteInvoice.buyer_name}) will be removed from your history.
+            </span>
+          </div>
+          <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setConfirmDeleteInvoice(null)}
+              disabled={deleting}
+            >
+              Cancel
+            </button>
+            <button className="btn btn-danger" onClick={confirmDelete} disabled={deleting}>
+              {deleting ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
+              Delete
             </button>
           </div>
         </Modal>

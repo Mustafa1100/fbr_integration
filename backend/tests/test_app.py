@@ -635,14 +635,12 @@ def test_csv_upload_bad_format(user_headers):
     assert "Missing required columns" in resp.json()["error"]
 
 
-def test_users_have_no_delete_facility(user_headers):
-    # Deleting invoices or uploads is admin-only. There is no user-facing
-    # delete route at all, so the DELETE verb is simply not there.
-    inv_id = client.get("/api/invoices", headers=user_headers).json()[0]["id"]
+def test_users_cannot_delete_uploads(user_headers):
+    # An upload can only be removed by an admin — the user-facing DELETE
+    # route doesn't exist (so this is a no-op 404, nothing is removed).
+    # Deleting a *test* invoice is allowed — see
+    # test_user_can_delete_test_invoice_only.
     up_id = client.get("/api/uploads", headers=user_headers).json()[0]["id"]
-    assert client.delete(
-        f"/api/invoices/{inv_id}", headers=user_headers
-    ).status_code in (404, 405)
     assert client.delete(
         f"/api/uploads/{up_id}", headers=user_headers
     ).status_code in (404, 405)
@@ -1817,6 +1815,38 @@ def test_mark_invoice_paid_requires_submitted_live_invoice(admin_headers):
             f"/api/invoices/{bad['id']}/paid", json={"is_paid": True}, headers=headers
         ).status_code
         == 400
+    )
+
+
+def test_user_can_delete_test_invoice_only(admin_headers):
+    headers, _ = _make_account(
+        admin_headers, "invdel@example.com", can_submit_production=True
+    )
+
+    # A test (sandbox) invoice — the user can remove it from their history.
+    test_inv = _one_invoice(headers, _ENV_CSV, "sandbox")
+    assert test_inv["fbr_env"] == "sandbox"
+    assert client.delete(
+        f"/api/invoices/{test_inv['id']}", headers=headers
+    ).json() == {"ok": True}
+    remaining = client.get("/api/invoices", headers=headers).json()
+    assert all(i["id"] != test_inv["id"] for i in remaining)
+    # Gone from the user's view, and gone for the admin too.
+    assert client.get(f"/api/invoices/{test_inv['id']}", headers=headers).status_code == 404
+
+    # A live (production) invoice is a real record — 403, still there.
+    live = _one_invoice(headers, _ENV_CSV, "production")
+    assert live["fbr_env"] == "production"
+    assert (
+        client.delete(f"/api/invoices/{live['id']}", headers=headers).status_code == 403
+    )
+    still = client.get("/api/invoices?fbr_env=production", headers=headers).json()
+    assert any(i["id"] == live["id"] for i in still)
+
+    # Another user can't touch it.
+    other, _ = _make_account(admin_headers, "invdel-other@example.com")
+    assert (
+        client.delete(f"/api/invoices/{live['id']}", headers=other).status_code == 404
     )
 
 
