@@ -295,3 +295,20 @@ def set_invoice_advance_tax(
     inv.advance_tax_set = True
     db.commit()
     return summary_out(inv)
+
+
+@router.delete("/{invoice_id}")
+def delete_invoice(
+    invoice_id: int,
+    user: User = Depends(require_password_already_set),
+    db: Session = Depends(get_db),
+):
+    """Remove one of the user's own invoices from their history. Limited to
+    test invoices (mock / sandbox); a live FBR invoice is a real record and
+    stays admin-only."""
+    inv = _get_owned(db, user, invoice_id)
+    if inv.fbr_env not in ("mock", "sandbox"):
+        raise HTTPException(403, "Only test invoices can be deleted.")
+    inv.is_deleted = True
+    db.commit()
+    return {"ok": True}
