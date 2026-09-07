@@ -326,10 +326,8 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
         </div>
 
         <p>
-          <strong>Buyer:</strong> {inv.buyer_name} ({inv.buyer_registration_type})
+          <strong>Buyer:</strong> {inv.buyer_name}
           {inv.buyer_ntn_cnic && <> — NTN/CNIC: {inv.buyer_ntn_cnic}</>}
-          <br />
-          {inv.buyer_address}, {inv.buyer_province}
         </p>
 
         <div className="table-card">
@@ -346,7 +344,6 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
                 <th>Excl. ST</th>
                 {showDiscountCol && <th>Discount</th>}
                 <th>Sales tax</th>
-                <th>Total</th>
               </tr>
             </thead>
             <tbody>
@@ -371,9 +368,6 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
                     </td>
                   )}
                   <td>{it.sales_tax.toLocaleString()}</td>
-                  <td>
-                    <span className="strong">{it.displayTotal.toLocaleString()}</span>
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -403,15 +397,13 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
               <span>Sales tax</span>
               <span>{inv.total_tax.toLocaleString()}</span>
             </div>
-            {inv.advance_tax > 0 && (
-              <div className="trow">
-                <span>Advance tax</span>
-                <span>{inv.advance_tax.toLocaleString()}</span>
-              </div>
-            )}
+            <div className="trow">
+              <span>Advance tax</span>
+              <span>{(inv.advance_tax || 0).toLocaleString()}</span>
+            </div>
             <div className="trow grand">
               <span>Grand total</span>
-              <span>{(displayGrandTotal + inv.advance_tax).toLocaleString()}</span>
+              <span>{(displayGrandTotal + (inv.advance_tax || 0)).toLocaleString()}</span>
             </div>
           </div>
         </div>
