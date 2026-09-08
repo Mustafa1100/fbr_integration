@@ -3,6 +3,7 @@ drives the submit flow using the owning user's FBR settings."""
 
 import json
 import re
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.orm import Session
 
@@ -128,6 +129,19 @@ def build_payload(invoice: Invoice, fbr: FbrSettings) -> dict:
     return payload
 
 
+def round_money(value: float) -> float:
+    """Round to 2dp with standard round-half-up, matching FBR's own
+    convention — plain float round() uses banker's rounding *and* is
+    subject to binary floating-point representation error, either of
+    which can silently disagree with what FBR expects on an exact
+    X.XX5 boundary. Confirmed live: 584.75 * 18% computed via float
+    round() as 105.25, but FBR's validator expected 105.26 and
+    rejected the invoice (error 0102, 2026-09-08) — going through
+    Decimal(str(value)) (not Decimal(value), which would inherit the
+    same binary imprecision) fixes it."""
+    return float(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
 def compute_sales_tax(value_excl_st: float, rate: str, quantity: float = 1.0) -> float:
     """Derive sales tax from the rate string, covering the three shapes FBR
     uses across the sandbox scenarios:
@@ -140,14 +154,14 @@ def compute_sales_tax(value_excl_st: float, rate: str, quantity: float = 1.0) ->
     A rate with no number in it (e.g. "Exempt") yields 0.
     """
     rate = (rate or "").strip()
-    tax = 0.0
+    tax = Decimal("0")
     pct = _RATE_PERCENT_RE.search(rate)
     if pct:
-        tax += value_excl_st * float(pct.group(1)) / 100
+        tax += Decimal(str(value_excl_st)) * Decimal(pct.group(1)) / Decimal("100")
     per_unit = _RATE_PER_UNIT_RE.search(rate)
     if per_unit:
-        tax += float(per_unit.group(1)) * quantity
-    return round(tax, 2)
+        tax += Decimal(per_unit.group(1)) * Decimal(str(quantity))
+    return float(tax.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 def submit(

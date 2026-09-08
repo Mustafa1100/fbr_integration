@@ -454,14 +454,14 @@ def _process_rows(
         for row in group:
             quantity = float(row["quantity"])
             unit_price = float(row["unit_price"])
-            value_excl = round(quantity * unit_price, 2)
+            value_excl = invoice_service.round_money(quantity * unit_price)
             rate = row.get("rate") or "18%"
             # fixed_notified_value is entered as a per-unit MRP (what's
             # actually printed on the package) — multiply by quantity so the
             # tax basis reflects the whole line, matching how value_excl
             # (quantity * unit_price) already works for standard-rate goods.
-            fixed_notified_value = round(
-                float(row.get("fixed_notified_value") or 0) * quantity, 2
+            fixed_notified_value = invoice_service.round_money(
+                float(row.get("fixed_notified_value") or 0) * quantity
             )
             sale_type = row.get("sale_type") or "Goods at standard rate (default)"
             if fixed_notified_value > 0 and value_excl == 0:

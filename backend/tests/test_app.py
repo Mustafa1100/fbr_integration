@@ -1411,6 +1411,21 @@ def test_compute_sales_tax_handles_percent_and_fixed_per_unit_rates():
     # Percentage + per-unit together — PRAL SN022 ("18% along with rupees
     # 60 per kilogram", value 100, qty 1 -> 18 + 60 = 78).
     assert compute_sales_tax(100, "18% along with rupees 60 per kilogram", 1) == 78.0
+    # Exact half-cent boundary (584.75 * 18% == 105.255): plain float
+    # round() computes this as 105.25 (binary floating-point error) and
+    # FBR's own validator rejected it expecting 105.26 (error 0102,
+    # confirmed live 2026-09-08) — must round half-up, not float-round.
+    assert compute_sales_tax(584.75, "18%") == 105.26
+
+
+def test_round_money_handles_half_cent_boundary():
+    from app.services.invoice_service import round_money
+
+    assert round_money(624.732906 * 0.936) == 584.75
+    assert round_money(584.75 * 0.18) == 105.26
+    # A case plain float round() gets right too, as a sanity check the
+    # helper isn't over-correcting.
+    assert round_money(101.69) == 101.69
 
 
 def test_csv_upload_with_fixed_per_unit_rate(user_headers):
