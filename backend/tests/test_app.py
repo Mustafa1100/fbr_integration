@@ -1253,6 +1253,8 @@ def test_optional_amount_columns_pass_through_to_fbr_payload(user_headers):
     invoices = client.get(
         "/api/invoices?upload_id=" + str(resp.json()["id"]), headers=user_headers
     ).json()
+    # The list view rolls the line's discount up onto the invoice too.
+    assert invoices[0]["total_discount"] == 150
     detail = client.get(f"/api/invoices/{invoices[0]['id']}", headers=user_headers).json()
     payload = detail["payload"]
     assert payload["invoiceRefNo"] == "SI-ORIG-9"

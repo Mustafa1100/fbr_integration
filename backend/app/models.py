@@ -177,6 +177,10 @@ class Invoice(Base):
         return sum(i.sales_tax + i.further_tax + i.fed_payable for i in self.items)
 
     @property
+    def total_discount(self) -> float:
+        return sum(i.discount for i in self.items)
+
+    @property
     def grand_total(self) -> float:
         return sum(i.total_value for i in self.items)
 
