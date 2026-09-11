@@ -34,6 +34,7 @@ def summary_out(inv: Invoice) -> dict:
         "fbr_invoice_number": inv.fbr_invoice_number,
         "total_excl": round(inv.total_excl, 2),
         "total_tax": round(inv.total_tax, 2),
+        "total_discount": round(inv.total_discount, 2),
         "grand_total": round(inv.grand_total, 2),
         "upload_id": inv.upload_id,
         "is_paid": inv.is_paid,

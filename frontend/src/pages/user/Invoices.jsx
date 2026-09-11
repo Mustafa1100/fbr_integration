@@ -151,6 +151,7 @@ export default function Invoices() {
 
   const filtersActive =
     q.trim() !== '' || statusFilter !== 'all' || dateFrom !== '' || dateTo !== ''
+  const showDiscountCol = invoices.some((inv) => inv.total_discount > 0)
 
   return (
     <>
@@ -286,6 +287,7 @@ export default function Invoices() {
                   <th>Date</th>
                   <th>Buyer</th>
                   <th>Excl. ST</th>
+                  {showDiscountCol && <th>Discount</th>}
                   <th>Tax</th>
                   <th>Total</th>
                   <th>Status</th>
@@ -312,6 +314,11 @@ export default function Invoices() {
                     <td>{inv.invoice_date}</td>
                     <td>{inv.buyer_name}</td>
                     <td>{inv.total_excl.toLocaleString()}</td>
+                    {showDiscountCol && (
+                      <td>
+                        {inv.total_discount > 0 ? `−${inv.total_discount.toLocaleString()}` : '—'}
+                      </td>
+                    )}
                     <td>{inv.total_tax.toLocaleString()}</td>
                     <td>{inv.grand_total.toLocaleString()}</td>
                     <td>
