@@ -2225,6 +2225,72 @@ def test_non_admin_cannot_reset_password(admin_headers, user_headers):
     assert resp.status_code == 403
 
 
+def test_retry_updates_the_upload_rollup(admin_headers):
+    # Reported bug: a batch with some failed rows, fixed one at a time via
+    # retry, kept showing the old failed count in Submission History because
+    # the retry endpoint updated the invoice but never rolled the result back
+    # up to the upload. Covers both test and live targets.
+    from app.database import SessionLocal
+    from app.models import InvoiceItem
+
+    for target in ("sandbox", "production"):
+        headers, _ = _make_account(
+            admin_headers, f"retryrollup-{target}@example.com", can_submit_production=True
+        )
+
+        # One good row and one quantity-0 row (trips the mock validator) ->
+        # the batch completes with 1 submitted, 1 failed.
+        mixed_csv = (
+            "pos_invoice_no,invoice_date,buyer_ntn_cnic,buyer_name,buyer_province,"
+            "buyer_address,buyer_registration_type,product_description,hs_code,"
+            "rate,uom,quantity,unit_price,sale_type,scenario_id\n"
+            "POS-OK,2026-08-17,1234567,Good Buyer,Punjab,Lahore,Registered,"
+            "Good Item,0101.2100,18%,\"Numbers, pieces, units\",1,1000,"
+            "Goods at standard rate (default),SN001\n"
+            "POS-BAD,2026-08-17,1234567,Bad Buyer,Punjab,Lahore,Registered,"
+            "Zero Qty Item,0101.2100,18%,\"Numbers, pieces, units\",0,100,"
+            "Goods at standard rate (default),SN001\n"
+        )
+        up = client.post(
+            "/api/uploads",
+            files={"file": ("mixed.csv", mixed_csv, "text/csv")},
+            data={"target": target},
+            headers=headers,
+        ).json()
+        assert up["invoices_submitted"] == 1 and up["invoices_failed"] == 1
+        assert up["status"] == "completed_with_errors"
+
+        invoices = client.get(
+            f"/api/invoices?upload_id={up['id']}", headers=headers
+        ).json()
+        failed = next(i for i in invoices if i["status"] == "failed")
+
+        # Fix the underlying issue (as if the provider corrected their data)
+        # and retry.
+        with SessionLocal() as db:
+            item = (
+                db.query(InvoiceItem)
+                .filter(InvoiceItem.invoice_id == failed["id"])
+                .first()
+            )
+            item.quantity = 1
+            db.commit()
+
+        resp = client.post(f"/api/invoices/{failed['id']}/submit", headers=headers)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "submitted"
+
+        # Submission History must reflect the fix, not the stale count.
+        refreshed = next(
+            u
+            for u in client.get("/api/uploads", headers=headers).json()
+            if u["id"] == up["id"]
+        )
+        assert refreshed["invoices_submitted"] == 2
+        assert refreshed["invoices_failed"] == 0
+        assert refreshed["status"] == "completed"
+
+
 def test_admin_deletes_upload_cascades_all_its_invoices(admin_headers, user_headers):
     # A dedicated throwaway account so this doesn't disturb invoice counts
     # other tests assert on via the shared shop@example.com user.

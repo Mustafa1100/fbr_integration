@@ -212,6 +212,10 @@ def submit_invoice(
         raise HTTPException(400, "Invoice already submitted to FBR")
     fbr = get_or_create_fbr_settings(db, user)
     invoice_service.submit(db, inv, fbr, target_env=inv.fbr_env)
+    if inv.upload_id:
+        upload = db.get(Upload, inv.upload_id)
+        if upload and not upload.is_deleted:
+            invoice_service.sync_upload_env(db, upload)
     return summary_out(inv)
 
 
