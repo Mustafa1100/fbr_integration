@@ -25,6 +25,10 @@ const ENV_OPTIONS = [
   { value: 'all', label: 'All (Test + Live)' },
 ]
 
+// Mirrors the server rule: a test invoice can always be deleted; a live one
+// only if it failed — a live invoice FBR accepted is a real tax record.
+const canDelete = (inv) => inv.fbr_env !== 'production' || inv.status === 'failed'
+
 export default function Invoices() {
   usePageTitle('Invoices History')
   const [searchParams] = useSearchParams()
@@ -43,6 +47,9 @@ export default function Invoices() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [canProd, setCanProd] = useState(false)
+  const [selected, setSelected] = useState(() => new Set()) // ids of ticked test invoices
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -66,12 +73,19 @@ export default function Invoices() {
     if (dateFrom) params.set('date_from', dateFrom)
     if (dateTo) params.set('date_to', dateTo)
     const resp = await api.getRaw(`/api/invoices?${params}`)
-    setInvoices(await resp.json())
+    const rows = await resp.json()
+    setInvoices(rows)
+    // Drop selections for rows that are no longer in the list (deleted one by
+    // one, moved off the page) so the selected count stays honest.
+    const present = new Set(rows.map((r) => r.id))
+    setSelected((prev) => new Set([...prev].filter((id) => present.has(id))))
     setTotal(Number(resp.headers.get('x-total-count') || 0))
     setLoading(false)
   }
 
   useEffect(() => {
+    // A different page/filter is a different set of rows — start a fresh selection.
+    setSelected(new Set())
     refresh().catch((e) => setError(e.message))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, pageSize, q, statusFilter, envFilter, dateFrom, dateTo, uploadId])
@@ -127,6 +141,50 @@ export default function Invoices() {
     } finally {
       setDeleting(false)
       setConfirmDeleteInvoice(null)
+    }
+  }
+
+  const selectable = invoices.filter(canDelete)
+  const allSelected = selectable.length > 0 && selectable.every((inv) => selected.has(inv.id))
+  const someSelected = selected.size > 0 && !allSelected
+  const selectedInvoices = invoices.filter((inv) => selected.has(inv.id))
+  const selectedSubmitted = selectedInvoices.filter((inv) => inv.status === 'submitted').length
+  const selectedNotSubmitted = selectedInvoices.length - selectedSubmitted
+
+  function toggleOne(id) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(selectable.map((inv) => inv.id)))
+  }
+
+  async function bulkDelete() {
+    setBulkDeleting(true)
+    setError('')
+    try {
+      const { deleted, skipped } = await api.post('/api/invoices/bulk-delete', {
+        ids: [...selected],
+      })
+      setSelected(new Set())
+      if (skipped.length > 0) {
+        setError(
+          `${skipped.length} invoice${skipped.length === 1 ? '' : 's'} could not be deleted: ${skipped[0].reason}`
+        )
+      }
+      // Emptied the whole page — step back instead of showing an empty one.
+      if (page > 1 && deleted.length >= invoices.length) setPage(page - 1)
+      else await refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBulkDeleting(false)
+      setConfirmBulkDelete(false)
     }
   }
 
@@ -277,10 +335,51 @@ export default function Invoices() {
 
       {!loading && invoices.length > 0 && (
         <>
+          {selected.size > 0 && (
+            <div className="bulk-bar">
+              <span className="strong">
+                {selected.size} invoice{selected.size === 1 ? '' : 's'} selected
+              </span>
+              <div className="row-actions" style={{ marginLeft: 'auto' }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setSelected(new Set())}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  onClick={() => setConfirmBulkDelete(true)}
+                >
+                  <Trash2 size={14} /> Delete selected
+                </button>
+              </div>
+            </div>
+          )}
           <div className="table-card">
             <table>
               <thead>
                 <tr>
+                  <th className="select-col">
+                    <input
+                      type="checkbox"
+                      className="select-check"
+                      checked={allSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someSelected
+                      }}
+                      disabled={selectable.length === 0}
+                      onChange={toggleAll}
+                      aria-label="Select all deletable invoices on this page"
+                      title={
+                        selectable.length === 0
+                          ? 'Live invoices that FBR accepted can’t be deleted'
+                          : 'Select all deletable invoices on this page'
+                      }
+                    />
+                  </th>
                   <th>#</th>
                   <th>POS No.</th>
                   <th>Mode</th>
@@ -297,7 +396,18 @@ export default function Invoices() {
               </thead>
               <tbody>
                 {invoices.map((inv, idx) => (
-                  <tr key={inv.id}>
+                  <tr key={inv.id} className={selected.has(inv.id) ? 'row-selected' : undefined}>
+                    <td className="select-col">
+                      {canDelete(inv) && (
+                        <input
+                          type="checkbox"
+                          className="select-check"
+                          checked={selected.has(inv.id)}
+                          onChange={() => toggleOne(inv.id)}
+                          aria-label={`Select invoice ${inv.pos_invoice_no}`}
+                        />
+                      )}
+                    </td>
                     <td>
                       <Link to={`/invoices/${inv.id}`}>
                         <span className="strong">{(page - 1) * pageSize + idx + 1}</span>
@@ -372,7 +482,7 @@ export default function Invoices() {
                               <Check size={14} />
                             </button>
                           )}
-                        {inv.fbr_env !== 'production' && (
+                        {canDelete(inv) && (
                           <button
                             className="btn btn-ghost btn-sm has-tip"
                             onClick={() => setConfirmDeleteInvoice(inv)}
@@ -464,6 +574,42 @@ export default function Invoices() {
             <button className="btn btn-primary" onClick={confirmMarkPaid} disabled={markingPaid}>
               {markingPaid ? <Loader2 size={16} className="spin" /> : <ShieldCheck size={16} />}
               Confirm, mark as paid
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {confirmBulkDelete && (
+        <Modal
+          title={`Delete ${selected.size} invoice${selected.size === 1 ? '' : 's'}?`}
+          onClose={() => !bulkDeleting && setConfirmBulkDelete(false)}
+          width={460}
+        >
+          <div className="alert info" style={{ marginTop: 0 }}>
+            <Trash2 size={17} />
+            <span>
+              {selected.size === 1 ? 'This invoice' : `These ${selected.size} invoices`}
+              {selectedSubmitted > 0 && selectedNotSubmitted > 0 && (
+                <>
+                  {' '}
+                  ({selectedSubmitted} submitted, {selectedNotSubmitted} failed)
+                </>
+              )}{' '}
+              will be removed from your history. Live invoices that FBR accepted are never
+              affected.
+            </span>
+          </div>
+          <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setConfirmBulkDelete(false)}
+              disabled={bulkDeleting}
+            >
+              Cancel
+            </button>
+            <button className="btn btn-danger" onClick={bulkDelete} disabled={bulkDeleting}>
+              {bulkDeleting ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
+              Delete {selected.size}
             </button>
           </div>
         </Modal>

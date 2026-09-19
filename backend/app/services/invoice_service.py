@@ -195,16 +195,24 @@ def submit(
 
 
 def sync_upload_env(db: Session, upload: Upload) -> None:
-    """Roll an upload's per-invoice promotion state back up to the batch.
+    """Roll an upload's per-invoice state back up to the batch.
 
-    Recomputes the submitted/failed counters and, once every live invoice
-    in the batch sits on production, flips the whole upload to 'production'
-    — so Submission History stops showing a batch as 'Test' after its
-    invoices were promoted one by one. A no-op while any test invoice
-    remains. Call it after promoting invoices, individually or as a batch.
+    Recomputes the invoice/submitted/failed counters (deleted invoices no
+    longer count) and, once every remaining invoice in the batch sits on
+    production, flips the whole upload to 'production' — so Submission
+    History stops showing a batch as 'Test' after its invoices were promoted
+    one by one. Call it after promoting, retrying or deleting invoices,
+    individually or as a batch.
     """
     live = [inv for inv in upload.invoices if not inv.is_deleted]
+    upload.invoices_created = len(live)
     if not live:
+        # Every invoice was deleted — the row stays as a record of the file,
+        # with nothing left counted (and nothing left to retry).
+        upload.invoices_submitted = 0
+        upload.invoices_failed = 0
+        upload.status = "completed"
+        db.commit()
         return
     upload.invoices_submitted = sum(1 for inv in live if inv.status == "submitted")
     upload.invoices_failed = sum(1 for inv in live if inv.status == "failed")

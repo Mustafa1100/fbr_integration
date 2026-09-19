@@ -1867,6 +1867,176 @@ def test_user_can_delete_test_invoice_only(admin_headers):
     )
 
 
+def test_bulk_delete_test_invoices(admin_headers):
+    headers, _ = _make_account(
+        admin_headers, "bulkdel@example.com", can_submit_production=True
+    )
+    other, _ = _make_account(admin_headers, "bulkdel-other@example.com")
+
+    # A test batch: 1 good invoice + 2 that fail (quantity 0 trips the mock validator).
+    def row(pos_no, qty):
+        return (
+            f"{pos_no},2026-08-17,1234567,Buyer,Punjab,Lahore,Registered,Item,"
+            f"0101.2100,18%,\"Numbers, pieces, units\",{qty},100,"
+            "Goods at standard rate (default),SN001\n"
+        )
+
+    csv = _ENV_CSV.split("\n", 1)[0] + "\n" + row("B-OK", 1) + row("B-F1", 0) + row("B-F2", 0)
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("bulk.csv", csv, "text/csv")},
+        data={"target": "sandbox"},
+        headers=headers,
+    ).json()
+    assert (up["invoices_submitted"], up["invoices_failed"]) == (1, 2)
+    invoices = client.get(f"/api/invoices?upload_id={up['id']}", headers=headers).json()
+    failed = [i["id"] for i in invoices if i["status"] == "failed"]
+    good = next(i["id"] for i in invoices if i["status"] == "submitted")
+
+    live = _one_invoice(headers, _ENV_CSV, "production")
+    theirs = _one_invoice(other, _ENV_CSV, "sandbox")
+
+    # Mixed selection: 2 test invoices, 1 live, someone else's, and one that
+    # doesn't exist. Only the deletable test ones go; the rest are reported.
+    resp = client.post(
+        "/api/invoices/bulk-delete",
+        json={"ids": [*failed, live["id"], theirs["id"], 999999, failed[0]]},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    out = resp.json()
+    assert out["deleted"] == failed  # duplicate id collapsed, order kept
+    assert {s["id"] for s in out["skipped"]} == {live["id"], theirs["id"], 999999}
+    reasons = {s["id"]: s["reason"] for s in out["skipped"]}
+    assert "test invoices" in reasons[live["id"]]
+
+    # Soft delete: gone from the owner's view, live + foreign invoices untouched.
+    remaining = {i["id"] for i in client.get("/api/invoices", headers=headers).json()}
+    assert not remaining & set(failed)
+    assert good in remaining and live["id"] in remaining
+    assert client.get(f"/api/invoices/{theirs['id']}", headers=other).status_code == 200
+
+    # The batch's counters follow: the failed invoices are gone, so no more
+    # "failed" (and nothing left for Retry to pick up).
+    refreshed = client.get(f"/api/uploads/{up['id']}", headers=headers).json()
+    assert refreshed["invoices_created"] == 1  # deleted invoices no longer count
+    assert refreshed["invoices_submitted"] == 1
+    assert refreshed["invoices_failed"] == 0
+    assert refreshed["status"] == "completed"
+    assert refreshed["invoices_deleted"] == 2  # ...and are counted as deleted
+    listed = next(
+        u for u in client.get("/api/uploads", headers=headers).json() if u["id"] == up["id"]
+    )
+    assert listed["invoices_deleted"] == 2
+    assert up["invoices_deleted"] == 0  # a fresh upload has none
+
+    # Deleting again is a no-op that reports "not found", not an error.
+    again = client.post(
+        "/api/invoices/bulk-delete", json={"ids": failed}, headers=headers
+    ).json()
+    assert again["deleted"] == [] and len(again["skipped"]) == 2
+
+    # Bad payloads.
+    assert (
+        client.post("/api/invoices/bulk-delete", json={"ids": []}, headers=headers).status_code
+        == 400
+    )
+    assert (
+        client.post(
+            "/api/invoices/bulk-delete",
+            json={"ids": list(range(1, 1002))},
+            headers=headers,
+        ).status_code
+        == 400
+    )
+
+
+def test_failed_live_invoices_can_be_deleted_and_history_follows(admin_headers):
+    # A live invoice FBR never accepted (failed) is safe to remove; one it
+    # accepted is a real tax record and stays. Submission History must track
+    # the deletions — including a batch that ends up with nothing left.
+    headers, uid = _make_account(
+        admin_headers, "livedel@example.com", can_submit_production=True
+    )
+    head = _ENV_CSV.split("\n", 1)[0] + "\n"
+
+    def row(pos_no, qty):
+        return (
+            f"{pos_no},2026-08-17,1234567,Buyer,Punjab,Lahore,Registered,Item,"
+            f"0101.2100,18%,\"Numbers, pieces, units\",{qty},100,"
+            "Goods at standard rate (default),SN001\n"
+        )
+
+    def upload(name, csv):
+        up = client.post(
+            "/api/uploads",
+            files={"file": (name, csv, "text/csv")},
+            data={"target": "production"},
+            headers=headers,
+        ).json()
+        invs = client.get(f"/api/invoices?upload_id={up['id']}", headers=headers).json()
+        return up, invs
+
+    def batch(upload_id):
+        return client.get(f"/api/uploads/{upload_id}", headers=headers).json()
+
+    # Live batch: 1 accepted + 3 failed.
+    up, invs = upload("live.csv", head + row("L-OK", 1) + row("L-F1", 0) + row("L-F2", 0) + row("L-F3", 0))
+    assert up["fbr_env"] == "production"
+    assert (up["invoices_created"], up["invoices_submitted"], up["invoices_failed"]) == (4, 1, 3)
+    ok = next(i["id"] for i in invs if i["status"] == "submitted")
+    f1, f2, f3 = [i["id"] for i in invs if i["status"] == "failed"]
+    assert all(i["fbr_env"] == "production" for i in invs)
+
+    # The accepted live invoice is protected — single and bulk.
+    r = client.delete(f"/api/invoices/{ok}", headers=headers)
+    assert r.status_code == 403 and "live invoices that failed" in r.json()["detail"]
+    assert client.get(f"/api/invoices/{ok}", headers=headers).status_code == 200
+
+    # A failed live invoice can be deleted, and the batch's stats follow.
+    assert client.delete(f"/api/invoices/{f1}", headers=headers).json() == {"ok": True}
+    assert client.get(f"/api/invoices/{f1}", headers=headers).status_code == 404
+    b = batch(up["id"])
+    assert (b["invoices_created"], b["invoices_submitted"], b["invoices_failed"]) == (3, 1, 2)
+    assert b["status"] == "completed_with_errors" and b["fbr_env"] == "production"
+
+    # Bulk: the other two failed ones go, the accepted one is skipped.
+    out = client.post(
+        "/api/invoices/bulk-delete", json={"ids": [f2, f3, ok]}, headers=headers
+    ).json()
+    assert out["deleted"] == [f2, f3]
+    assert [s["id"] for s in out["skipped"]] == [ok]
+    b = batch(up["id"])
+    assert (b["invoices_created"], b["invoices_submitted"], b["invoices_failed"]) == (1, 1, 0)
+    assert b["status"] == "completed" and b["fbr_env"] == "production"
+    assert b["invoices_deleted"] == 3  # f1 (single) + f2, f3 (bulk)
+
+    # A live batch where everything failed: delete it all -> nothing left
+    # counted, nothing left to retry.
+    up2, invs2 = upload("allbad.csv", head + row("A-1", 0) + row("A-2", 0))
+    assert (up2["invoices_created"], up2["invoices_failed"]) == (2, 2)
+    out = client.post(
+        "/api/invoices/bulk-delete",
+        json={"ids": [i["id"] for i in invs2]},
+        headers=headers,
+    ).json()
+    assert len(out["deleted"]) == 2 and out["skipped"] == []
+    b = batch(up2["id"])
+    assert (b["invoices_created"], b["invoices_submitted"], b["invoices_failed"]) == (0, 0, 0)
+    assert b["status"] == "completed"
+    assert b["invoices_deleted"] == 2
+    assert client.get(
+        f"/api/invoices?upload_id={up2['id']}&status=failed", headers=headers
+    ).json() == []
+
+    # The admin's read-only view of the user's uploads carries the same counts.
+    admin_view = {
+        u["id"]: u["invoices_deleted"]
+        for u in client.get(f"/api/admin/users/{uid}/uploads", headers=admin_headers).json()
+    }
+    assert admin_view == {up["id"]: 3, up2["id"]: 2}
+
+
 def test_paid_tax_reflected_in_stats(admin_headers):
     headers, _ = _make_account(
         admin_headers, "paidstats@example.com", can_submit_production=True
@@ -2289,6 +2459,88 @@ def test_retry_updates_the_upload_rollup(admin_headers):
         assert refreshed["invoices_submitted"] == 2
         assert refreshed["invoices_failed"] == 0
         assert refreshed["status"] == "completed"
+
+
+def test_retry_all_failed_invoices_of_an_upload(admin_headers):
+    # "Retry failed" on a Submission History row: the UI lists the upload's
+    # failed invoices, retries each through the single-invoice endpoint and
+    # reads the upload back for the final stats. Every step must leave the
+    # upload's counters correct, whether the batch is test or live.
+    from app.database import SessionLocal
+    from app.models import InvoiceItem
+
+    header = (
+        "pos_invoice_no,invoice_date,buyer_ntn_cnic,buyer_name,buyer_province,"
+        "buyer_address,buyer_registration_type,product_description,hs_code,"
+        "rate,uom,quantity,unit_price,sale_type,scenario_id\n"
+    )
+
+    def row(pos_no, qty):
+        return (
+            f"{pos_no},2026-08-17,1234567,Buyer,Punjab,Lahore,Registered,"
+            f"Item,0101.2100,18%,\"Numbers, pieces, units\",{qty},100,"
+            "Goods at standard rate (default),SN001\n"
+        )
+
+    # One good invoice and three quantity-0 ones (trip the mock validator).
+    csv = header + row("POS-OK", 1) + row("POS-B1", 0) + row("POS-B2", 0) + row("POS-B3", 0)
+
+    for target in ("sandbox", "production"):
+        headers, _ = _make_account(
+            admin_headers, f"retryall-{target}@example.com", can_submit_production=True
+        )
+        up = client.post(
+            "/api/uploads",
+            files={"file": ("retry-all.csv", csv, "text/csv")},
+            data={"target": target},
+            headers=headers,
+        ).json()
+        assert (up["invoices_submitted"], up["invoices_failed"]) == (1, 3)
+        assert up["status"] == "completed_with_errors"
+
+        failed = client.get(
+            f"/api/invoices?upload_id={up['id']}&status=failed", headers=headers
+        ).json()
+        assert len(failed) == 3
+
+        # The provider fixes two of the three, then retries the lot.
+        with SessionLocal() as db:
+            for inv in failed[:2]:
+                item = (
+                    db.query(InvoiceItem)
+                    .filter(InvoiceItem.invoice_id == inv["id"])
+                    .first()
+                )
+                item.quantity = 1
+            db.commit()
+
+        results = [
+            client.post(f"/api/invoices/{inv['id']}/submit", headers=headers).json()[
+                "status"
+            ]
+            for inv in failed
+        ]
+        assert sorted(results) == ["failed", "submitted", "submitted"]
+
+        final = client.get(f"/api/uploads/{up['id']}", headers=headers)
+        assert final.status_code == 200, final.text
+        final = final.json()
+        assert final["invoices_created"] == 4
+        assert final["invoices_submitted"] == 3
+        assert final["invoices_failed"] == 1
+        assert final["status"] == "completed_with_errors"
+        assert final["fbr_env"] == target  # a partial retry never flips the mode
+
+        # Only the one still-failing invoice is left to retry.
+        left = client.get(
+            f"/api/invoices?upload_id={up['id']}&status=failed", headers=headers
+        ).json()
+        assert len(left) == 1
+
+        # Another account can't read this upload.
+        other, _ = _make_account(admin_headers, f"retryall-other-{target}@example.com")
+        assert client.get(f"/api/uploads/{up['id']}", headers=other).status_code == 404
+        assert client.get("/api/uploads/999999", headers=headers).status_code == 404
 
 
 def test_admin_deletes_upload_cascades_all_its_invoices(admin_headers, user_headers):

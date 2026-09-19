@@ -20,6 +20,16 @@ router = APIRouter(prefix="/api/invoices", tags=["invoices"])
 
 INVOICE_STATUSES = {"draft", "submitted", "failed"}
 
+TEST_ENVS = ("mock", "sandbox")
+MAX_BULK_DELETE = 1000
+DELETE_DENIED = "Only test invoices, or live invoices that failed, can be deleted."
+
+
+def _user_can_delete(inv: Invoice) -> bool:
+    """A test invoice can always go. A live one only if it failed — a live
+    invoice FBR accepted is a real tax record and stays admin-only."""
+    return inv.fbr_env in TEST_ENVS or inv.status == "failed"
+
 
 def summary_out(inv: Invoice) -> dict:
     return {
@@ -302,18 +312,76 @@ def set_invoice_advance_tax(
     return summary_out(inv)
 
 
+def _resync_uploads(db: Session, upload_ids) -> None:
+    """Roll deletions back up to the batches they came from, so Submission
+    History doesn't keep counting (or offering to retry) invoices that are
+    gone."""
+    for upload_id in upload_ids:
+        upload = db.get(Upload, upload_id)
+        if upload and not upload.is_deleted:
+            invoice_service.sync_upload_env(db, upload)
+
+
 @router.delete("/{invoice_id}")
 def delete_invoice(
     invoice_id: int,
     user: User = Depends(require_password_already_set),
     db: Session = Depends(get_db),
 ):
-    """Remove one of the user's own invoices from their history. Limited to
-    test invoices (mock / sandbox); a live FBR invoice is a real record and
-    stays admin-only."""
+    """Remove one of the user's own invoices from their history (soft
+    delete). Test invoices, or live ones that failed — see _user_can_delete."""
     inv = _get_owned(db, user, invoice_id)
-    if inv.fbr_env not in ("mock", "sandbox"):
-        raise HTTPException(403, "Only test invoices can be deleted.")
+    if not _user_can_delete(inv):
+        raise HTTPException(403, DELETE_DENIED)
     inv.is_deleted = True
     db.commit()
+    _resync_uploads(db, {inv.upload_id} if inv.upload_id else set())
     return {"ok": True}
+
+
+class BulkDeleteRequest(BaseModel):
+    ids: list[int]
+
+
+@router.post("/bulk-delete")
+def bulk_delete_invoices(
+    body: BulkDeleteRequest,
+    user: User = Depends(require_password_already_set),
+    db: Session = Depends(get_db),
+):
+    """Delete several of the user's own invoices at once — the same rules as
+    the single delete (soft delete; test invoices, or live ones that failed).
+    An id that can't be deleted (an accepted live invoice, or one that isn't
+    theirs / is already gone) is skipped and reported; the rest still go
+    through."""
+    ids = list(dict.fromkeys(body.ids))  # de-duplicate, keep order
+    if not ids:
+        raise HTTPException(400, "Select at least one invoice to delete.")
+    if len(ids) > MAX_BULK_DELETE:
+        raise HTTPException(
+            400, f"You can delete at most {MAX_BULK_DELETE} invoices at a time."
+        )
+
+    owned = {
+        inv.id: inv
+        for inv in db.query(Invoice).filter(
+            Invoice.id.in_(ids),
+            Invoice.user_id == user.id,
+            Invoice.is_deleted.is_(False),
+        )
+    }
+    deleted, skipped, upload_ids = [], [], set()
+    for invoice_id in ids:
+        inv = owned.get(invoice_id)
+        if inv is None:
+            skipped.append({"id": invoice_id, "reason": "Invoice not found."})
+        elif not _user_can_delete(inv):
+            skipped.append({"id": invoice_id, "reason": DELETE_DENIED})
+        else:
+            inv.is_deleted = True
+            deleted.append(invoice_id)
+            if inv.upload_id:
+                upload_ids.add(inv.upload_id)
+    db.commit()
+    _resync_uploads(db, upload_ids)
+    return {"deleted": deleted, "skipped": skipped}

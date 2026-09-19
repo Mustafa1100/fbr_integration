@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, Form, HTTPException, Response, UploadFile
 from fastapi.responses import PlainTextResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Query, Session
 
 from app.auth import get_current_user, require_password_already_set
 from app.database import get_db
-from app.models import Upload, User
+from app.models import Invoice, Upload, User
 from app.pagination import paginate
 from app.routers.settings import get_or_create_fbr_settings
 from app.services import csv_processor, invoice_service
@@ -19,7 +20,7 @@ router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 UPLOAD_STATUSES = {"completed", "completed_with_errors", "failed"}
 
 
-def upload_out(u: Upload) -> dict:
+def upload_out(u: Upload, invoices_deleted: int = 0) -> dict:
     return {
         "id": u.id,
         "filename": u.filename,
@@ -29,9 +30,27 @@ def upload_out(u: Upload) -> dict:
         "invoices_created": u.invoices_created,
         "invoices_submitted": u.invoices_submitted,
         "invoices_failed": u.invoices_failed,
+        # Soft-deleted invoices of this batch — derived, never stored, so it
+        # can't drift from the invoices themselves. See uploads_out().
+        "invoices_deleted": invoices_deleted,
         "error": u.error,
         "created_at": u.created_at.isoformat(),
     }
+
+
+def uploads_out(db: Session, uploads: list[Upload]) -> list[dict]:
+    """upload_out for a page of uploads, with each one's soft-deleted invoice
+    count filled in from a single grouped query."""
+    ids = [u.id for u in uploads]
+    deleted: dict[int, int] = {}
+    if ids:
+        deleted = dict(
+            db.query(Invoice.upload_id, func.count(Invoice.id))
+            .filter(Invoice.upload_id.in_(ids), Invoice.is_deleted.is_(True))
+            .group_by(Invoice.upload_id)
+            .all()
+        )
+    return [upload_out(u, deleted.get(u.id, 0)) for u in uploads]
 
 
 def query_uploads(
@@ -113,7 +132,19 @@ def list_uploads(
 ):
     query = query_uploads(db, user.id, status=status, q=q, fbr_env=fbr_env)
     uploads = paginate(query, response, page, page_size)
-    return [upload_out(u) for u in uploads]
+    return uploads_out(db, uploads)
+
+
+@router.get("/{upload_id}")
+def get_upload(
+    upload_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    upload = db.get(Upload, upload_id)
+    if not upload or upload.user_id != user.id or upload.is_deleted:
+        raise HTTPException(404, "Upload not found")
+    return uploads_out(db, [upload])[0]
 
 
 def _resolve_target(fbr, target: str | None) -> str:
@@ -202,4 +233,4 @@ def promote_upload(
         invoice_service.submit(db, inv, fbr, target_env="production")
 
     invoice_service.sync_upload_env(db, upload)
-    return upload_out(upload)
+    return uploads_out(db, [upload])[0]
