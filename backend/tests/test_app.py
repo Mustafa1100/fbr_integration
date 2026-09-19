@@ -2249,6 +2249,140 @@ def test_transient_fbr_failures_are_flagged_so_the_ui_can_back_off(admin_headers
     assert client.get(f"/api/uploads/{up['id']}", headers=headers).json()["status"] == "completed"
 
 
+def test_invoice_search_matches_pos_customer_cnic_and_fbr_number(admin_headers):
+    headers, uid = _make_account(admin_headers, "invsearch@example.com")
+    head = _ENV_CSV.split("\n", 1)[0] + "\n"
+
+    def row(pos_no, cnic, name):
+        return (
+            f"{pos_no},2026-08-17,{cnic},{name},Punjab,Lahore,Registered,Item,"
+            f"0101.2100,18%,\"Numbers, pieces, units\",1,100,"
+            "Goods at standard rate (default),SN001\n"
+        )
+
+    # One CNIC stored plain, one stored with dashes.
+    csv = head + row("SRCH-A", "1234512345671", "Alpha Traders") + row(
+        "SRCH-B", "12345-7654321-9", "Beta Stores"
+    )
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("search.csv", csv, "text/csv")},
+        data={"target": "sandbox"},
+        headers=headers,
+    ).json()
+    invs = {
+        i["pos_invoice_no"]: i
+        for i in client.get(f"/api/invoices?upload_id={up['id']}", headers=headers).json()
+    }
+    assert all(i["fbr_invoice_number"] for i in invs.values())
+
+    def hits(q):
+        rows = client.get("/api/invoices", params={"q": q}, headers=headers).json()
+        return sorted(i["pos_invoice_no"] for i in rows)
+
+    # POS number, customer name (case-insensitive, partial), FBR invoice number.
+    assert hits("SRCH-A") == ["SRCH-A"]
+    assert hits("beta stor") == ["SRCH-B"]
+    assert hits(invs["SRCH-A"]["fbr_invoice_number"]) == ["SRCH-A"]
+    assert hits(invs["SRCH-B"]["fbr_invoice_number"][:10]) == ["SRCH-B"]
+
+    # Buyer CNIC: exact, partial, and dashes/spaces on either side are ignored.
+    assert hits("1234512345671") == ["SRCH-A"]
+    assert hits("12345-1234567-1") == ["SRCH-A"]  # typed with dashes, stored plain
+    assert hits("12345 1234567 1") == ["SRCH-A"]
+    assert hits("1234576543219") == ["SRCH-B"]  # typed plain, stored with dashes
+    assert hits("12345-7654321-9") == ["SRCH-B"]
+    assert hits("7654321") == ["SRCH-B"]
+    assert hits("12345") == ["SRCH-A", "SRCH-B"]
+
+    # No match, and a blank/whitespace search is just "no search".
+    assert hits("no-such-buyer-9999") == []
+    assert len(hits("   ")) == 2
+
+    # The admin's read-only view of this user's invoices shares the same search.
+    admin_rows = client.get(
+        f"/api/admin/users/{uid}/invoices", params={"q": "12345-1234567-1"}, headers=admin_headers
+    ).json()
+    assert [i["pos_invoice_no"] for i in admin_rows] == ["SRCH-A"]
+
+    # Another account never sees these, whatever it searches.
+    other, _ = _make_account(admin_headers, "invsearch-other@example.com")
+    assert client.get("/api/invoices", params={"q": "1234512345671"}, headers=other).json() == []
+
+
+def test_invoice_search_finds_a_number_by_any_part_including_its_start(admin_headers, monkeypatch):
+    # Real FBR invoice numbers are "<seller NTN/CNIC>DI<suffix>". Typing just the
+    # beginning ("99999") must find them, as well as the whole number or a piece
+    # of the tail.
+    import time
+
+    from app.fbr import client as fbr_client
+
+    headers, _ = _make_account(admin_headers, "invsearch-seller@example.com")
+    SELLER = "9999988888777"
+    counter = {"n": 0}
+
+    def fake_post(payload, fbr_settings):
+        counter["n"] += 1
+        number = f"{SELLER}DIQ7{counter['n']:02d}ZX{counter['n']}"
+        return {
+            "invoiceNumber": number,
+            "dated": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "validationResponse": {
+                "statusCode": "00", "status": "Valid", "error": "",
+                "invoiceStatuses": [
+                    {"itemSNo": "1", "statusCode": "00", "status": "Valid",
+                     "invoiceNo": number + "-1", "errorCode": "", "error": ""}
+                ],
+            },
+        }
+
+    monkeypatch.setattr(fbr_client, "post_invoice", fake_post)
+
+    def row(pos_no, cnic, name):
+        return (
+            f"{pos_no},2026-08-17,{cnic},{name},Punjab,Lahore,Registered,Item,"
+            f"0101.2100,18%,\"Numbers, pieces, units\",1,100,"
+            "Goods at standard rate (default),SN001\n"
+        )
+
+    head = _ENV_CSV.split("\n", 1)[0] + "\n"
+    # Buyer 2 happens to have the same id as the seller (a self-invoice).
+    csv = head + row("SL-1", "9000001", "First Buyer") + row("SL-2", SELLER, "Second Buyer") + row(
+        "SL-3", "1111111", "Third Buyer"
+    )
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("seller.csv", csv, "text/csv")},
+        data={"target": "sandbox"},
+        headers=headers,
+    ).json()
+    invs = {
+        i["pos_invoice_no"]: i
+        for i in client.get(f"/api/invoices?upload_id={up['id']}", headers=headers).json()
+    }
+    assert all(i["fbr_invoice_number"].startswith(SELLER + "DI") for i in invs.values())
+
+    def hits(q):
+        rows = client.get("/api/invoices", params={"q": q}, headers=headers).json()
+        return sorted(i["pos_invoice_no"] for i in rows)
+
+    # The start of the number (the seller's id) finds the account's invoices by
+    # their FBR number — plus SL-2, whose *buyer* has that same CNIC.
+    assert hits("99999") == ["SL-1", "SL-2", "SL-3"]
+    assert hits(SELLER) == ["SL-1", "SL-2", "SL-3"]
+    assert hits(SELLER[:11]) == ["SL-1", "SL-2", "SL-3"]
+
+    # Buyer CNIC/NTN and buyer name still work.
+    assert hits("9000001") == ["SL-1"]
+    assert hits("third buyer") == ["SL-3"]
+
+    # Narrower pieces of the number pick out one invoice.
+    assert hits("Q702ZX2") == ["SL-2"]
+    assert hits("DIQ703") == ["SL-3"]
+    assert hits(invs["SL-1"]["fbr_invoice_number"]) == ["SL-1"]
+
+
 def test_paid_tax_reflected_in_stats(admin_headers):
     headers, _ = _make_account(
         admin_headers, "paidstats@example.com", can_submit_production=True

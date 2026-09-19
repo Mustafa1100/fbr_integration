@@ -14,6 +14,7 @@ import {
 import { api } from '../../api'
 import Modal from '../../components/Modal'
 import PaginationBar from '../../components/PaginationBar'
+import SearchHelp from '../../components/SearchHelp'
 import TableLoader from '../../components/TableLoader'
 import usePageTitle from '../../hooks/usePageTitle'
 
@@ -251,14 +252,15 @@ export default function Invoices() {
 
       <div className="card" style={{ marginBottom: '1.25rem' }}>
         <div className="row-actions" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
-          <div className="input-wrap" style={{ flex: '1 1 240px', maxWidth: 320 }}>
+          <div className="input-wrap" style={{ flex: '1 1 340px', maxWidth: 440 }}>
             <Search size={15} />
             <input
               value={qInput}
               onChange={(e) => setQInput(e.target.value)}
-              placeholder="Search by POS no., buyer, FBR invoice no…"
+              placeholder="Search POS no., customer, CNIC/NTN, FBR no…"
             />
           </div>
+          <SearchHelp />
           <select
             value={statusFilter}
             onChange={(e) => {
