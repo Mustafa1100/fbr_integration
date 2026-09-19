@@ -180,7 +180,11 @@ def submit(
                 "statusCode": "99",
                 "status": "Error",
                 "error": str(exc),
-            }
+            },
+            # Not part of FBR's response — lets callers (the batch submit UI)
+            # tell "FBR was busy, try again" from "FBR rejected the invoice".
+            "transient": exc.transient,
+            "retry_after": exc.retry_after,
         }
     invoice.fbr_env = target_env
     invoice.fbr_response = json.dumps(response, indent=2)
@@ -218,7 +222,12 @@ def sync_upload_env(db: Session, upload: Upload) -> None:
     upload.invoices_failed = sum(1 for inv in live if inv.status == "failed")
     if all(inv.fbr_env == "production" for inv in live):
         upload.fbr_env = "production"
-    upload.status = (
-        "completed" if upload.invoices_failed == 0 else "completed_with_errors"
-    )
+    if any(inv.status == "draft" for inv in live):
+        # Invoices still waiting to be submitted (a paced batch that was
+        # stopped or interrupted) — the row stays open so it can be resumed.
+        upload.status = "processing"
+    else:
+        upload.status = (
+            "completed" if upload.invoices_failed == 0 else "completed_with_errors"
+        )
     db.commit()

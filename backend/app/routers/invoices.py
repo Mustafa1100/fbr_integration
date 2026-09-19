@@ -55,6 +55,17 @@ def summary_out(inv: Invoice) -> dict:
     }
 
 
+def _submit_result(inv: Invoice, response: dict) -> dict:
+    """The invoice summary plus whether a failure was worth retrying: a failure
+    that says nothing about the invoice itself (FBR busy / rate-limited /
+    unreachable). The batch UI backs off and retries those."""
+    return {
+        **summary_out(inv),
+        "transient": bool(response.get("transient")) and inv.status == "failed",
+        "retry_after": response.get("retry_after"),
+    }
+
+
 def _get_owned(db: Session, user: User, invoice_id: int) -> Invoice:
     inv = db.get(Invoice, invoice_id)
     if not inv or inv.user_id != user.id or inv.is_deleted:
@@ -221,12 +232,12 @@ def submit_invoice(
     if inv.status == "submitted":
         raise HTTPException(400, "Invoice already submitted to FBR")
     fbr = get_or_create_fbr_settings(db, user)
-    invoice_service.submit(db, inv, fbr, target_env=inv.fbr_env)
+    response = invoice_service.submit(db, inv, fbr, target_env=inv.fbr_env)
     if inv.upload_id:
         upload = db.get(Upload, inv.upload_id)
         if upload and not upload.is_deleted:
             invoice_service.sync_upload_env(db, upload)
-    return summary_out(inv)
+    return _submit_result(inv, response)
 
 
 @router.post("/{invoice_id}/promote")
@@ -252,12 +263,12 @@ def promote_invoice(
         raise HTTPException(
             400, "Test this invoice in sandbox first — it hasn't been submitted cleanly."
         )
-    invoice_service.submit(db, inv, fbr, target_env="production")
+    response = invoice_service.submit(db, inv, fbr, target_env="production")
     if inv.upload_id:
         upload = db.get(Upload, inv.upload_id)
         if upload and not upload.is_deleted:
             invoice_service.sync_upload_env(db, upload)
-    return summary_out(inv)
+    return _submit_result(inv, response)
 
 
 class MarkPaidRequest(BaseModel):

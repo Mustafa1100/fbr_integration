@@ -17,7 +17,9 @@ from app.services.invoice_service import (
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 
-UPLOAD_STATUSES = {"completed", "completed_with_errors", "failed"}
+# "processing" = created but not fully submitted yet (a paced batch in flight,
+# stopped, or interrupted) — see defer_submit on POST /api/uploads.
+UPLOAD_STATUSES = {"completed", "completed_with_errors", "failed", "processing"}
 
 
 def upload_out(u: Upload, invoices_deleted: int = 0) -> dict:
@@ -169,6 +171,7 @@ def _resolve_target(fbr, target: str | None) -> str:
 async def upload_csv(
     file: UploadFile,
     target: str = Form(""),
+    defer_submit: bool = Form(False),
     user: User = Depends(require_password_already_set),
     db: Session = Depends(get_db),
 ):
@@ -187,7 +190,8 @@ async def upload_csv(
 
     if is_excel:
         upload = csv_processor.process_upload_excel(
-            db, user, fbr, file.filename, raw, target_env=target_env
+            db, user, fbr, file.filename, raw, target_env=target_env,
+            submit_now=not defer_submit,
         )
     else:
         try:
@@ -195,7 +199,8 @@ async def upload_csv(
         except UnicodeDecodeError:
             raise HTTPException(400, "File must be UTF-8 encoded CSV")
         upload = csv_processor.process_upload(
-            db, user, fbr, file.filename, content, target_env=target_env
+            db, user, fbr, file.filename, content, target_env=target_env,
+            submit_now=not defer_submit,
         )
     return upload_out(upload)
 
@@ -207,8 +212,14 @@ def promote_upload(
     db: Session = Depends(get_db),
 ):
     """Submit a whole tested batch to FBR production — re-submits every
-    non-production invoice in the upload to production and flips the batch's
-    fbr_env. Requires the account's production capability + token."""
+    invoice in the upload that passed its test to production and flips the
+    batch's fbr_env once nothing test is left. A batch with failed invoices
+    can't be submitted: they must be resolved (retried) or deleted first.
+    Requires the account's production capability + token.
+
+    The UI submits these one at a time with a pause instead (see
+    SubmitBatchModal, mode "promote"); this all-at-once endpoint remains for
+    API callers."""
     upload = db.get(Upload, upload_id)
     if not upload or upload.user_id != user.id or upload.is_deleted:
         raise HTTPException(404, "Upload not found")
@@ -222,13 +233,27 @@ def promote_upload(
     if upload.fbr_env == "production":
         raise HTTPException(400, "This batch has already been submitted to FBR.")
 
+    failed = sum(
+        1 for inv in upload.invoices if not inv.is_deleted and inv.status == "failed"
+    )
+    if failed:
+        raise HTTPException(
+            400,
+            f"This batch has {failed} failed invoice{'s' if failed != 1 else ''}. "
+            "Resolve the failed invoices or delete them before submitting to FBR.",
+        )
+
+    # Only invoices that passed their test — anything still in draft (a paced
+    # batch that was stopped) hasn't been tested and is never sent live.
     candidates = [
         inv
         for inv in upload.invoices
-        if not inv.is_deleted and inv.fbr_env != "production"
+        if not inv.is_deleted
+        and inv.fbr_env != "production"
+        and inv.status == "submitted"
     ]
     if not candidates:
-        raise HTTPException(400, "This batch has no invoices to submit.")
+        raise HTTPException(400, "This batch has no test-passed invoices to submit.")
     for inv in candidates:
         invoice_service.submit(db, inv, fbr, target_env="production")
 
