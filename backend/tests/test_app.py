@@ -909,6 +909,108 @@ def test_promote_whole_upload_to_production(admin_headers):
     )
 
 
+def test_batch_with_failed_invoices_cannot_be_submitted_to_fbr(admin_headers):
+    # "Completed with errors" blocks "Submit this batch to FBR": the failed
+    # invoices must be resolved or deleted first. Once the batch is clean, only
+    # invoices that actually passed their test go live — never an untested draft.
+    headers, _ = _make_account(
+        admin_headers, "promoteblocked@example.com", can_submit_production=True
+    )
+
+    def row(pos_no, qty):
+        return (
+            f"{pos_no},2026-08-17,1234567,Buyer,Punjab,Lahore,Registered,Item,"
+            f"0101.2100,18%,\"Numbers, pieces, units\",{qty},100,"
+            "Goods at standard rate (default),SN001\n"
+        )
+
+    head = _ENV_CSV.split("\n", 1)[0] + "\n"
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("pp.csv", head + row("PP-OK", 1) + row("PP-BAD", 0), "text/csv")},
+        data={"target": "sandbox"},
+        headers=headers,
+    ).json()
+    assert (up["invoices_submitted"], up["invoices_failed"]) == (1, 1)
+    invs = {
+        i["pos_invoice_no"]: i
+        for i in client.get(f"/api/invoices?upload_id={up['id']}", headers=headers).json()
+    }
+
+    # Blocked, and nothing was sent live.
+    blocked = client.post(f"/api/uploads/{up['id']}/promote", headers=headers)
+    assert blocked.status_code == 400
+    assert "1 failed invoice" in blocked.json()["detail"]
+    assert "delete them" in blocked.json()["detail"]
+    ok = client.get(f"/api/invoices/{invs['PP-OK']['id']}", headers=headers).json()
+    assert (ok["fbr_env"], ok["status"]) == ("sandbox", "submitted")
+
+    # Deleting the failed invoice clears the block...
+    assert client.post(
+        "/api/invoices/bulk-delete", json={"ids": [invs["PP-BAD"]["id"]]}, headers=headers
+    ).json()["deleted"] == [invs["PP-BAD"]["id"]]
+    done = client.post(f"/api/uploads/{up['id']}/promote", headers=headers)
+    assert done.status_code == 200, done.text
+    assert done.json()["fbr_env"] == "production"
+
+    # ...and a stopped paced batch: only what passed goes live, the untested
+    # draft stays a draft in the test environment.
+    up2 = client.post(
+        "/api/uploads",
+        files={"file": ("pp2.csv", head + row("PP-A", 1) + row("PP-B", 1), "text/csv")},
+        data={"target": "sandbox", "defer_submit": "true"},
+        headers=headers,
+    ).json()
+    a, b = reversed(client.get(f"/api/invoices?upload_id={up2['id']}", headers=headers).json())
+    assert client.post(f"/api/invoices/{a['id']}/submit", headers=headers).json()["status"] == "submitted"
+    r = client.post(f"/api/uploads/{up2['id']}/promote", headers=headers)
+    assert r.status_code == 200, r.text
+    after = {i["id"]: i for i in client.get(f"/api/invoices?upload_id={up2['id']}", headers=headers).json()}
+    assert (after[a["id"]]["fbr_env"], after[a["id"]]["status"]) == ("production", "submitted")
+    assert (after[b["id"]]["fbr_env"], after[b["id"]]["status"]) == ("sandbox", "draft")
+    assert r.json()["fbr_env"] == "sandbox"  # an untested invoice remains
+
+
+def test_promote_reports_transient_failures_and_is_retried_via_submit(admin_headers, monkeypatch):
+    # What the paced batch modal relies on: a promote that hits a busy FBR
+    # comes back flagged transient (the invoice is now failed/production), and
+    # the modal's automatic retry goes through /submit, which resubmits to the
+    # invoice's own (production) env.
+    from app.fbr import client as fbr_client
+
+    headers, _ = _make_account(
+        admin_headers, "promotetransient@example.com", can_submit_production=True
+    )
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("pt.csv", _ENV_CSV, "text/csv")},
+        data={"target": "sandbox"},
+        headers=headers,
+    ).json()
+    inv_id = client.get(f"/api/invoices?upload_id={up['id']}", headers=headers).json()[0]["id"]
+
+    real_post = fbr_client.post_invoice
+
+    def busy(payload, fbr_settings):
+        raise fbr_client.FBRError("FBR returned HTTP 429", transient=True, retry_after=2.0)
+
+    monkeypatch.setattr(fbr_client, "post_invoice", busy)
+    r = client.post(f"/api/invoices/{inv_id}/promote", headers=headers).json()
+    assert (r["status"], r["fbr_env"]) == ("failed", "production")
+    assert r["transient"] is True and r["retry_after"] == 2.0
+    # It is no longer a passed test invoice, and promote refuses it now.
+    assert client.get(
+        f"/api/invoices?upload_id={up['id']}&status=submitted&fbr_env=test", headers=headers
+    ).json() == []
+    assert client.post(f"/api/invoices/{inv_id}/promote", headers=headers).status_code == 400
+
+    monkeypatch.setattr(fbr_client, "post_invoice", real_post)
+    r = client.post(f"/api/invoices/{inv_id}/submit", headers=headers).json()
+    assert (r["status"], r["fbr_env"], r["transient"]) == ("submitted", "production", False)
+    batch = client.get(f"/api/uploads/{up['id']}", headers=headers).json()
+    assert (batch["fbr_env"], batch["status"]) == ("production", "completed")
+
+
 def test_promoting_invoices_individually_flips_the_parent_batch(admin_headers):
     # Reported bug: promoting every invoice in a batch one by one left its
     # Submission History row stuck on "Test" — only the batch-level promote
@@ -2035,6 +2137,116 @@ def test_failed_live_invoices_can_be_deleted_and_history_follows(admin_headers):
         for u in client.get(f"/api/admin/users/{uid}/uploads", headers=admin_headers).json()
     }
     assert admin_view == {up["id"]: 3, up2["id"]: 2}
+
+
+def test_deferred_upload_creates_drafts_and_rolls_up_as_they_submit(admin_headers):
+    # defer_submit: create the invoices but don't hit FBR — the UI then
+    # submits them one at a time with a pause. The upload stays "processing"
+    # until nothing is left in draft.
+    headers, _ = _make_account(admin_headers, "deferred@example.com")
+
+    def row(pos_no, qty):
+        return (
+            f"{pos_no},2026-08-17,1234567,Buyer,Punjab,Lahore,Registered,Item,"
+            f"0101.2100,18%,\"Numbers, pieces, units\",{qty},100,"
+            "Goods at standard rate (default),SN001\n"
+        )
+
+    csv = _ENV_CSV.split("\n", 1)[0] + "\n" + row("D-1", 1) + row("D-2", 0) + row("D-3", 1)
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("deferred.csv", csv, "text/csv")},
+        data={"target": "sandbox", "defer_submit": "true"},
+        headers=headers,
+    ).json()
+    assert up["status"] == "processing"
+    assert (up["invoices_created"], up["invoices_submitted"], up["invoices_failed"]) == (3, 0, 0)
+
+    invs = client.get(f"/api/invoices?upload_id={up['id']}", headers=headers).json()
+    assert [i["status"] for i in invs] == ["draft"] * 3  # nothing was sent to FBR
+    assert not any(i["fbr_invoice_number"] for i in invs)
+    assert [
+        u["id"] for u in client.get("/api/uploads?status=processing", headers=headers).json()
+    ] == [up["id"]]
+
+    # Submit them in file order, as the UI does. Still "processing" until the last.
+    ordered = list(reversed(invs))
+    expected = ["processing", "processing", "completed_with_errors"]
+    for inv, want_status in zip(ordered, expected):
+        r = client.post(f"/api/invoices/{inv['id']}/submit", headers=headers)
+        assert r.status_code == 200, r.text
+        # A validation rejection is a real answer, not a "busy, try again".
+        assert r.json()["transient"] is False
+        now = client.get(f"/api/uploads/{up['id']}", headers=headers).json()
+        assert now["status"] == want_status
+    final = client.get(f"/api/uploads/{up['id']}", headers=headers).json()
+    assert (final["invoices_created"], final["invoices_submitted"], final["invoices_failed"]) == (3, 2, 1)
+
+    # Default behaviour is unchanged: without the flag it submits inline.
+    inline = client.post(
+        "/api/uploads",
+        files={"file": ("inline.csv", csv, "text/csv")},
+        data={"target": "sandbox"},
+        headers=headers,
+    ).json()
+    assert inline["status"] == "completed_with_errors"
+    assert (inline["invoices_submitted"], inline["invoices_failed"]) == (2, 1)
+
+
+def test_transient_fbr_failures_are_flagged_so_the_ui_can_back_off(admin_headers, monkeypatch):
+    import types
+
+    import httpx
+
+    from app.fbr import client as fbr_client
+
+    # --- classification at the FBR client: what is worth retrying
+    url = "https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata_sb"
+    fbr = types.SimpleNamespace(fbr_token="tok")
+
+    def respond(status, headers=None):
+        monkeypatch.setattr(
+            fbr_client.httpx,
+            "post",
+            lambda *a, **k: httpx.Response(
+                status, headers=headers, json={}, request=httpx.Request("POST", url)
+            ),
+        )
+        with pytest.raises(fbr_client.FBRError) as exc:
+            fbr_client._call(url, {}, fbr)
+        return exc.value
+
+    busy = respond(429, {"Retry-After": "3"})
+    assert busy.transient and busy.retry_after == 3.0
+    assert respond(429, {"Retry-After": "9999"}).retry_after == 10.0  # capped
+    assert respond(503).transient and respond(503).retry_after is None
+    assert not respond(400).transient
+    assert not respond(401).transient  # bad token/IP: retrying can't help
+
+    # --- through the API: a busy FBR marks the invoice failed but retryable
+    headers, _ = _make_account(admin_headers, "transient@example.com")
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("t.csv", _ENV_CSV, "text/csv")},
+        data={"target": "sandbox", "defer_submit": "true"},
+        headers=headers,
+    ).json()
+    inv_id = client.get(f"/api/invoices?upload_id={up['id']}", headers=headers).json()[0]["id"]
+
+    real_post = fbr_client.post_invoice
+
+    def busy_post(payload, fbr_settings):
+        raise fbr_client.FBRError("FBR returned HTTP 429", transient=True, retry_after=2.0)
+
+    monkeypatch.setattr(fbr_client, "post_invoice", busy_post)
+    r = client.post(f"/api/invoices/{inv_id}/submit", headers=headers).json()
+    assert r["status"] == "failed" and r["transient"] is True and r["retry_after"] == 2.0
+
+    # ...and the same invoice goes through once FBR recovers.
+    monkeypatch.setattr(fbr_client, "post_invoice", real_post)
+    r = client.post(f"/api/invoices/{inv_id}/submit", headers=headers).json()
+    assert r["status"] == "submitted" and r["transient"] is False
+    assert client.get(f"/api/uploads/{up['id']}", headers=headers).json()["status"] == "completed"
 
 
 def test_paid_tax_reflected_in_stats(admin_headers):

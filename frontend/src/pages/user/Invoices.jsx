@@ -39,7 +39,11 @@ export default function Invoices() {
   const [pageSize, setPageSize] = useState(10)
   const [qInput, setQInput] = useState('')
   const [q, setQ] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
+  // Deep links (e.g. "View failed invoices" on Submission History) can preselect a status.
+  const [statusFilter, setStatusFilter] = useState(() => {
+    const wanted = searchParams.get('status')
+    return ['submitted', 'failed', 'draft'].includes(wanted) ? wanted : 'all'
+  })
   // Default to Live; a deep-link from an upload shows everything in it.
   const [envFilter, setEnvFilter] = useState(uploadId ? 'all' : 'production')
   const [dateFrom, setDateFrom] = useState('')

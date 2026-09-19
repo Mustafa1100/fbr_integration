@@ -22,7 +22,7 @@ import { api } from '../../api'
 import ManualInvoiceModal from '../../components/ManualInvoiceModal'
 import Modal from '../../components/Modal'
 import PaginationBar from '../../components/PaginationBar'
-import RetryFailedModal from '../../components/RetryFailedModal'
+import SubmitBatchModal from '../../components/SubmitBatchModal'
 import TableLoader from '../../components/TableLoader'
 import usePageTitle from '../../hooks/usePageTitle'
 
@@ -108,8 +108,12 @@ export default function Uploads() {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('target', submitTarget)
+      // Create the invoices now, but submit them to FBR one at a time from the
+      // modal below (paced, with live progress) instead of in one burst.
+      formData.append('defer_submit', 'true')
       const result = await api.upload('/api/uploads', formData)
-      setLastResult(result)
+      if (result.status === 'processing') setBatchModal({ upload: result, mode: 'submit' })
+      else setLastResult(result)
       fileRef.current.value = ''
       setFileName('')
       if (page === 1) await refresh()
@@ -159,23 +163,11 @@ export default function Uploads() {
     else setPage(1)
   }
 
-  const [confirmPromote, setConfirmPromote] = useState(null)
-  const [promoting, setPromoting] = useState(false)
-  const [retryUpload, setRetryUpload] = useState(null)
-
-  async function promoteUpload() {
-    setPromoting(true)
-    setError('')
-    try {
-      await api.post(`/api/uploads/${confirmPromote.id}/promote`)
-      await refresh()
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setPromoting(false)
-      setConfirmPromote(null)
-    }
-  }
+  // Paced submission modal: { upload, mode: 'submit' (fresh file) | 'retry' (failed / unsubmitted)
+  // | 'promote' (send a test batch's passed invoices to FBR) }
+  const [batchModal, setBatchModal] = useState(null)
+  // A batch with failed invoices can't go to FBR yet — this explains why.
+  const [blockedBatch, setBlockedBatch] = useState(null)
 
   return (
     <>
@@ -401,6 +393,7 @@ export default function Uploads() {
                 <option value="all">All statuses</option>
                 <option value="completed">Completed</option>
                 <option value="completed_with_errors">Completed with errors</option>
+                <option value="processing">In progress</option>
                 <option value="failed">Failed</option>
               </select>
               <select
@@ -491,10 +484,12 @@ export default function Uploads() {
                                   ? 'warn'
                                   : u.status === 'failed'
                                     ? 'failed'
-                                    : 'draft'
+                                    : u.status === 'processing'
+                                      ? 'info'
+                                      : 'draft'
                             }`}
                           >
-                            {u.status.replaceAll('_', ' ')}
+                            {u.status === 'processing' ? 'in progress' : u.status.replaceAll('_', ' ')}
                           </span>
                         </td>
                         <td>
@@ -509,12 +504,20 @@ export default function Uploads() {
                                 <ReceiptText size={14} />
                               </Link>
                             )}
-                            {u.invoices_failed > 0 && (
+                            {(u.invoices_failed > 0 || u.status === 'processing') && (
                               <button
                                 className="btn btn-secondary btn-sm has-tip"
-                                onClick={() => setRetryUpload(u)}
-                                data-tip="Retry failed invoices"
-                                aria-label="Retry failed invoices"
+                                onClick={() => setBatchModal({ upload: u, mode: 'retry' })}
+                                data-tip={
+                                  u.invoices_failed > 0
+                                    ? 'Retry failed invoices'
+                                    : 'Resume submission'
+                                }
+                                aria-label={
+                                  u.invoices_failed > 0
+                                    ? 'Retry failed invoices'
+                                    : 'Resume submission'
+                                }
                               >
                                 <RotateCw size={14} />
                               </button>
@@ -524,8 +527,16 @@ export default function Uploads() {
                               u.invoices_submitted > 0 && (
                                 <button
                                   className="btn btn-secondary btn-sm has-tip"
-                                  onClick={() => setConfirmPromote(u)}
-                                  data-tip="Submit this batch to FBR"
+                                  onClick={() =>
+                                    u.invoices_failed > 0
+                                      ? setBlockedBatch(u)
+                                      : setBatchModal({ upload: u, mode: 'promote' })
+                                  }
+                                  data-tip={
+                                    u.invoices_failed > 0
+                                      ? 'Resolve the failed invoices first'
+                                      : 'Submit this batch to FBR'
+                                  }
                                   aria-label="Submit this batch to FBR"
                                 >
                                   <Check size={14} />
@@ -554,45 +565,62 @@ export default function Uploads() {
         </>
       )}
 
-      {confirmPromote && (
+      {batchModal && (
+        <SubmitBatchModal
+          upload={batchModal.upload}
+          mode={batchModal.mode}
+          simulated={fbrEnv === 'mock'}
+          onClose={(changed) => {
+            const fresh = batchModal.mode === 'submit'
+            setBatchModal(null)
+            // A fresh file already added a history row, whether or not anything got submitted.
+            if (changed || fresh) {
+              if (fresh && page !== 1) setPage(1)
+              else refresh().catch((e) => setError(e.message))
+            }
+          }}
+        />
+      )}
+
+      {blockedBatch && (
         <Modal
-          title="Submit this batch to FBR?"
-          onClose={() => !promoting && setConfirmPromote(null)}
-          width={460}
+          title="Can’t submit this batch to FBR yet"
+          onClose={() => setBlockedBatch(null)}
+          width={480}
         >
-          <div className="alert info" style={{ marginTop: 0 }}>
-            <Check size={17} />
+          <div className="alert error" style={{ marginTop: 0 }}>
+            <AlertCircle size={17} />
             <span>
-              All {confirmPromote.invoices_submitted} test-passed invoice
-              {confirmPromote.invoices_submitted === 1 ? '' : 's'} in{' '}
-              <strong>{confirmPromote.filename}</strong> will be submitted to <strong>FBR</strong>{' '}
-              as real, permanent tax records. This replaces their test results.
+              <strong>{blockedBatch.filename}</strong> has{' '}
+              <strong>
+                {blockedBatch.invoices_failed} failed invoice
+                {blockedBatch.invoices_failed === 1 ? '' : 's'}
+              </strong>
+              . Resolve the failed invoices, or delete them, and then you can submit this batch to
+              FBR.
             </span>
           </div>
-          <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
-            <button
-              className="btn btn-secondary"
-              onClick={() => setConfirmPromote(null)}
-              disabled={promoting}
-            >
-              Cancel
+          <div className="row-actions" style={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            <button className="btn btn-secondary" onClick={() => setBlockedBatch(null)}>
+              Close
             </button>
-            <button className="btn btn-primary" onClick={promoteUpload} disabled={promoting}>
-              {promoting ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
-              Confirm, submit to FBR
+            <Link
+              className="btn btn-secondary"
+              to={`/invoices?upload=${blockedBatch.id}&status=failed`}
+            >
+              <ReceiptText size={16} /> View failed invoices
+            </Link>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setBatchModal({ upload: blockedBatch, mode: 'retry' })
+                setBlockedBatch(null)
+              }}
+            >
+              <RotateCw size={16} /> Retry failed invoices
             </button>
           </div>
         </Modal>
-      )}
-
-      {retryUpload && (
-        <RetryFailedModal
-          upload={retryUpload}
-          onClose={(changed) => {
-            setRetryUpload(null)
-            if (changed) refresh().catch((e) => setError(e.message))
-          }}
-        />
       )}
 
       {showManualModal && (

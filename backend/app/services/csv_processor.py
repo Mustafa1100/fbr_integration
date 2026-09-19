@@ -378,6 +378,7 @@ def process_upload(
     filename: str,
     content: str,
     target_env: str | None = None,
+    submit_now: bool = True,
 ) -> Upload:
     target_env = target_env or fbr.fbr_env
     upload = _new_upload(user, filename, target_env)
@@ -389,7 +390,7 @@ def process_upload(
         upload.error = str(exc)
         db.commit()
         return upload
-    return _process_rows(db, user, fbr, upload, rows, target_env)
+    return _process_rows(db, user, fbr, upload, rows, target_env, submit_now)
 
 
 def process_upload_excel(
@@ -399,6 +400,7 @@ def process_upload_excel(
     filename: str,
     raw: bytes,
     target_env: str | None = None,
+    submit_now: bool = True,
 ) -> Upload:
     target_env = target_env or fbr.fbr_env
     upload = _new_upload(user, filename, target_env)
@@ -410,7 +412,7 @@ def process_upload_excel(
         upload.error = str(exc)
         db.commit()
         return upload
-    return _process_rows(db, user, fbr, upload, rows, target_env)
+    return _process_rows(db, user, fbr, upload, rows, target_env, submit_now)
 
 
 def _process_rows(
@@ -420,7 +422,13 @@ def _process_rows(
     upload: Upload,
     rows: list[dict],
     target_env: str,
+    submit_now: bool = True,
 ) -> Upload:
+    """Create one invoice per POS invoice number. With ``submit_now`` each is
+    sent to FBR straight away; otherwise they are left as drafts (upload
+    status "processing") for the caller to submit one by one — see
+    POST /api/uploads ``defer_submit`` — so a big file can be paced instead
+    of hitting FBR in one tight burst."""
     upload.total_rows = len(rows)
 
     # Group rows by POS invoice number, preserving first-seen order.
@@ -523,6 +531,8 @@ def _process_rows(
         upload.invoices_created += 1
         db.commit()
 
+        if not submit_now:
+            continue
         invoice_service.submit(db, invoice, fbr, target_env=target_env)
         if invoice.status == "submitted":
             upload.invoices_submitted += 1
@@ -530,8 +540,11 @@ def _process_rows(
             upload.invoices_failed += 1
         db.commit()
 
-    upload.status = (
-        "completed" if upload.invoices_failed == 0 else "completed_with_errors"
-    )
+    if not submit_now and upload.invoices_created > 0:
+        upload.status = "processing"
+    else:
+        upload.status = (
+            "completed" if upload.invoices_failed == 0 else "completed_with_errors"
+        )
     db.commit()
     return upload

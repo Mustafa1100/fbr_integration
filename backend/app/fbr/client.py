@@ -27,9 +27,32 @@ TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 
 
 class FBRError(Exception):
-    def __init__(self, message: str, response: dict | None = None):
+    """``transient`` marks failures that say nothing about the invoice itself —
+    the gateway was busy (429), down (5xx) or unreachable, or returned an
+    unreadable body — so the same invoice is worth submitting again shortly.
+    Auth errors and validation rejections are not transient. ``retry_after``
+    is FBR's own Retry-After hint in seconds, when it sent one."""
+
+    def __init__(
+        self,
+        message: str,
+        response: dict | None = None,
+        transient: bool = False,
+        retry_after: float | None = None,
+    ):
         super().__init__(message)
         self.response = response or {}
+        self.transient = transient
+        self.retry_after = retry_after
+
+
+def _retry_after(resp: httpx.Response) -> float | None:
+    """Retry-After (seconds form) from a response, capped so a bad header
+    can't stall a batch."""
+    try:
+        return min(float(resp.headers.get("Retry-After", "")), 10.0)
+    except ValueError:
+        return None
 
 
 def _endpoint(action: str, fbr: FbrSettings) -> str:
@@ -149,7 +172,8 @@ def _call(url: str, payload: dict, fbr: FbrSettings, retries: int = 2) -> dict:
                     "FBR returned a response that failed to parse as JSON, even "
                     f"after retrying — parse error at line {exc.lineno}, column "
                     f"{exc.colno}: {exc.msg}. The full response was logged "
-                    f"server-side. Preview: {resp.text[:1500]!r}"
+                    f"server-side. Preview: {resp.text[:1500]!r}",
+                    transient=True,
                 ) from exc
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             last_error = exc
@@ -160,10 +184,17 @@ def _call(url: str, payload: dict, fbr: FbrSettings, retries: int = 2) -> dict:
                 body = exc.response.json()
             except json.JSONDecodeError:
                 body = {"raw": exc.response.text}
+            status = exc.response.status_code
             raise FBRError(
-                f"FBR returned HTTP {exc.response.status_code}", response=body
+                f"FBR returned HTTP {status}",
+                response=body,
+                transient=status == 429 or status >= 500,
+                retry_after=_retry_after(exc.response),
             ) from exc
-    raise FBRError(f"Could not reach FBR after {retries + 1} attempts: {last_error}")
+    raise FBRError(
+        f"Could not reach FBR after {retries + 1} attempts: {last_error}",
+        transient=True,
+    )
 
 
 def is_valid(fbr_response: dict) -> bool:
