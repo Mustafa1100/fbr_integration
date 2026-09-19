@@ -738,6 +738,64 @@ pre {
 }
 .modal-close:hover { background: var(--slate-50); color: var(--text); }
 .modal-body { padding: 22px; overflow-y: auto; min-height: 0; }
+/* Multi-select rows (Invoices History) */
+.select-col { width: 1%; padding-right: 0; }
+.select-check {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin: 0;
+  border-radius: 4px;
+  accent-color: var(--brand-600);
+  cursor: pointer;
+  vertical-align: middle;
+}
+.select-check:disabled { cursor: not-allowed; }
+tr.row-selected td { background: var(--brand-50); }
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  background: var(--brand-50);
+  border: 1px solid #b5e2ce;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+}
+
+/* Retry-failed modal: progress bar + counters */
+.retry-progress {
+  height: 8px;
+  background: var(--slate-50);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 18px;
+}
+.retry-progress-bar {
+  height: 100%;
+  background: var(--brand-600);
+  transition: width 0.25s ease;
+}
+.retry-progress-label { font-size: 0.8rem; color: var(--muted); margin: 6px 0 14px; }
+.retry-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.retry-stats.three { grid-template-columns: repeat(3, 1fr); }
+.retry-stat {
+  background: var(--slate-50);
+  color: var(--slate-600);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.retry-stat.ok { background: var(--brand-50); color: var(--brand-600); }
+.retry-stat.bad { background: var(--red-50); color: var(--red-600); }
+.retry-stat.warn { background: var(--amber-50); color: var(--amber-600); }
+.retry-stat-value { font-size: 1.35rem; font-weight: 700; line-height: 1.1; }
+.retry-stat-label { font-size: 0.76rem; margin-top: 3px; }
+.retry-final-title { font-size: 0.85rem; font-weight: 600; margin: 18px 0 8px; }
+@media (max-width: 480px) {
+  .retry-stats { grid-template-columns: repeat(2, 1fr); }
+}
 @keyframes modal-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes modal-slide-in {
   from { opacity: 0; transform: translateY(8px) scale(0.98); }

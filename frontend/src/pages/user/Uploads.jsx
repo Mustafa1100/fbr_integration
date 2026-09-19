@@ -16,11 +16,13 @@ import {
   X,
   BookOpenText,
   PencilLine,
+  RotateCw,
 } from 'lucide-react'
 import { api } from '../../api'
 import ManualInvoiceModal from '../../components/ManualInvoiceModal'
 import Modal from '../../components/Modal'
 import PaginationBar from '../../components/PaginationBar'
+import RetryFailedModal from '../../components/RetryFailedModal'
 import TableLoader from '../../components/TableLoader'
 import usePageTitle from '../../hooks/usePageTitle'
 
@@ -159,6 +161,7 @@ export default function Uploads() {
 
   const [confirmPromote, setConfirmPromote] = useState(null)
   const [promoting, setPromoting] = useState(false)
+  const [retryUpload, setRetryUpload] = useState(null)
 
   async function promoteUpload() {
     setPromoting(true)
@@ -450,6 +453,7 @@ export default function Uploads() {
                       <th>Invoices</th>
                       <th>Submitted</th>
                       <th>Failed</th>
+                      <th>Deleted</th>
                       <th>Status</th>
                       <th></th>
                     </tr>
@@ -475,6 +479,9 @@ export default function Uploads() {
                         <td>{u.invoices_created}</td>
                         <td>{u.invoices_submitted}</td>
                         <td>{u.invoices_failed}</td>
+                        <td className={u.invoices_deleted ? undefined : 'muted'}>
+                          {u.invoices_deleted || '—'}
+                        </td>
                         <td>
                           <span
                             className={`badge ${
@@ -501,6 +508,16 @@ export default function Uploads() {
                               >
                                 <ReceiptText size={14} />
                               </Link>
+                            )}
+                            {u.invoices_failed > 0 && (
+                              <button
+                                className="btn btn-secondary btn-sm has-tip"
+                                onClick={() => setRetryUpload(u)}
+                                data-tip="Retry failed invoices"
+                                aria-label="Retry failed invoices"
+                              >
+                                <RotateCw size={14} />
+                              </button>
                             )}
                             {canProd &&
                               u.fbr_env !== 'production' &&
@@ -566,6 +583,16 @@ export default function Uploads() {
             </button>
           </div>
         </Modal>
+      )}
+
+      {retryUpload && (
+        <RetryFailedModal
+          upload={retryUpload}
+          onClose={(changed) => {
+            setRetryUpload(null)
+            if (changed) refresh().catch((e) => setError(e.message))
+          }}
+        />
       )}
 
       {showManualModal && (

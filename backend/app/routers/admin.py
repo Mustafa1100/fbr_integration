@@ -21,7 +21,7 @@ from app.routers.settings import (
     fbr_settings_out,
     get_or_create_fbr_settings,
 )
-from app.routers.uploads import query_uploads, upload_out
+from app.routers.uploads import query_uploads, uploads_out
 
 router = APIRouter(
     prefix="/api/admin",
@@ -277,7 +277,7 @@ def user_uploads(
     user = _get_user_or_404(db, user_id)
     query = query_uploads(db, user.id, status=status, q=q, fbr_env=fbr_env)
     uploads = paginate(query, response, page, page_size)
-    return [upload_out(u) for u in uploads]
+    return uploads_out(db, uploads)
 
 
 @router.delete("/users/{user_id}/uploads/{upload_id}")

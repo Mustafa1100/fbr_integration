@@ -181,6 +181,7 @@ export default function UserUploads() {
                       <th>Invoices</th>
                       <th>Submitted</th>
                       <th>Failed</th>
+                      <th>Deleted</th>
                       <th>Status</th>
                       <th></th>
                     </tr>
@@ -206,6 +207,9 @@ export default function UserUploads() {
                         <td>{u.invoices_created}</td>
                         <td>{u.invoices_submitted}</td>
                         <td>{u.invoices_failed}</td>
+                        <td className={u.invoices_deleted ? undefined : 'muted'}>
+                          {u.invoices_deleted || '—'}
+                        </td>
                         <td>
                           <span
                             className={`badge ${
