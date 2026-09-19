@@ -1,9 +1,10 @@
 import json
+import re
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Query, Session
 
 from app.auth import get_current_user, require_password_already_set
@@ -106,15 +107,26 @@ def query_invoices(
         query = query.filter(Invoice.invoice_date >= date_from)
     if date_to is not None:
         query = query.filter(Invoice.invoice_date <= date_to)
-    if q:
-        like = f"%{q.strip()}%"
-        query = query.filter(
-            or_(
-                Invoice.pos_invoice_no.ilike(like),
-                Invoice.buyer_name.ilike(like),
-                Invoice.fbr_invoice_number.ilike(like),
-            )
-        )
+    if q and q.strip():
+        term = q.strip()
+        like = f"%{term}%"
+        matches = [
+            Invoice.pos_invoice_no.ilike(like),
+            Invoice.buyer_name.ilike(like),  # customer name
+            # Any part of the number, including its start: FBR numbers begin with
+            # the seller's own NTN/CNIC ("<seller id>DI<suffix>"), so typing the
+            # first digits finds them just like typing the whole number.
+            Invoice.fbr_invoice_number.ilike(like),
+            Invoice.buyer_ntn_cnic.ilike(like),  # buyer CNIC / NTN
+        ]
+        # CNIC / NTN numbers are typed with or without dashes and spaces
+        # ("12345-1234567-1" vs "1234512345671") and stored however they were
+        # uploaded — so also compare with those stripped from both sides.
+        compact = re.sub(r"[\s-]", "", term)
+        if compact:
+            stripped = func.replace(func.replace(Invoice.buyer_ntn_cnic, "-", ""), " ", "")
+            matches.append(stripped.ilike(f"%{compact}%"))
+        query = query.filter(or_(*matches))
     return query.order_by(Invoice.id.desc())
 
 
