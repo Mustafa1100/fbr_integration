@@ -10,6 +10,7 @@ import {
   Loader2,
   Check,
   Trash2,
+  Printer,
 } from 'lucide-react'
 import { api } from '../../api'
 import Modal from '../../components/Modal'
@@ -36,6 +37,8 @@ export default function Invoices() {
   const uploadId = searchParams.get('upload')
   const [invoices, setInvoices] = useState([])
   const [total, setTotal] = useState(0)
+  // How many of the current results have a receipt to print (submitted to FBR).
+  const [printable, setPrintable] = useState(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [qInput, setQInput] = useState('')
@@ -84,8 +87,21 @@ export default function Invoices() {
     // one, moved off the page) so the selected count stays honest.
     const present = new Set(rows.map((r) => r.id))
     setSelected((prev) => new Set([...prev].filter((id) => present.has(id))))
-    setTotal(Number(resp.headers.get('x-total-count') || 0))
+    const count = Number(resp.headers.get('x-total-count') || 0)
+    setTotal(count)
     setLoading(false)
+    // Only submitted invoices have a receipt: with the "all" view that needs its own
+    // count (a one-row request — we only want the total from the header).
+    if (statusFilter === 'all') {
+      const p = new URLSearchParams(params)
+      p.set('status', 'submitted')
+      p.set('page', '1')
+      p.set('page_size', '1')
+      const r = await api.getRaw(`/api/invoices?${p}`)
+      setPrintable(Number(r.headers.get('x-total-count') || 0))
+    } else {
+      setPrintable(statusFilter === 'submitted' ? count : 0)
+    }
   }
 
   useEffect(() => {
@@ -212,6 +228,18 @@ export default function Invoices() {
     setConfirmPaidInvoice(null)
   }
 
+  // "Print receipts" carries the current search/filters to the print page (opened
+  // in a new tab so this page keeps its filters). Only submitted invoices have a
+  // receipt, so it's offered for the "all" and "submitted" views.
+  const printParams = new URLSearchParams()
+  if (uploadId) printParams.set('upload_id', uploadId)
+  if (q.trim()) printParams.set('q', q.trim())
+  if (envFilter !== 'all') printParams.set('fbr_env', envFilter)
+  if (dateFrom) printParams.set('date_from', dateFrom)
+  if (dateTo) printParams.set('date_to', dateTo)
+  const showPrintAll =
+    total > 0 && printable !== null && (statusFilter === 'all' || statusFilter === 'submitted')
+
   const filtersActive =
     q.trim() !== '' || statusFilter !== 'all' || dateFrom !== '' || dateTo !== ''
   const showDiscountCol = invoices.some((inv) => inv.total_discount > 0)
@@ -227,6 +255,29 @@ export default function Invoices() {
           <p className="page-sub">Review invoice receipts and their FBR invoice numbers.</p>
         </div>
         <div className="page-actions">
+          {showPrintAll &&
+            (printable > 0 ? (
+              <Link
+                className="btn btn-secondary has-tip has-tip-below"
+                to={`/invoices/print?${printParams}`}
+                target="_blank"
+                rel="noopener"
+                data-tip="Print, or save as one PDF, every submitted invoice in these results"
+                aria-label="Print receipts for all results"
+              >
+                <Printer size={16} /> Print receipts ({printable})
+              </Link>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-secondary has-tip has-tip-below"
+                disabled
+                data-tip="None of these invoices has been submitted to FBR, so there are no receipts to print"
+                aria-label="Print receipts — nothing to print"
+              >
+                <Printer size={16} /> Print receipts (0)
+              </button>
+            ))}
           <select
             value={envFilter}
             onChange={(e) => {

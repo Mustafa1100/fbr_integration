@@ -888,4 +888,7 @@ tr.row-selected td { background: var(--brand-50); }
   .page { padding: 0; max-width: 100%; }
   .card, .table-card { box-shadow: none; border: none; }
   .receipt { padding: 0; }
+  /* "Print receipts": one receipt per page, no blank page after the last. */
+  .receipt-sheet { break-after: page; page-break-after: always; margin: 0; }
+  .receipt-sheet:last-child { break-after: auto; page-break-after: auto; }
 }

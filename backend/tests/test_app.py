@@ -2383,6 +2383,87 @@ def test_invoice_search_finds_a_number_by_any_part_including_its_start(admin_hea
     assert hits(invs["SL-1"]["fbr_invoice_number"]) == ["SL-1"]
 
 
+def test_receipts_endpoint_returns_every_submitted_match_for_printing(admin_headers, monkeypatch):
+    from app.routers import invoices as invoices_router
+
+    headers, _ = _make_account(admin_headers, "printall@example.com")
+    head = _ENV_CSV.split("\n", 1)[0] + "\n"
+
+    def row(pos_no, day, cnic, name, qty=1):
+        return (
+            f"{pos_no},2026-08-{day:02d},{cnic},{name},Punjab,Lahore,Registered,Item,"
+            f"0101.2100,18%,\"Numbers, pieces, units\",{qty},100,"
+            "Goods at standard rate (default),SN001\n"
+        )
+
+    # 3 for Alpha (dated out of order), 1 for Beta, and a failed one for Alpha.
+    csv = head + "".join(
+        [
+            row("PR-3", 9, "12345-1234567-1", "Alpha Traders"),
+            row("PR-1", 3, "1234512345671", "Alpha Traders"),
+            row("PR-2", 5, "1234512345671", "Alpha Traders"),
+            row("PR-B", 4, "1234599999999", "Beta Stores"),
+            row("PR-X", 6, "1234512345671", "Alpha Traders", qty=0),
+        ]
+    )
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("printall.csv", csv, "text/csv")},
+        data={"target": "sandbox"},
+        headers=headers,
+    ).json()
+    assert (up["invoices_submitted"], up["invoices_failed"]) == (4, 1)
+
+    def receipts(**params):
+        r = client.get("/api/invoices/receipts", params=params, headers=headers)
+        assert r.status_code == 200, r.text  # not swallowed by /{invoice_id}
+        return r.json()
+
+    # Everything submitted, oldest first; the failed invoice is never printed.
+    everything = receipts(fbr_env="all")
+    assert everything["total"] == 4
+    assert [i["pos_invoice_no"] for i in everything["invoices"]] == ["PR-1", "PR-B", "PR-2", "PR-3"]
+
+    # The same filters as the list: a customer's whole history, by name or by CNIC
+    # (dashes or not).
+    for q in ("alpha", "12345-1234567-1", "1234512345671"):
+        got = receipts(q=q, fbr_env="all")
+        assert [i["pos_invoice_no"] for i in got["invoices"]] == ["PR-1", "PR-2", "PR-3"], q
+    assert receipts(q="beta", fbr_env="all")["total"] == 1
+    assert receipts(q="nobody-9999", fbr_env="all") == {
+        "total": 0,
+        "not_submitted": 0,
+        "limit": 200,
+        "invoices": [],
+    }
+    # The failed Alpha invoice isn't printable, and the response says so.
+    assert receipts(q="alpha", fbr_env="all")["not_submitted"] == 1
+    assert receipts(q="beta", fbr_env="all")["not_submitted"] == 0
+    assert receipts(fbr_env="all")["not_submitted"] == 1
+    assert receipts(date_from="2026-08-05", fbr_env="all")["total"] == 2
+    assert receipts(upload_id=up["id"], fbr_env="all")["total"] == 4
+
+    # Each entry is a full receipt (seller, buyer, items, QR) without the heavy FBR JSON.
+    first = everything["invoices"][0]
+    assert first["items"] and first["seller"]["business_name"] and first["qr"]
+    assert first["fbr_invoice_number"] and first["buyer_ntn_cnic"]
+    assert "payload" not in first and "fbr_response" not in first
+
+    # Capped: `total` still says how many matched.
+    monkeypatch.setattr(invoices_router, "MAX_PRINT_RECEIPTS", 2)
+    capped = receipts(fbr_env="all")
+    assert capped["total"] == 4 and len(capped["invoices"]) == 2
+    assert [i["pos_invoice_no"] for i in capped["invoices"]] == ["PR-1", "PR-B"]
+
+    # Another account gets nothing of these.
+    other, _ = _make_account(admin_headers, "printall-other@example.com")
+    assert client.get(
+        "/api/invoices/receipts", params={"fbr_env": "all"}, headers=other
+    ).json()["total"] == 0
+    # ...and it needs a login.
+    assert client.get("/api/invoices/receipts").status_code in (401, 403)
+
+
 def test_paid_tax_reflected_in_stats(admin_headers):
     headers, _ = _make_account(
         admin_headers, "paidstats@example.com", can_submit_production=True
