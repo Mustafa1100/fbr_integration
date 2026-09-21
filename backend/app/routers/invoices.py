@@ -23,6 +23,7 @@ INVOICE_STATUSES = {"draft", "submitted", "failed"}
 
 TEST_ENVS = ("mock", "sandbox")
 MAX_BULK_DELETE = 1000
+MAX_PRINT_RECEIPTS = 200
 DELETE_DENIED = "Only test invoices, or live invoices that failed, can be deleted."
 
 
@@ -218,6 +219,68 @@ def detail_out(inv: Invoice, fbr) -> dict:
         if fbr_response and not is_valid(fbr_response)
         else None,
         "qr": qr_data_uri(inv.fbr_invoice_number) if inv.fbr_invoice_number else None,
+    }
+
+
+@router.get("/receipts")
+def receipts_for_printing(
+    upload_id: int | None = None,
+    q: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    fbr_env: str | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The full receipts of every *submitted* invoice matching these filters
+    (the same ones as the list) — what the "print receipts" page renders, in
+    one request instead of one per invoice, so a customer's whole history can
+    be printed / saved as a single PDF. Oldest first. Capped at
+    MAX_PRINT_RECEIPTS; ``total`` says how many matched so the page can warn
+    when it was cut short. Registered before /{invoice_id} on purpose."""
+    query = query_invoices(
+        db,
+        user.id,
+        upload_id=upload_id,
+        status="submitted",
+        q=q,
+        date_from=date_from,
+        date_to=date_to,
+        fbr_env=fbr_env,
+    )
+    total = query.count()
+    # Matches that are NOT printable (failed / draft: no FBR number, no QR), so
+    # the page can say why it came up short — or empty.
+    not_submitted = (
+        query_invoices(
+            db,
+            user.id,
+            upload_id=upload_id,
+            q=q,
+            date_from=date_from,
+            date_to=date_to,
+            fbr_env=fbr_env,
+        ).count()
+        - total
+    )
+    invoices = (
+        query.order_by(None)
+        .order_by(Invoice.invoice_date, Invoice.id)
+        .limit(MAX_PRINT_RECEIPTS)
+        .all()
+    )
+    fbr = get_or_create_fbr_settings(db, user)
+    # A receipt doesn't need the FBR request/response JSON — leave it out, it
+    # is by far the heaviest part of an invoice's detail.
+    receipts = [
+        {k: v for k, v in detail_out(inv, fbr).items() if k not in ("payload", "fbr_response")}
+        for inv in invoices
+    ]
+    return {
+        "total": total,
+        "not_submitted": not_submitted,
+        "limit": MAX_PRINT_RECEIPTS,
+        "invoices": receipts,
     }
 
 
