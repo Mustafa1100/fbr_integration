@@ -11,6 +11,7 @@ import {
   Check,
   Trash2,
   Printer,
+  FileSpreadsheet,
 } from 'lucide-react'
 import { api } from '../../api'
 import Modal from '../../components/Modal'
@@ -58,6 +59,7 @@ export default function Invoices() {
   const [selected, setSelected] = useState(() => new Set()) // ids of ticked test invoices
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
   const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -240,6 +242,37 @@ export default function Invoices() {
   const showPrintAll =
     total > 0 && printable !== null && (statusFilter === 'all' || statusFilter === 'submitted')
 
+  // Same gating as "Print receipts" — only submitted invoices are real,
+  // FBR-issued records, so the export (like the receipts) is limited to
+  // those, regardless of the current status filter.
+  const showExportAll = showPrintAll
+
+  async function exportExcel() {
+    setExporting(true)
+    setError('')
+    try {
+      const params = new URLSearchParams()
+      if (uploadId) params.set('upload_id', uploadId)
+      if (q.trim()) params.set('q', q.trim())
+      params.set('status', 'submitted')
+      if (envFilter !== 'all') params.set('fbr_env', envFilter)
+      if (dateFrom) params.set('date_from', dateFrom)
+      if (dateTo) params.set('date_to', dateTo)
+      const resp = await api.getRaw(`/api/invoices/export?${params}`)
+      const blob = await resp.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = `invoices_export_${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(objectUrl)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const filtersActive =
     q.trim() !== '' || statusFilter !== 'all' || dateFrom !== '' || dateTo !== ''
   const showDiscountCol = invoices.some((inv) => inv.total_discount > 0)
@@ -255,6 +288,34 @@ export default function Invoices() {
           <p className="page-sub">Review invoice receipts and their FBR invoice numbers.</p>
         </div>
         <div className="page-actions">
+          {showExportAll &&
+            (printable > 0 ? (
+              <button
+                type="button"
+                className="btn btn-secondary has-tip has-tip-below"
+                onClick={exportExcel}
+                disabled={exporting}
+                data-tip="Download every submitted invoice in these results as a CSV file (opens in Excel)"
+                aria-label="Export to Excel"
+              >
+                {exporting ? (
+                  <Loader2 size={16} className="spin" />
+                ) : (
+                  <FileSpreadsheet size={16} />
+                )}
+                Export to Excel ({printable})
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-secondary has-tip has-tip-below"
+                disabled
+                data-tip="None of these invoices has been submitted to FBR, so there's nothing to export"
+                aria-label="Export to Excel — nothing to export"
+              >
+                <FileSpreadsheet size={16} /> Export to Excel (0)
+              </button>
+            ))}
           {showPrintAll &&
             (printable > 0 ? (
               <Link
