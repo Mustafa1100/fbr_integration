@@ -1,8 +1,12 @@
+import csv
+import io
 import json
 import re
+from typing import Any
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Query, Session
@@ -13,7 +17,7 @@ from app.fbr.client import error_text, is_valid
 from app.models import Invoice, Upload, User
 from app.pagination import paginate
 from app.routers.settings import get_or_create_fbr_settings, parse_strns
-from app.services import invoice_service
+from app.services import csv_processor, invoice_service
 from app.services.invoice_service import ENV_FILTER_ALIASES, resolve_env_filter
 from app.services.qr import qr_data_uri
 
@@ -24,7 +28,11 @@ INVOICE_STATUSES = {"draft", "submitted", "failed"}
 TEST_ENVS = ("mock", "sandbox")
 MAX_BULK_DELETE = 1000
 MAX_PRINT_RECEIPTS = 200
+MAX_EXPORT_ROWS = 20000
 DELETE_DENIED = "Only test invoices, or live invoices that failed, can be deleted."
+
+# Mirrors the frontend's MODE_LABELS — user-facing wording for fbr_env.
+ENV_LABELS = {"mock": "Test", "sandbox": "Test", "production": "Live"}
 
 
 def _user_can_delete(inv: Invoice) -> bool:
@@ -206,6 +214,10 @@ def detail_out(inv: Invoice, fbr) -> dict:
                 # value_excl_st, which can hold a negligible FBR-workaround
                 # placeholder (see csv_processor.py) rather than a real value.
                 "fixed_notified_value": round(it.fixed_notified_value, 2),
+                # Not shown on the receipt — carried so an invoice can be edited.
+                "sale_type": it.sale_type,
+                "sro_schedule_no": it.sro_schedule_no,
+                "sro_item_serial_no": it.sro_item_serial_no,
             }
             for it in inv.items
         ],
@@ -284,6 +296,91 @@ def receipts_for_printing(
     }
 
 
+@router.get("/export")
+def export_invoices(
+    upload_id: int | None = None,
+    status: str | None = None,
+    q: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    fbr_env: str | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The current Invoices History filters as a downloadable CSV (opens
+    directly in Excel) — the same rows and columns the table shows, but
+    unpaginated. Capped at MAX_EXPORT_ROWS. Registered before /{invoice_id}
+    on purpose."""
+    query = query_invoices(
+        db,
+        user.id,
+        upload_id=upload_id,
+        status=status,
+        q=q,
+        date_from=date_from,
+        date_to=date_to,
+        fbr_env=fbr_env,
+    )
+    invoices = (
+        query.order_by(None)
+        .order_by(Invoice.invoice_date, Invoice.id)
+        .limit(MAX_EXPORT_ROWS)
+        .all()
+    )
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(
+        [
+            "FBR Invoice No.",
+            "POS No.",
+            "Mode",
+            "Date",
+            "Buyer",
+            "Buyer CNIC/NTN",
+            "HS Code(s)",
+            "Excl. ST",
+            "Discount",
+            "Sales Tax",
+            "Advance Tax",
+            "Total",
+        ]
+    )
+    for inv in invoices:
+        # Matches the receipt: grand total (item totals) plus advance tax, a
+        # separate §236 receipt figure not carried in any item's total_value.
+        total = inv.grand_total + inv.advance_tax
+        # An invoice can have several product lines, each its own HS code —
+        # list every distinct one in appearance order, since a CSV row is
+        # per-invoice, not per-line.
+        hs_codes = "; ".join(dict.fromkeys(it.hs_code for it in inv.items if it.hs_code))
+        writer.writerow(
+            [
+                inv.fbr_invoice_number or "",
+                inv.pos_invoice_no,
+                ENV_LABELS.get(inv.fbr_env, inv.fbr_env),
+                inv.invoice_date.isoformat(),
+                inv.buyer_name,
+                inv.buyer_ntn_cnic,
+                hs_codes,
+                round(inv.total_excl, 2),
+                round(inv.total_discount, 2),
+                round(inv.total_tax, 2),
+                round(inv.advance_tax, 2),
+                round(total, 2),
+            ]
+        )
+    # A UTF-8 BOM so Excel (rather than just any CSV reader) renders non-ASCII
+    # buyer names correctly instead of mangling them.
+    content = "﻿" + buf.getvalue()
+    filename = f"invoices_export_{date.today().isoformat()}.csv"
+    return PlainTextResponse(
+        content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @router.get("/{invoice_id}")
 def invoice_detail(
     invoice_id: int,
@@ -313,6 +410,58 @@ def submit_invoice(
         if upload and not upload.is_deleted:
             invoice_service.sync_upload_env(db, upload)
     return _submit_result(inv, response)
+
+
+class InvoiceEditRequest(BaseModel):
+    """The manual-invoice form's data: the invoice-level fields, plus one dict per
+    product line — both keyed by the CSV column names, so it goes through the
+    same validation and calculations as an uploaded row."""
+
+    header: dict[str, Any]
+    items: list[dict[str, Any]]
+
+
+def _cell(value: Any) -> str:
+    return "" if value is None else str(value).strip()
+
+
+@router.put("/{invoice_id}")
+def edit_invoice(
+    invoice_id: int,
+    body: InvoiceEditRequest,
+    user: User = Depends(require_password_already_set),
+    db: Session = Depends(get_db),
+):
+    """Fix a failed (or unsubmitted) invoice in place: replace its buyer details
+    and product lines, recomputing every amount exactly as the CSV upload does.
+    It does not resubmit — the invoice stays failed until POST /{id}/submit, so
+    the old FBR error isn't mistaken for the new result. The FBR environment,
+    status and upload link are left alone."""
+    inv = _get_owned(db, user, invoice_id)
+    if inv.status == "submitted":
+        raise HTTPException(400, "A submitted invoice can't be edited.")
+    if not body.items:
+        raise HTTPException(400, "Add at least one product.")
+
+    # The same row shape a CSV upload produces: every line repeats the invoice
+    # fields. Only known columns are taken; the required ones default to blank
+    # so a missing value reads "'hs_code' is required", not a missing-column error.
+    known = set(csv_processor.ALL_COLUMNS)
+    rows = []
+    for item in body.items:
+        row = {c: "" for c in csv_processor.REQUIRED_COLUMNS}
+        row.update({k: _cell(v) for k, v in {**body.header, **item}.items() if k in known})
+        rows.append(row)
+    try:
+        rows = csv_processor.validate_rows(rows)
+    except csv_processor.CsvError as exc:
+        # The validator words this for files ("Row 2"); here it is a product line.
+        raise HTTPException(400, str(exc).replace("Row ", "Product ", 1))
+
+    fbr = get_or_create_fbr_settings(db, user)
+    csv_processor.rewrite_invoice(inv, rows, fbr)
+    db.commit()
+    return detail_out(inv, fbr)
 
 
 @router.post("/{invoice_id}/promote")
