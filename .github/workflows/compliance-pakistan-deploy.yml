@@ -1,0 +1,29 @@
+name: Deploy Compliance Pakistan website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "main_website/**"
+      - ".github/workflows/compliance-pakistan-deploy.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    concurrency: compliance-pakistan-deploy-group
+    defaults:
+      run:
+        working-directory: main_website
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: main_website/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

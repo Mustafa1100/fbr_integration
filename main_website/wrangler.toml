@@ -1,0 +1,14 @@
+# Deploy config for the Compliance Pakistan marketing site — a SEPARATE
+# Cloudflare Worker from the one at ../wrangler.toml (name "fbr-integration",
+# which serves frontend/dist). Deploying this one never touches that one:
+# each worker is deployed independently by `name`, and `wrangler deploy` run
+# from this directory picks up this config file, not the parent's.
+#
+# Deploy with: cd main_website && npm run build && npx wrangler deploy
+name = "compliance-pakistan"
+compatibility_date = "2026-08-19"
+account_id = "e1c5ebe6f3c9d2b1f931adbc3f9a5736"
+
+[assets]
+directory = "dist"
+not_found_handling = "single-page-application"
