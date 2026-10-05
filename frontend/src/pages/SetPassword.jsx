@@ -1,10 +1,11 @@
-import { AlertCircle, Eye, EyeOff, KeyRound, Loader2, Lock, ScrollText } from 'lucide-react'
+import { AlertCircle, Eye, EyeOff, KeyRound, Loader2, Lock } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, getStoredUser, storeSession } from '../api'
 import usePageTitle from '../hooks/usePageTitle'
 import PasswordRequirement from '../components/PasswordRequirement'
 import { passwordStrength } from '../passwordStrength'
+import mark from '../assets/mark.png'
 
 export default function SetPassword() {
   usePageTitle('Set your password')
@@ -43,15 +44,13 @@ export default function SetPassword() {
     <div className="centered-page">
       <div className="card set-password-card">
         <div className="brand-row" style={{ marginBottom: 22 }}>
-          <div className="logo-mark">
-            <ScrollText size={20} />
-          </div>
+          <img className="brand-mark" src={mark} alt="" style={{ height: 36 }} />
           <div className="logo-text" style={{ color: 'var(--text)' }}>
             <div className="t1" style={{ color: 'var(--text)' }}>
-              FBR Invoicing
+              Compliance<b style={{ color: 'var(--gold-600)' }}>.pk</b>
             </div>
             <div className="t2" style={{ color: 'var(--muted)' }}>
-              Digital · PRAL
+              Digital Invoicing
             </div>
           </div>
         </div>

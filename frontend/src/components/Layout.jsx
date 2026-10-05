@@ -7,7 +7,6 @@ import {
   LogOut,
   Menu,
   ReceiptText,
-  ScrollText,
   Server,
   Settings,
   ShieldCheck,
@@ -17,6 +16,8 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { clearSession, getStoredUser } from '../api'
 import Modal from './Modal'
+import markReverse from '../assets/mark-reverse.png'
+import mark from '../assets/mark.png'
 
 const COLLAPSE_KEY = 'fbr_sidebar_collapsed'
 const MOBILE_QUERY = '(max-width: 768px)'
@@ -84,12 +85,12 @@ export default function Layout() {
     <div className="app-shell">
       <aside className={sidebarClass}>
         <div className="sidebar-logo">
-          <div className="logo-mark">
-            <ScrollText size={20} />
-          </div>
+          <img className="brand-mark" src={markReverse} alt="" />
           <div className="logo-text">
-            <div className="t1">FBR Invoicing</div>
-            <div className="t2">Digital · PRAL</div>
+            <div className="t1">
+              Compliance<b>.pk</b>
+            </div>
+            <div className="t2">Digital Invoicing</div>
           </div>
         </div>
 
@@ -179,8 +180,10 @@ export default function Layout() {
       <div className="content">
         <div className="topbar">
           <div className="topbar-brand">
-            <ScrollText size={16} />
-            <span>FBR Invoicing</span>
+            <img className="brand-mark" src={mark} alt="" />
+            <span>
+              Compliance<b>.pk</b>
+            </span>
           </div>
           <button
             type="button"

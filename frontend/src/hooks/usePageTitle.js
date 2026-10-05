@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-const BRAND = 'FBR Invoicing'
+const BRAND = 'Compliance.pk'
 
 // Sets the browser tab title for the page it's called from — the app is a
 // single-page app, so without this every route keeps whatever static

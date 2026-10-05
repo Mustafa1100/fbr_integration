@@ -9,7 +9,6 @@ import {
   LogIn,
   Mail,
   QrCode,
-  ScrollText,
   ShieldCheck,
   UploadCloud,
 } from 'lucide-react'
@@ -18,6 +17,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, storeSession } from '../api'
 import usePageTitle from '../hooks/usePageTitle'
 import Modal from '../components/Modal'
+import markReverse from '../assets/mark-reverse.png'
 
 export default function Login() {
   usePageTitle('Sign in')
@@ -54,12 +54,12 @@ export default function Login() {
     <div className="login-page">
       <div className="login-brand">
         <div className="brand-row">
-          <div className="logo-mark">
-            <ScrollText size={20} />
-          </div>
+          <img className="brand-mark" src={markReverse} alt="" />
           <div className="logo-text">
-            <div className="t1">FBR Invoicing</div>
-            <div className="t2">ARG · Al Rahim Group of Companies</div>
+            <div className="t1">
+              Compliance<b>.pk</b>
+            </div>
+            <div className="t2">FBR Digital Invoicing</div>
           </div>
         </div>
 

@@ -8,13 +8,17 @@
   --text-2: #475467;
   --muted: #667085;
 
-  --brand-950: #06231a;
-  --brand-900: #0a2f22;
-  --brand-800: #0d3f2e;
-  --brand-600: #0b8a5c;
-  --brand-500: #10a56e;
-  --brand-400: #2fc98c;
-  --brand-50: #e8f7f0;
+  /* Compliance Pakistan palette (see main_website/src/styles/base.css) */
+  --brand-950: #05241a;
+  --brand-900: #0a3324;
+  --brand-800: #0f4630;
+  --brand-600: #1b5a3f;
+  --brand-500: #2b6f4f;
+  --brand-400: #4f8a66;
+  --brand-50: #f1f7f3;
+  --gold-400: #dfab4c;
+  --gold-600: #b57f2e;
+  --gold-grad: linear-gradient(135deg, #e6b555 0%, #d29a3c 50%, #b57f2e 100%);
 
   --blue-600: #175cd3;
   --blue-50: #eaf1fd;
@@ -95,19 +99,10 @@ code { background: var(--slate-50); border: 1px solid var(--border); border-radi
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   margin-bottom: 18px;
 }
-.logo-mark {
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
-  background: linear-gradient(135deg, var(--brand-500), var(--brand-600));
-  display: grid;
-  place-items: center;
-  color: #fff;
-  box-shadow: 0 4px 10px rgba(16, 165, 110, 0.35);
-  flex-shrink: 0;
-}
+.brand-mark { height: 34px; width: auto; display: block; flex-shrink: 0; }
 .logo-text { line-height: 1.15; }
-.logo-text .t1 { font-weight: 700; color: #fff; font-size: 0.95rem; letter-spacing: -0.01em; }
+.logo-text .t1 { font-weight: 800; color: #fff; font-size: 1rem; letter-spacing: -0.01em; }
+.logo-text .t1 b { color: var(--gold-400); font-weight: 800; }
 .logo-text .t2 { font-size: 0.7rem; color: #7fa896; text-transform: uppercase; letter-spacing: 0.09em; }
 
 .nav-section-label {
@@ -133,9 +128,9 @@ code { background: var(--slate-50); border: 1px solid var(--border); border-radi
 }
 .nav-item:hover { background: rgba(255, 255, 255, 0.06); color: #fff; text-decoration: none; }
 .nav-item.active {
-  background: rgba(16, 165, 110, 0.18);
+  background: rgba(79, 138, 102, 0.22);
   color: #fff;
-  box-shadow: inset 3px 0 0 var(--brand-400);
+  box-shadow: inset 3px 0 0 var(--gold-400);
 }
 .nav-item svg { flex-shrink: 0; opacity: 0.9; }
 
@@ -214,7 +209,8 @@ code { background: var(--slate-50); border: 1px solid var(--border); border-radi
   font-size: 0.9rem;
   color: var(--text);
 }
-.topbar-brand svg { color: var(--brand-600); flex-shrink: 0; }
+.topbar-brand .brand-mark { height: 22px; }
+.topbar-brand b { color: var(--gold-600); }
 
 /* ── Mobile sidebar backdrop (see the drawer rules further down) ───── */
 .sidebar-backdrop {
@@ -383,7 +379,7 @@ td .strong { color: var(--text); font-weight: 600; }
 }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: 0.55; cursor: default; }
-.btn-primary { background: var(--brand-600); color: #fff; box-shadow: 0 1px 2px rgba(11, 138, 92, 0.4); }
+.btn-primary { background: var(--brand-600); color: #fff; box-shadow: 0 1px 2px rgba(27, 90, 63, 0.4); }
 .btn-primary:hover { background: #097a51; }
 .btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
 .btn-secondary:hover { background: #f7f9fb; border-color: #b9c3d0; }
@@ -465,7 +461,7 @@ input::placeholder { color: #98a2b3; }
 input:focus, select:focus {
   outline: none;
   border-color: var(--brand-500);
-  box-shadow: 0 0 0 3px rgba(16, 165, 110, 0.15);
+  box-shadow: 0 0 0 3px rgba(43, 111, 79, 0.15);
 }
 input[type='file'] { width: auto; border: none; padding: 0; background: none; }
 
@@ -486,7 +482,7 @@ input[type='file'] { width: auto; border: none; padding: 0; background: none; }
 .dropzone.drag-over {
   border-color: var(--brand-500);
   background: var(--brand-50);
-  box-shadow: 0 0 0 3px rgba(16, 165, 110, 0.14);
+  box-shadow: 0 0 0 3px rgba(43, 111, 79, 0.14);
 }
 .dropzone.has-file { border-style: solid; border-color: var(--border-strong); background: var(--surface); color: var(--text); }
 .dropzone > svg { flex-shrink: 0; color: var(--brand-600); }
@@ -620,8 +616,8 @@ pre {
 .login-brand {
   flex: 1.05;
   background:
-    radial-gradient(1000px 500px at -10% -10%, rgba(16, 165, 110, 0.35), transparent 60%),
-    radial-gradient(800px 500px at 110% 110%, rgba(16, 165, 110, 0.22), transparent 55%),
+    radial-gradient(1000px 500px at -10% -10%, rgba(43, 111, 79, 0.35), transparent 60%),
+    radial-gradient(800px 500px at 110% 110%, rgba(43, 111, 79, 0.22), transparent 55%),
     linear-gradient(160deg, var(--brand-900), var(--brand-950));
   color: #e6f2ec;
   display: flex;
@@ -630,6 +626,8 @@ pre {
   padding: 64px 72px;
 }
 .login-brand .brand-row { display: flex; align-items: center; gap: 12px; margin-bottom: 46px; }
+.login-brand .brand-row .brand-mark { height: 46px; }
+.login-brand .brand-row b { color: var(--gold-400); }
 .login-brand h1 {
   font-size: 2.1rem;
   font-weight: 700;
@@ -645,9 +643,9 @@ pre {
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  background: rgba(16, 165, 110, 0.16);
-  border: 1px solid rgba(47, 201, 140, 0.25);
-  color: var(--brand-400);
+  background: var(--brand-800);
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  color: var(--gold-400);
   display: grid;
   place-items: center;
   flex-shrink: 0;
