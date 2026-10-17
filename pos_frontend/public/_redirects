@@ -1,0 +1,3 @@
+# Cloudflare Pages: every address is served by the single-page app, so links
+# like /clients/3?tab=invoices work on reload.
+/*  /index.html  200

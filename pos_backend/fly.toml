@@ -1,0 +1,43 @@
+# Fly.io config for pos_backend. Deploy from this folder: `fly deploy`.
+# Change `app` to the name you created with `fly apps create`.
+app = "compliance-pos-api"
+# Singapore: closest Fly region to Pakistan; create the Neon database in
+# AWS Asia Pacific (Singapore) too, so every query stays in one region.
+primary_region = "sin"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ENVIRONMENT = "production"
+  USERNAME_DOMAIN = "pos.compliance.pk"
+  LICENCE_OFFLINE_DAYS = "30"
+  # Secrets (DATABASE_URL, JWT_SECRET, ADMIN_*, LICENCE_PRIVATE_KEY,
+  # CORS_ORIGINS) are set with `fly secrets import`, never here.
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Always on, and exactly ONE machine: the desktop apps hold a live
+  # connection for instant cancellations, and those updates are passed
+  # inside this one process. Never scale above 1 (`fly scale count 1`).
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    # Each open desktop app keeps one connection.
+    soft_limit = 800
+    hard_limit = 1000
+
+  [[http_service.checks]]
+    grace_period = "20s"
+    interval = "30s"
+    method = "GET"
+    path = "/api/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

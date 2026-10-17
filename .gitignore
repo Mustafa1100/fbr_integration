@@ -7,11 +7,15 @@ venv/
 
 # Env & databases
 .env
+*.secrets.env
 *.db
+# The POS licence signing key — a secret, like .env
+*.pem
 
 # Node
 node_modules/
 dist/
+release/
 
 # OS
 .DS_Store
