@@ -3279,3 +3279,21 @@ def test_invoice_layout_custom_fields_flow(user_headers, admin_headers):
 
     # Reset so later tests see the default layout.
     client.put("/api/settings/invoice-layout", json={}, headers=user_headers)
+
+
+def test_advance_tax_kept_per_line(user_headers):
+    header = CSV_OK.splitlines()[0] + ",advance_tax"
+    rows = CSV_OK.splitlines()[1:3]  # POS-1: two lines
+    csv_text = "\n".join([header, rows[0] + ",680", rows[1] + ",12.5"]) + "\n"
+    resp = client.post(
+        "/api/uploads", files={"file": ("adv.csv", csv_text, "text/csv")}, headers=user_headers
+    )
+    assert resp.status_code == 201, resp.text
+    inv = client.get(f"/api/invoices?upload_id={resp.json()['id']}", headers=user_headers).json()[0]
+    detail = client.get(f"/api/invoices/{inv['id']}", headers=user_headers).json()
+    # Each line keeps its own amount; the invoice total is their sum.
+    assert [it["advance_tax"] for it in detail["items"]] == [680, 12.5]
+    assert detail["advance_tax"] == 692.5
+    # Shown by default as two receipt columns.
+    visible = {c["key"] for c in detail["layout"]["columns"] if c["visible"]}
+    assert {"advance_tax", "total_incl_adv"} <= visible

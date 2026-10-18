@@ -6,6 +6,7 @@
 // decides the columns, header details and where the FBR logo / QR code sit.
 // strnChoice: which STRN to print when the seller has several (index as string).
 
+import { useLayoutEffect, useRef, useState } from 'react'
 import mark from '../assets/mark.png'
 
 // Used only if an invoice arrives without a layout — the pre-layout receipt.
@@ -86,6 +87,14 @@ function cell(key, it, idx, fieldsByKey) {
       return it.sale_type
     case 'line_total':
       return fmt(it.displayTotal)
+    // Per-line §236 advance tax and the line total including it. Older
+    // invoices only kept the invoice total, so their lines show —.
+    case 'advance_tax':
+      return it.advance_tax == null ? '—' : fmt(it.advance_tax)
+    case 'total_incl_adv':
+      return it.advance_tax == null
+        ? '—'
+        : fmt(Math.round((it.displayTotal + it.advance_tax) * 100) / 100)
     default: {
       const fieldKey = key.replace(/^cf:/, '')
       return customValue(fieldsByKey[fieldKey], (it.custom_fields || {})[fieldKey])
@@ -130,9 +139,40 @@ function FbrQr({ inv }) {
   )
 }
 
+// Fit the product table to its width: 0 = as designed; 1 = headings may wrap
+// onto two lines; 2 = also tighter cells. Only steps up when the table would
+// otherwise overflow (many columns), so a normal layout is untouched.
+function useTableFit(deps) {
+  const ref = useRef(null)
+  const [level, setLevel] = useState(0)
+  useLayoutEffect(() => {
+    const card = ref.current
+    if (!card) return undefined
+    const check = () => {
+      const overflowing = () => card.querySelector('table').offsetWidth > card.clientWidth + 1
+      // Measure from scratch at each width, stepping up only as needed.
+      let next = 0
+      card.classList.remove('fit-1', 'fit-2')
+      while (next < 2 && overflowing()) {
+        next += 1
+        card.classList.remove('fit-1', 'fit-2')
+        card.classList.add(`fit-${next}`)
+      }
+      setLevel(next)
+    }
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(card)
+    return () => ro.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps)
+  return [ref, level]
+}
+
 export default function ReceiptDocument({ inv, strnChoice = '' }) {
   const layout = inv.layout || FALLBACK_LAYOUT
   const isTest = TEST_ENVS.includes(inv.fbr_env)
+  const [tableCardRef, fitLevel] = useTableFit([inv, layout])
   const show = (key) => layout.header?.[key] !== false
   const fieldsByKey = Object.fromEntries((layout.custom_fields || []).map((f) => [f.key, f]))
 
@@ -265,7 +305,7 @@ export default function ReceiptDocument({ inv, strnChoice = '' }) {
         />
       </div>
 
-      <div className="table-card">
+      <div className={`table-card${fitLevel ? ` fit-${fitLevel}` : ''}`} ref={tableCardRef}>
         <table>
           <thead>
             <tr>

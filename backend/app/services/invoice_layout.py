@@ -34,6 +34,9 @@ BUILTIN_COLUMNS = {
     "extra_tax": "Extra Tax",
     "sale_type": "Sale Type",
     "line_total": "Line Total",
+    # §236 advance income tax per line, and the line total including it.
+    "advance_tax": "Advance Tax",
+    "total_incl_adv": "Total",
 }
 # What the receipt showed before layouts existed.
 DEFAULT_VISIBLE_COLUMNS = {
@@ -47,6 +50,8 @@ DEFAULT_VISIBLE_COLUMNS = {
     "excl_st",
     "discount",
     "sales_tax",
+    "advance_tax",
+    "total_incl_adv",
 }
 
 # Totals box. These two are fixed: exclusive value first, inclusive last.

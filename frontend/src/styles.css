@@ -941,6 +941,12 @@ tr.row-selected td { background: var(--brand-50); }
    spare space); .cell-wrap caps that so a very long name wraps instead of
    pushing the table off the page. The other columns absorb the spare width. */
 .receipt .col-fit { white-space: nowrap; }
+/* Too many columns for the width (set by ReceiptDocument's useTableFit):
+   1 = headings may take two lines; 2 = also tighter cells. Values never wrap. */
+.receipt .table-card.fit-1 th.col-fit,
+.receipt .table-card.fit-2 th.col-fit { white-space: normal; }
+.receipt .table-card.fit-2 th,
+.receipt .table-card.fit-2 td { padding-left: 6px; padding-right: 6px; }
 .receipt .col-wide { width: 1%; white-space: nowrap; }
 .receipt .cell-wrap { white-space: normal; width: max-content; max-width: 16em; }
 .receipt tbody tr:last-child td { border-bottom: none; }
