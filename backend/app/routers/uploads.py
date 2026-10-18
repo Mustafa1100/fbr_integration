@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models import Invoice, Upload, User
 from app.pagination import paginate
 from app.routers.settings import get_or_create_fbr_settings
-from app.services import csv_processor, invoice_service
+from app.services import csv_processor, invoice_layout, invoice_service
 from app.services.invoice_service import (
     ENV_FILTER_ALIASES,
     VALID_ENVS,
@@ -98,15 +98,17 @@ def download_template(
     starter rows — see csv_processor.scenario_template_csv. ?target= (mock |
     sandbox | production) controls whether the scenario_id column is included.
     """
+    fbr = get_or_create_fbr_settings(db, user)
+    # The user's custom fields become extra (optional) template columns.
+    extra = [f["key"] for f in invoice_layout.layout_for(fbr)["custom_fields"]]
     if scenario:
-        content = csv_processor.scenario_template_csv(scenario.upper())
+        content = csv_processor.scenario_template_csv(scenario.upper(), extra)
         if content is None:
             raise HTTPException(404, f"No official sample for scenario '{scenario}'")
         filename = f"fbr_template_{scenario.upper()}.csv"
     else:
-        fbr = get_or_create_fbr_settings(db, user)
         env = target or fbr.fbr_env
-        content = csv_processor.template_csv(include_scenario=env != "production")
+        content = csv_processor.template_csv(include_scenario=env != "production", extra_columns=extra)
         filename = "fbr_invoice_template.csv"
     return PlainTextResponse(
         content,

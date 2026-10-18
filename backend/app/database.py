@@ -111,6 +111,14 @@ def run_light_migrations() -> None:
                         "WHERE fbr_env = 'production'"
                     )
                 )
+        if "invoice_layout" not in fbr_columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE fbr_settings ADD COLUMN invoice_layout "
+                        "VARCHAR(8000) NOT NULL DEFAULT '{}'"
+                    )
+                )
         if "strns" not in fbr_columns:
             with engine.begin() as conn:
                 conn.execute(
@@ -187,6 +195,22 @@ def run_light_migrations() -> None:
                         "WHERE fbr_invoice_number LIKE 'MOCK%'"
                     )
                 )
+    if "products" in inspector.get_table_names():
+        product_columns = {c["name"] for c in inspector.get_columns("products")}
+        for name, ddl in (
+            ("sales_tax", "FLOAT NULL"),
+            ("total_values", "FLOAT NULL"),
+            ("discount", "FLOAT NOT NULL DEFAULT 0"),
+            ("further_tax", "FLOAT NOT NULL DEFAULT 0"),
+            ("fed_payable", "FLOAT NOT NULL DEFAULT 0"),
+            ("extra_tax", "FLOAT NOT NULL DEFAULT 0"),
+            ("st_withheld", "FLOAT NOT NULL DEFAULT 0"),
+            ("advance_tax", "FLOAT NOT NULL DEFAULT 0"),
+            ("custom_fields", "VARCHAR(8000) NOT NULL DEFAULT '{}'"),
+        ):
+            if name not in product_columns:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE products ADD COLUMN {name} {ddl}"))
     if "invoice_items" in inspector.get_table_names():
         item_columns = {c["name"] for c in inspector.get_columns("invoice_items")}
         if "total_values" not in item_columns:
@@ -195,5 +219,13 @@ def run_light_migrations() -> None:
                     text(
                         "ALTER TABLE invoice_items ADD COLUMN total_values "
                         "FLOAT NOT NULL DEFAULT 0"
+                    )
+                )
+        if "custom_fields" not in item_columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE invoice_items ADD COLUMN custom_fields "
+                        "VARCHAR(8000) NOT NULL DEFAULT '{}'"
                     )
                 )

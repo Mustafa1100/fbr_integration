@@ -17,7 +17,7 @@ from app.fbr.client import error_text, is_valid
 from app.models import Invoice, Upload, User
 from app.pagination import paginate
 from app.routers.settings import get_or_create_fbr_settings, parse_strns
-from app.services import csv_processor, invoice_service
+from app.services import csv_processor, invoice_layout, invoice_service
 from app.services.invoice_service import ENV_FILTER_ALIASES, resolve_env_filter
 from app.services.qr import qr_data_uri
 
@@ -218,9 +218,12 @@ def detail_out(inv: Invoice, fbr) -> dict:
                 "sale_type": it.sale_type,
                 "sro_schedule_no": it.sro_schedule_no,
                 "sro_item_serial_no": it.sro_item_serial_no,
+                "custom_fields": invoice_layout.load_values(it.custom_fields),
             }
             for it in inv.items
         ],
+        # The owner's receipt layout (Settings → Invoice Settings).
+        "layout": invoice_layout.layout_for(fbr),
         # Preview the payload as it went to (or would go to) this invoice's
         # own environment, not the account's current default.
         "payload": invoice_service.build_payload(

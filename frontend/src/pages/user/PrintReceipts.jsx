@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { AlertCircle, ArrowLeft, Info, Loader2, Printer, ReceiptText } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Download, Info, Loader2, Printer, ReceiptText } from 'lucide-react'
 import { api } from '../../api'
 import ReceiptDocument from '../../components/ReceiptDocument'
+import { downloadReceiptsPdf, receiptsFileName } from '../../receiptPdf'
 import usePageTitle from '../../hooks/usePageTitle'
 
-// Prints many receipts as ONE document — e.g. everything a customer has been
-// invoiced, found by searching their name or CNIC on Invoices History. The
-// browser's print dialog ("Save as PDF") turns it into a single PDF with one
-// receipt per page, exactly as the single-receipt page would print each.
+// Many receipts as ONE document — e.g. everything a customer has been
+// invoiced, found by searching their name or CNIC on Invoices History.
+// "Download PDF" builds a single landscape PDF directly (receiptPdf.js);
+// "Print" sends them to the printer. One receipt per page either way.
 // The filters arrive in the URL (opened from Invoices History) and are passed
 // straight to GET /api/invoices/receipts.
 const FILTER_KEYS = ['upload_id', 'q', 'fbr_env', 'date_from', 'date_to']
@@ -19,6 +20,10 @@ export default function PrintReceipts() {
   const [error, setError] = useState('')
   // Which STRN to print, when the seller has more than one — applies to every receipt.
   const [strnChoice, setStrnChoice] = useState('')
+  // null = idle; a number = receipts captured so far while building the PDF.
+  const [pdfProgress, setPdfProgress] = useState(null)
+  const [pdfError, setPdfError] = useState('')
+  const sheetsRef = useRef(null)
 
   const query = new URLSearchParams()
   FILTER_KEYS.forEach((k) => searchParams.get(k) && query.set(k, searchParams.get(k)))
@@ -47,6 +52,21 @@ export default function PrintReceipts() {
   const strns = invoices[0]?.seller.strns || []
   const truncated = data && data.total > invoices.length
 
+  // All receipts into one landscape PDF (see receiptPdf.js), in page order.
+  async function downloadPdf() {
+    const els = [...(sheetsRef.current?.querySelectorAll('.receipt') ?? [])]
+    if (!els.length) return
+    setPdfError('')
+    setPdfProgress(0)
+    try {
+      await downloadReceiptsPdf(els, receiptsFileName(invoices), (done) => setPdfProgress(done))
+    } catch (err) {
+      setPdfError(`Couldn't create the PDF: ${err.message}`)
+    } finally {
+      setPdfProgress(null)
+    }
+  }
+
   return (
     <>
       <div className="page-header no-print">
@@ -69,11 +89,26 @@ export default function PrintReceipts() {
             <ArrowLeft size={16} />
           </Link>
           <button
-            className="btn btn-primary"
+            className="btn btn-secondary"
             onClick={() => window.print()}
-            disabled={!invoices.length}
+            disabled={!invoices.length || pdfProgress !== null}
           >
-            <Printer size={16} /> Print / Save as PDF
+            <Printer size={16} /> Print
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={downloadPdf}
+            disabled={!invoices.length || pdfProgress !== null}
+          >
+            {pdfProgress !== null ? (
+              <>
+                <Loader2 size={16} className="spin" /> Creating PDF… {pdfProgress}/{invoices.length}
+              </>
+            ) : (
+              <>
+                <Download size={16} /> Download PDF
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -118,9 +153,9 @@ export default function PrintReceipts() {
         <div className="alert info no-print">
           <Info size={17} />
           <span>
-            Click <strong>Print / Save as PDF</strong>, then in the print window choose{' '}
-            <strong>Save as PDF</strong> as the destination. You get one file with all{' '}
-            {invoices.length} receipt{invoices.length === 1 ? '' : 's'}, each on its own page.
+            <strong>Download PDF</strong> saves one file with all {invoices.length} receipt
+            {invoices.length === 1 ? '' : 's'}, each on its own landscape page.{' '}
+            <strong>Print</strong> sends them to your printer, one per page.
           </span>
         </div>
       )}
@@ -164,11 +199,20 @@ export default function PrintReceipts() {
         </div>
       )}
 
-      {invoices.map((inv) => (
-        <div key={inv.id} className="receipt-sheet">
-          <ReceiptDocument inv={inv} strnChoice={strnChoice} />
+      {pdfError && (
+        <div className="alert error no-print">
+          <AlertCircle size={17} />
+          <span>{pdfError}</span>
         </div>
-      ))}
+      )}
+
+      <div ref={sheetsRef}>
+        {invoices.map((inv) => (
+          <div key={inv.id} className="receipt-sheet">
+            <ReceiptDocument inv={inv} strnChoice={strnChoice} />
+          </div>
+        ))}
+      </div>
     </>
   )
 }

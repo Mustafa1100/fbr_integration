@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, storeSession } from '../../api'
 import usePageTitle from '../../hooks/usePageTitle'
+import InvoiceLayoutSettings from '../../components/InvoiceLayoutSettings'
 import PasswordRequirement from '../../components/PasswordRequirement'
 import { passwordStrength } from '../../passwordStrength'
 import {
@@ -16,6 +17,7 @@ import {
   Eye,
   EyeOff,
   Hash,
+  ReceiptText,
 } from 'lucide-react'
 
 const ENV_LABELS = {
@@ -181,6 +183,13 @@ export default function FbrSettings() {
         </button>
         <button
           type="button"
+          className={`btn btn-sm ${tab === 'invoice' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setTab('invoice')}
+        >
+          <ReceiptText size={14} /> Invoice Settings
+        </button>
+        <button
+          type="button"
           className={`btn btn-sm ${tab === 'password' ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => setTab('password')}
         >
@@ -320,6 +329,8 @@ export default function FbrSettings() {
           )}
         </>
       )}
+
+      {tab === 'invoice' && <InvoiceLayoutSettings />}
 
       {tab === 'password' && <ChangePasswordTab />}
     </>

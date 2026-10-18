@@ -40,6 +40,7 @@ Invoice.advance_tax and shown on the receipt after the sales tax. Blank -> 0.
 
 import csv
 import io
+import json
 from datetime import date, datetime
 
 import openpyxl
@@ -47,7 +48,7 @@ from sqlalchemy.orm import Session
 
 from app.fbr.scenario_samples import SCENARIO_NAMES, SCENARIO_SAMPLE_ITEMS
 from app.models import FbrSettings, Invoice, InvoiceItem, Upload, User
-from app.services import invoice_service
+from app.services import invoice_layout, invoice_service
 
 REQUIRED_COLUMNS = [
     "pos_invoice_no",
@@ -166,13 +167,15 @@ TEMPLATE_ROWS = [
 ]
 
 
-def template_csv(include_scenario: bool = True) -> str:
+def template_csv(include_scenario: bool = True, extra_columns: list[str] = ()) -> str:
     """The generic starter template. ``include_scenario=False`` drops the
     scenario_id column entirely — production accounts don't tag invoices
     with a sandbox test scenario at all (see the Column Guide's own
     production-vs-sandbox note), so a production user's only template
     shouldn't carry a column that means nothing for them."""
     fieldnames = ALL_COLUMNS if include_scenario else [c for c in ALL_COLUMNS if c != "scenario_id"]
+    # The user's custom fields (Settings → Invoice Settings), left blank.
+    fieldnames = [*fieldnames, *extra_columns]
     rows = TEMPLATE_ROWS
     if not include_scenario:
         rows = [{k: v for k, v in row.items() if k != "scenario_id"} for row in TEMPLATE_ROWS]
@@ -183,7 +186,7 @@ def template_csv(include_scenario: bool = True) -> str:
     return buf.getvalue()
 
 
-def scenario_template_csv(scenario_id: str) -> str | None:
+def scenario_template_csv(scenario_id: str, extra_columns: list[str] = ()) -> str | None:
     """A CSV template pre-filled from FBR/PRAL's own worked example for one
     sandbox scenario (SN001–SN028) — same hsCode/rate/uoM/saleType they use
     in the official spec, so a scenario-testing submission doesn't fail on a
@@ -223,7 +226,7 @@ def scenario_template_csv(scenario_id: str) -> str | None:
         "sro_item_serial_no": item.get("sroItemSerialNo") or "",
     }
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=ALL_COLUMNS)
+    writer = csv.DictWriter(buf, fieldnames=[*ALL_COLUMNS, *extra_columns])
     writer.writeheader()
     writer.writerow(row)
     return buf.getvalue()
@@ -247,7 +250,7 @@ def _row_amount(row: dict, col: str) -> float:
     return round(float(row.get(col) or 0), 2)
 
 
-def _validate_and_collect(fieldnames: list[str], rows_iter) -> list[dict]:
+def _validate_and_collect(fieldnames: list[str], rows_iter, custom_fields: list[dict] = ()) -> list[dict]:
     """Shared validation core for both CSV and Excel uploads: required
     columns present, then per-row required fields / date format / numeric
     fields. ``rows_iter`` yields (line_no, row) where row is already a
@@ -287,13 +290,18 @@ def _validate_and_collect(fieldnames: list[str], rows_iter) -> list[dict]:
                 f"Row {line_no}: quantity, unit_price, and the optional amount "
                 "columns (if given) must be numbers."
             )
+        # The user's custom fields: optional columns named by field key.
+        try:
+            row["_custom"] = invoice_layout.clean_values(custom_fields, row)
+        except ValueError as exc:
+            raise CsvError(f"Row {line_no}: {exc}")
         rows.append(row)
     if not rows:
         raise CsvError("The file has no data rows.")
     return rows
 
 
-def _parse_rows(content: str) -> list[dict]:
+def _parse_rows(content: str, custom_fields: list[dict] = ()) -> list[dict]:
     reader = csv.DictReader(io.StringIO(content))
     if not reader.fieldnames:
         raise CsvError("The CSV file is empty.")
@@ -304,7 +312,7 @@ def _parse_rows(content: str) -> list[dict]:
             row = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
             yield line_no, row
 
-    return _validate_and_collect(fieldnames, rows_iter())
+    return _validate_and_collect(fieldnames, rows_iter(), custom_fields)
 
 
 def _excel_cell_to_str(cell) -> str:
@@ -331,7 +339,7 @@ def _excel_cell_to_str(cell) -> str:
     return str(value).strip()
 
 
-def _parse_excel_rows(raw: bytes) -> list[dict]:
+def _parse_excel_rows(raw: bytes, custom_fields: list[dict] = ()) -> list[dict]:
     try:
         wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
     except Exception as exc:
@@ -356,7 +364,11 @@ def _parse_excel_rows(raw: bytes) -> list[dict]:
             }
             yield line_no, row
 
-    return _validate_and_collect(fieldnames, rows_iter())
+    return _validate_and_collect(fieldnames, rows_iter(), custom_fields)
+
+
+def _custom_fields(fbr: FbrSettings) -> list[dict]:
+    return invoice_layout.layout_for(fbr)["custom_fields"]
 
 
 def _new_upload(user: User, filename: str, fbr_env: str) -> Upload:
@@ -384,7 +396,7 @@ def process_upload(
     upload = _new_upload(user, filename, target_env)
     db.add(upload)
     try:
-        rows = _parse_rows(content)
+        rows = _parse_rows(content, _custom_fields(fbr))
     except CsvError as exc:
         upload.status = "failed"
         upload.error = str(exc)
@@ -406,7 +418,7 @@ def process_upload_excel(
     upload = _new_upload(user, filename, target_env)
     db.add(upload)
     try:
-        rows = _parse_excel_rows(raw)
+        rows = _parse_excel_rows(raw, _custom_fields(fbr))
     except CsvError as exc:
         upload.status = "failed"
         upload.error = str(exc)
@@ -525,6 +537,7 @@ def _process_rows(
                     sro_schedule_no=row.get("sro_schedule_no") or "",
                     sro_item_serial_no=row.get("sro_item_serial_no") or "",
                     sale_type=sale_type,
+                    custom_fields=json.dumps(row.get("_custom") or {}),
                 )
             )
         db.add(invoice)

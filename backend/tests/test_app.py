@@ -2,6 +2,7 @@
 user login → FBR settings → CSV upload → invoices submitted → receipt/QR →
 soft deletes → deactivation."""
 
+import json
 import os
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -3081,3 +3082,200 @@ def test_admin_deletes_upload_cascades_all_its_invoices(admin_headers, user_head
         ).status_code
         == 403
     )
+
+
+def test_products_crud_and_soft_delete(user_headers, admin_headers):
+    body = {
+        "description": "Urea 50 KG bag",
+        "hs_code": "3102.1000",
+        "uom": "KG",
+        "pack_size": 50,
+        "unit_price": 100,
+        "rate": "18%",
+        "scenario_id": "sn001",
+    }
+    resp = client.post("/api/products", json=body, headers=user_headers)
+    assert resp.status_code == 201, resp.text
+    product = resp.json()
+    assert product["pack_size"] == 50
+    assert product["scenario_id"] == "SN001"
+    assert product["rate"] == "18%"
+    # Charges default to auto (None) for sales tax / total value, 0 otherwise.
+    assert product["sales_tax"] is None and product["total_values"] is None
+    assert product["discount"] == 0 and product["advance_tax"] == 0
+
+    # Quantity must be positive; UOM and rate have no silent defaults.
+    bad = client.post("/api/products", json={**body, "pack_size": 0}, headers=user_headers)
+    assert bad.status_code == 422
+    for field in ("uom", "rate"):
+        bad = client.post("/api/products", json={**body, field: ""}, headers=user_headers)
+        assert bad.status_code == 422
+
+    resp = client.put(
+        f"/api/products/{product['id']}",
+        json={**body, "unit_price": 120, "discount": 20, "advance_tax": 5, "sales_tax": 900},
+        headers=user_headers,
+    )
+    assert resp.status_code == 200
+    updated = resp.json()
+    assert updated["unit_price"] == 120
+    assert (updated["discount"], updated["advance_tax"], updated["sales_tax"]) == (20, 5, 900)
+
+    listed = client.get("/api/products", headers=user_headers).json()
+    assert [p["id"] for p in listed] == [product["id"]]
+
+    # Paginated like the other lists: total in X-Total-Count.
+    second = client.post(
+        "/api/products", json={**body, "description": "DAP 50 KG bag"}, headers=user_headers
+    ).json()
+    resp = client.get("/api/products?page=2&page_size=1", headers=user_headers)
+    assert resp.headers["X-Total-Count"] == "2"
+    assert [p["id"] for p in resp.json()] == [product["id"]]  # sorted by description
+    client.delete(f"/api/products/{second['id']}", headers=user_headers)
+
+    # Products are per-user: another account can't see or touch them.
+    assert client.get("/api/products", headers=admin_headers).json() == []
+    assert (
+        client.put(f"/api/products/{product['id']}", json=body, headers=admin_headers).status_code
+        == 404
+    )
+
+    assert client.delete(f"/api/products/{product['id']}", headers=user_headers).status_code == 200
+    assert client.get("/api/products", headers=user_headers).json() == []
+    assert client.delete(f"/api/products/{product['id']}", headers=user_headers).status_code == 404
+
+
+def test_invoice_layout_custom_fields_flow(user_headers, admin_headers):
+    # Defaults: built-in columns, every header detail on, logo/QR top-right.
+    data = client.get("/api/settings/invoice-layout", headers=user_headers).json()
+    layout = data["layout"]
+    assert layout["custom_fields"] == []
+    assert layout["logo_position"] == layout["qr_position"] == "top-right"
+    assert all(layout["header"].values())
+    visible = [c["key"] for c in layout["columns"] if c["visible"]]
+    assert visible[:3] == ["index", "description", "hs_code"]
+
+    # A column name clashing with a built-in CSV column is rejected.
+    bad = client.put(
+        "/api/settings/invoice-layout",
+        json={"custom_fields": [{"key": "quantity", "label": "Qty", "type": "number"}]},
+        headers=user_headers,
+    )
+    assert bad.status_code == 400
+
+    columns = [{"key": c["key"], "visible": c["visible"]} for c in layout["columns"]]
+    columns.insert(0, {"key": "cf:trade_price", "visible": True})
+    columns[[c["key"] for c in columns].index("quantity")]["label"] = "Bags"
+    resp = client.put(
+        "/api/settings/invoice-layout",
+        json={
+            "custom_fields": [{"key": "trade_price", "label": "Trader Price", "type": "number"}],
+            "columns": columns,
+            "header": {"seller_cnic": False},
+            "logo_position": "bottom-left",
+        },
+        headers=user_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    layout = resp.json()["layout"]
+    assert layout["columns"][0] == {
+        "key": "cf:trade_price",
+        "visible": True,
+        "label": "Trader Price",
+        "default_label": "Trader Price",
+    }
+    # A renamed column prints its new heading but remembers the original.
+    qty = next(c for c in layout["columns"] if c["key"] == "quantity")
+    assert (qty["label"], qty["default_label"]) == ("Bags", "Qty")
+    assert layout["header"]["seller_cnic"] is False and layout["header"]["seller_ntn"] is True
+    # Logo and QR move together; only top-right / bottom-left are allowed.
+    assert (layout["logo_position"], layout["qr_position"]) == ("bottom-left", "bottom-left")
+    bad = client.put(
+        "/api/settings/invoice-layout", json={"logo_position": "top-left"}, headers=user_headers
+    )
+    assert bad.status_code == 400
+
+    # Totals: exclusive value first, inclusive last, whatever order is sent;
+    # middle rows can be reordered, renamed and hidden.
+    totals = client.get("/api/settings/invoice-layout", headers=user_headers).json()["layout"]["totals"]
+    assert [t["key"] for t in totals] == [
+        "total_excl", "discount", "sales_tax", "further_tax", "fed_payable", "advance_tax", "total_incl",
+    ]
+    assert [t["visible"] for t in totals] == [True, True, True, True, False, True, True]
+    sent = [
+        {"key": "total_incl", "visible": False, "label": "Payable"},
+        {"key": "advance_tax", "visible": False},
+        {"key": "sales_tax", "visible": True, "label": "GST"},
+        {"key": "total_excl", "visible": False},
+    ]
+    resp = client.put(
+        "/api/settings/invoice-layout",
+        json={**resp.json()["layout"], "totals": sent},
+        headers=user_headers,
+    )
+    totals = resp.json()["layout"]["totals"]
+    assert [t["key"] for t in totals][:3] == ["total_excl", "advance_tax", "sales_tax"]
+    assert totals[-1]["key"] == "total_incl" and totals[-1]["label"] == "Payable"
+    assert totals[0]["visible"] and totals[-1]["visible"]  # fixed rows can't be hidden
+    assert totals[1]["visible"] is False
+    assert totals[2]["label"] == "GST" and totals[2]["default_label"] == "Total Sales Tax Amount"
+    layout = resp.json()["layout"]
+
+    # Layouts are per account: another user's is untouched.
+    other = client.get("/api/settings/invoice-layout", headers=admin_headers).json()["layout"]
+    assert other["custom_fields"] == [] and other["qr_position"] == "top-right"
+    assert other["header"]["seller_cnic"] is True
+
+    # The template gains the custom column.
+    template = client.get("/api/uploads/template", headers=user_headers).text
+    assert template.splitlines()[0].endswith(",trade_price")
+
+    # Products store custom values, type-checked.
+    product = {
+        "description": "Urea",
+        "hs_code": "3102.1000",
+        "uom": "KG",
+        "pack_size": 50,
+        "unit_price": 94,
+        "rate": "Exempt",
+    }
+    resp = client.post(
+        "/api/products",
+        json={**product, "custom_fields": {"trade_price": "4,650.5", "unknown": "x"}},
+        headers=user_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["custom_fields"] == {"trade_price": "4650.5"}
+    bad = client.post(
+        "/api/products", json={**product, "custom_fields": {"trade_price": "abc"}}, headers=user_headers
+    )
+    assert bad.status_code == 422
+    client.delete(f"/api/products/{resp.json()['id']}", headers=user_headers)
+
+    # CSV upload: the column is read onto the invoice line and shown on the receipt.
+    csv_text = CSV_OK.splitlines()[0] + ",trade_price\n" + CSV_OK.splitlines()[3] + ",44000\n"
+    resp = client.post(
+        "/api/uploads",
+        files={"file": ("cf.csv", csv_text, "text/csv")},
+        headers=user_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    inv = client.get(
+        f"/api/invoices?upload_id={resp.json()['id']}", headers=user_headers
+    ).json()[0]
+    detail = client.get(f"/api/invoices/{inv['id']}", headers=user_headers).json()
+    assert detail["items"][0]["custom_fields"] == {"trade_price": "44000"}
+    assert detail["layout"]["qr_position"] == "bottom-left"
+    # Never sent to FBR.
+    assert "trade_price" not in json.dumps(detail["payload"])
+
+    # A value that doesn't fit the type fails the upload with the row number.
+    bad_csv = CSV_OK.splitlines()[0] + ",trade_price\n" + CSV_OK.splitlines()[3] + ",lots\n"
+    resp = client.post(
+        "/api/uploads", files={"file": ("bad.csv", bad_csv, "text/csv")}, headers=user_headers
+    )
+    assert resp.json()["status"] == "failed"
+    assert "Row 2" in resp.json()["error"] and "Trader Price" in resp.json()["error"]
+
+    # Reset so later tests see the default layout.
+    client.put("/api/settings/invoice-layout", json={}, headers=user_headers)
