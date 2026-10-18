@@ -161,7 +161,8 @@ function sampleInvoice(layout, seller) {
   const custom = Object.fromEntries(
     layout.custom_fields.filter((f) => f.key).map((f) => [f.key, SAMPLE_VALUES[f.type] || 'Sample'])
   )
-  const line = (description, hs, qty, uom, price, rate, tax, discount = 0) => ({
+  const line = (description, hs, qty, uom, price, rate, tax, discount = 0, advanceTax = 0) => ({
+    advance_tax: advanceTax,
     product_description: description,
     hs_code: hs,
     quantity: qty,
@@ -180,8 +181,8 @@ function sampleInvoice(layout, seller) {
     custom_fields: custom,
   })
   const items = [
-    line('Sample product A', '3102.1000', 50, 'KG', 94, 'Exempt', 0, 200),
-    line('Sample product B', '3105.3000', 2, 'Bag', 1000, '18%', 360),
+    line('Sample product A', '3102.1000', 50, 'KG', 94, 'Exempt', 0, 200, 22.5),
+    line('Sample product B', '3105.3000', 2, 'Bag', 1000, '18%', 360, 0, 11.8),
   ]
   return {
     layout,
@@ -206,7 +207,7 @@ function sampleInvoice(layout, seller) {
     qr: SAMPLE_QR,
     items,
     total_tax: 360,
-    advance_tax: 0,
+    advance_tax: 34.3, // the two lines' advance tax
   }
 }
 

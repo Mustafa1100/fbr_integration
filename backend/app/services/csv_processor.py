@@ -33,9 +33,10 @@ total_values are derived by the app. They exist so a provider whose POS/ERP
 already carries e.g. a discount or withheld tax can pass those figures
 straight through instead of losing them.
 
-advance_tax is a receipt figure rather than an item field: the §236 advance
-income tax the distributor collected. Per-row values are summed onto
-Invoice.advance_tax and shown on the receipt after the sales tax. Blank -> 0.
+advance_tax is a receipt figure rather than an FBR item field: the §236
+advance income tax the distributor collected. Each row's value is kept on its
+line (InvoiceItem.advance_tax) and summed onto Invoice.advance_tax for the
+totals. Blank -> 0.
 """
 
 import csv
@@ -538,6 +539,9 @@ def _process_rows(
                     sro_item_serial_no=row.get("sro_item_serial_no") or "",
                     sale_type=sale_type,
                     custom_fields=json.dumps(row.get("_custom") or {}),
+                    # Kept per line too (shown on the receipt); the invoice
+                    # total above is the sum of these.
+                    advance_tax=_row_amount(row, "advance_tax"),
                 )
             )
         db.add(invoice)

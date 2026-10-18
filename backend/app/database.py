@@ -229,3 +229,8 @@ def run_light_migrations() -> None:
                         "VARCHAR(8000) NOT NULL DEFAULT '{}'"
                     )
                 )
+        if "advance_tax" not in item_columns:
+            # Nullable on purpose: existing lines stay NULL ("not recorded"),
+            # since only the invoice total was kept for them.
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE invoice_items ADD COLUMN advance_tax FLOAT NULL"))

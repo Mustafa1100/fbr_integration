@@ -219,6 +219,8 @@ def detail_out(inv: Invoice, fbr) -> dict:
                 "sro_schedule_no": it.sro_schedule_no,
                 "sro_item_serial_no": it.sro_item_serial_no,
                 "custom_fields": invoice_layout.load_values(it.custom_fields),
+                # None for invoices created before per-line amounts were kept.
+                "advance_tax": None if it.advance_tax is None else round(it.advance_tax, 2),
             }
             for it in inv.items
         ],

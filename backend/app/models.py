@@ -271,6 +271,10 @@ class InvoiceItem(Base):
     # JSON {field key: value} — the user's custom fields (receipt only,
     # never sent to FBR).
     custom_fields: Mapped[str] = mapped_column(Text, default="{}")
+    # §236 advance income tax on this line (receipt only; the invoice total
+    # is Invoice.advance_tax). None = not recorded — invoices created before
+    # per-line amounts were kept.
+    advance_tax: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     invoice: Mapped[Invoice] = relationship(back_populates="items")
 
