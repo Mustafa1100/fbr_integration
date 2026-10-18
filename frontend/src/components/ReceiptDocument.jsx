@@ -47,6 +47,19 @@ function customValue(field, value) {
   return field?.type === 'number' ? fmt(value) : value
 }
 
+// A line's advance tax. Invoices created before per-line amounts were kept
+// (it.advance_tax == null) only have the invoice total, which still settles
+// it exactly when that total is 0 (every line 0) or there's a single line
+// (that line has it all). Only a multi-line invoice with a non-zero total
+// is unknown — null: Advance Tax shows —, Total shows the line total alone.
+function lineAdvanceTax(it, inv) {
+  if (it.advance_tax != null) return it.advance_tax
+  const total = inv.advance_tax || 0
+  if (total === 0) return 0
+  if (inv.items.length === 1) return total
+  return null
+}
+
 // Description (and custom text fields) are exactly as wide as their longest
 // text, wrapping only past a cap; the other columns stay on one line and
 // share whatever width is left over.
@@ -87,14 +100,13 @@ function cell(key, it, idx, fieldsByKey) {
       return it.sale_type
     case 'line_total':
       return fmt(it.displayTotal)
-    // Per-line §236 advance tax and the line total including it. Older
-    // invoices only kept the invoice total, so their lines show —.
+    // Per-line §236 advance tax and the line total including it (see
+    // lineAdvanceTax for older invoices).
     case 'advance_tax':
-      return it.advance_tax == null ? '—' : fmt(it.advance_tax)
+      return it.displayAdvanceTax == null ? '—' : fmt(it.displayAdvanceTax)
+    // Unknown advance tax: just the line total, without it.
     case 'total_incl_adv':
-      return it.advance_tax == null
-        ? '—'
-        : fmt(Math.round((it.displayTotal + it.advance_tax) * 100) / 100)
+      return fmt(Math.round((it.displayTotal + (it.displayAdvanceTax ?? 0)) * 100) / 100)
     default: {
       const fieldKey = key.replace(/^cf:/, '')
       return customValue(fieldsByKey[fieldKey], (it.custom_fields || {})[fieldKey])
@@ -197,7 +209,13 @@ export default function ReceiptDocument({ inv, strnChoice = '' }) {
       ? it.fixed_notified_value + lineTax
       : it.total_value ?? computed
     const excl = usePlaceholder ? it.fixed_notified_value : total - lineTax + discount
-    return { ...it, displayExcl: excl, displayDiscount: discount, displayTotal: total }
+    return {
+      ...it,
+      displayExcl: excl,
+      displayDiscount: discount,
+      displayTotal: total,
+      displayAdvanceTax: lineAdvanceTax(it, inv),
+    }
   })
   // STRN on the receipt: a lone one always prints; with several, only the
   // one the user picks from the dropdown does; with none, nothing shows.
