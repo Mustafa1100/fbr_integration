@@ -1,12 +1,14 @@
 import json
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_user
+from app.auth import get_current_user, require_password_already_set
 from app.database import get_db
 from app.models import FbrSettings, User
+from app.services import invoice_layout
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -113,6 +115,28 @@ def get_fbr_settings(
     """Read-only for the signed-in user — editing is an admin-only action,
     see PUT /api/admin/users/{id}/fbr-settings."""
     return fbr_settings_out(get_or_create_fbr_settings(db, user))
+
+
+@router.get("/invoice-layout")
+def get_invoice_layout(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    fbr = get_or_create_fbr_settings(db, user)
+    return {"layout": invoice_layout.layout_for(fbr), "catalog": invoice_layout.catalog()}
+
+
+@router.put("/invoice-layout")
+def update_invoice_layout(
+    body: dict[str, Any],
+    user: User = Depends(require_password_already_set),
+    db: Session = Depends(get_db),
+):
+    """Unlike the FBR settings, the receipt layout is the user's own to edit."""
+    fbr = get_or_create_fbr_settings(db, user)
+    layout = invoice_layout.normalize(body, strict=True)
+    fbr.invoice_layout = invoice_layout.to_storage(layout)
+    db.commit()
+    return {"layout": invoice_layout.layout_for(fbr), "catalog": invoice_layout.catalog()}
 
 
 @router.put("/fbr")

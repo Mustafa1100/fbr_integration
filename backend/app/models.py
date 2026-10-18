@@ -70,6 +70,9 @@ class FbrSettings(Base):
     # Registration Numbers. Display-only on the printed receipt (never sent
     # to PRAL); with more than one the user picks which to show.
     strns: Mapped[str] = mapped_column(Text, default="[]")
+    # Receipt layout JSON (custom fields, columns, header, logo/QR position)
+    # — user-editable, read via services.invoice_layout.layout_for.
+    invoice_layout: Mapped[str] = mapped_column(Text, default="{}")
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow
@@ -185,6 +188,54 @@ class Invoice(Base):
         return sum(i.total_value for i in self.items)
 
 
+class Product(Base):
+    """A user's saved product — picked from a dropdown on the single-invoice
+    form instead of re-typing every FBR field. ``pack_size`` is how many
+    ``uom`` units one pack holds (e.g. a 50 KG bag): the invoice line takes a
+    pack count and sends FBR quantity = packs × pack_size."""
+
+    __tablename__ = "products"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+
+    description: Mapped[str] = mapped_column(String(300))
+    hs_code: Mapped[str] = mapped_column(String(20))
+    uom: Mapped[str] = mapped_column(String(60), default="Numbers, pieces, units")
+    pack_size: Mapped[float] = mapped_column(Float, default=1.0)
+    # Per single uom unit (per KG, per piece …), not per pack.
+    unit_price: Mapped[float] = mapped_column(Float, default=0.0)
+    rate: Mapped[str] = mapped_column(String(20), default="18%")
+    sale_type: Mapped[str] = mapped_column(
+        String(100), default="Goods at standard rate (default)"
+    )
+    # Sandbox test scenario; blank = the account's default_scenario.
+    scenario_id: Mapped[str] = mapped_column(String(10), default="")
+    # Per uom unit, like unit_price — the upload multiplies it by quantity.
+    fixed_notified_value: Mapped[float] = mapped_column(Float, default=0.0)
+    sro_schedule_no: Mapped[str] = mapped_column(String(50), default="")
+    sro_item_serial_no: Mapped[str] = mapped_column(String(50), default="")
+
+    # Other taxes & charges, all per pack — the invoice line multiplies them
+    # by its pack count. sales_tax / total_values None = auto-calculate.
+    sales_tax: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_values: Mapped[float | None] = mapped_column(Float, nullable=True)
+    discount: Mapped[float] = mapped_column(Float, default=0.0)
+    further_tax: Mapped[float] = mapped_column(Float, default=0.0)
+    fed_payable: Mapped[float] = mapped_column(Float, default=0.0)
+    extra_tax: Mapped[float] = mapped_column(Float, default=0.0)
+    st_withheld: Mapped[float] = mapped_column(Float, default=0.0)
+    advance_tax: Mapped[float] = mapped_column(Float, default=0.0)
+    # JSON {field key: value} for the user's custom fields (invoice_layout).
+    custom_fields: Mapped[str] = mapped_column(Text, default="{}")
+
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, onupdate=_utcnow
+    )
+
+
 class InvoiceItem(Base):
     __tablename__ = "invoice_items"
 
@@ -217,6 +268,9 @@ class InvoiceItem(Base):
     )
     sro_schedule_no: Mapped[str] = mapped_column(String(50), default="")
     sro_item_serial_no: Mapped[str] = mapped_column(String(50), default="")
+    # JSON {field key: value} — the user's custom fields (receipt only,
+    # never sent to FBR).
+    custom_fields: Mapped[str] = mapped_column(Text, default="{}")
 
     invoice: Mapped[Invoice] = relationship(back_populates="items")
 

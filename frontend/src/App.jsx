@@ -19,6 +19,7 @@ import FbrSettings from './pages/user/FbrSettings'
 import Invoices from './pages/user/Invoices'
 import Receipt from './pages/user/Receipt'
 import PrintReceipts from './pages/user/PrintReceipts'
+import Products from './pages/user/Products'
 import Uploads from './pages/user/Uploads'
 
 function homeFor(user) {
@@ -162,6 +163,14 @@ export default function App() {
           element={
             <RequireAuth role="user">
               <Uploads />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/products"
+          element={
+            <RequireAuth role="user">
+              <Products />
             </RequireAuth>
           }
         />

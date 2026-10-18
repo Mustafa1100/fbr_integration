@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Package,
   ReceiptText,
   Server,
   Settings,
@@ -142,6 +143,10 @@ export default function Layout() {
             <NavLink to="/invoices" className={link} title="Invoices History">
               <ReceiptText size={18} />
               <span>Invoices History</span>
+            </NavLink>
+            <NavLink to="/products" className={link} title="Products">
+              <Package size={18} />
+              <span>Products</span>
             </NavLink>
             <NavLink to="/columns" className={link} title="Column Guide">
               <BookOpenText size={18} />

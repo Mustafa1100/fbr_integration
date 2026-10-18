@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Receipt as ReceiptIcon,
   ArrowLeft,
+  Download,
   Printer,
   AlertCircle,
-  Code2,
   Loader2,
   ShieldCheck,
   Check,
@@ -16,6 +16,7 @@ import usePageTitle from '../hooks/usePageTitle'
 import Modal from './Modal'
 import CreditCardPlus from './CreditCardPlusIcon'
 import ReceiptDocument from './ReceiptDocument'
+import { downloadReceiptPdf, receiptFileName } from '../receiptPdf'
 
 // Shared receipt UI for both the user's own view (/invoices/:id) and the
 // admin read-only view (/admin/invoices/:userId/:invoiceId) — same data
@@ -27,7 +28,6 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
   usePageTitle('Tax Receipt')
   const [inv, setInv] = useState(null)
   const [error, setError] = useState('')
-  const [showJson, setShowJson] = useState(false)
   const [paidBusy, setPaidBusy] = useState(false)
   const [confirmingPaid, setConfirmingPaid] = useState(false)
   const [canProd, setCanProd] = useState(false)
@@ -39,6 +39,10 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
   const [advTaxOpen, setAdvTaxOpen] = useState(false)
   const [advTaxValue, setAdvTaxValue] = useState('')
   const [advTaxBusy, setAdvTaxBusy] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
+  // Separate from `error`, which replaces the whole page.
+  const [pdfError, setPdfError] = useState('')
+  const receiptRef = useRef(null)
 
   useEffect(() => {
     setInv(null)
@@ -68,6 +72,21 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
     } finally {
       setPromoting(false)
       setConfirmingPromote(false)
+    }
+  }
+
+  // Straight to an A4 landscape PDF file — no print dialog (see receiptPdf.js).
+  async function downloadPdf() {
+    const el = receiptRef.current?.querySelector('.receipt')
+    if (!el) return
+    setPdfBusy(true)
+    setPdfError('')
+    try {
+      await downloadReceiptPdf(el, receiptFileName(inv))
+    } catch (err) {
+      setPdfError(`Couldn't create the PDF: ${err.message}`)
+    } finally {
+      setPdfBusy(false)
     }
   }
 
@@ -187,6 +206,15 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
           )}
           <button
             className="btn btn-hollow has-tip has-tip-below"
+            onClick={downloadPdf}
+            disabled={pdfBusy}
+            data-tip="Download PDF"
+            aria-label="Download PDF"
+          >
+            {pdfBusy ? <Loader2 size={16} className="spin" /> : <Download size={16} />}
+          </button>
+          <button
+            className="btn btn-hollow has-tip has-tip-below"
             onClick={() => window.print()}
             data-tip="Print receipt"
             aria-label="Print receipt"
@@ -225,29 +253,15 @@ export default function ReceiptView({ apiUrl, backTo, backLabel, banner, allowMa
         </div>
       )}
 
-      <ReceiptDocument inv={inv} strnChoice={strnChoice} />
+      {pdfError && (
+        <div className="alert error no-print">
+          <AlertCircle size={17} />
+          <span>{pdfError}</span>
+        </div>
+      )}
 
-      <div className="no-print">
-        <button className="btn btn-ghost" onClick={() => setShowJson(!showJson)}>
-          <Code2 size={16} /> {showJson ? 'Hide' : 'Show'} FBR JSON payload &
-          response
-        </button>
-        {showJson && (
-          <>
-            <h2 className="section-title">
-              <Code2 size={17} /> Payload sent to FBR
-            </h2>
-            <pre>{JSON.stringify(inv.payload, null, 2)}</pre>
-            {inv.fbr_response && (
-              <>
-                <h2 className="section-title">
-                  <Code2 size={17} /> FBR response
-                </h2>
-                <pre>{JSON.stringify(inv.fbr_response, null, 2)}</pre>
-              </>
-            )}
-          </>
-        )}
+      <div ref={receiptRef}>
+        <ReceiptDocument inv={inv} strnChoice={strnChoice} />
       </div>
 
       {confirmingPromote && (

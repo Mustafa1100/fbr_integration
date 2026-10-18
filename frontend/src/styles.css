@@ -749,6 +749,16 @@ pre {
   vertical-align: middle;
 }
 .select-check:disabled { cursor: not-allowed; }
+/* A checkbox with its label beside it (Invoice Settings toggles). */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 0.9rem;
+  color: var(--text);
+  cursor: pointer;
+}
 tr.row-selected td { background: var(--brand-50); }
 .bulk-bar {
   display: flex;
@@ -817,16 +827,183 @@ tr.row-selected td { background: var(--brand-50); }
 }
 .strn-picker label { font-size: 0.82rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
 .strn-picker select { max-width: 320px; }
-.receipt { padding: 30px 36px; }
+.receipt { padding: 30px 36px; position: relative; overflow: hidden; }
+/* The off-screen copy "Download PDF" captures — styled like the printout. */
+.receipt.receipt-pdf { padding: 0; border: none; box-shadow: none; border-radius: 0; }
+/* Always the desktop layout in the PDF, even when downloaded on a phone. */
+.receipt.receipt-pdf .receipt-info { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Diagonal "TEST INVOICE" across a Test-mode receipt — on top of the content
+   (so table / box backgrounds don't hide it) but faint and click-through.
+   Kept when printing. */
+.receipt-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-30deg);
+  font-size: 5rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  color: rgba(71, 85, 105, 0.09);
+  pointer-events: none;
+  user-select: none;
+  z-index: 2;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+/* "Test — Not valid for tax purposes" under the title on Test-mode receipts. */
+.receipt-test-tag-row { text-align: center; margin: -10px 0 16px; }
+.receipt-test-tag {
+  display: inline-block;
+  padding: 3px 10px;
+  border: 1.5px solid #c62828;
+  color: #c62828;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.receipt-title {
+  text-align: center;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #000;
+  margin: 0 0 18px;
+}
 .receipt-head {
   display: flex;
   justify-content: space-between;
-  gap: 18px;
-  border-bottom: 2px solid var(--text);
-  padding-bottom: 18px;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+/* Invoice Details fills the top row beside the logo / QR; Seller and Buyer
+   Information share the row below. */
+.receipt-head .info-panel { flex: 1; min-width: 0; align-self: stretch; }
+.receipt-info {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
   margin-bottom: 18px;
 }
-.receipt-head h2 { font-size: 1.2rem; }
+.info-panel {
+  border: 1px solid #aeb7c2;
+  border-radius: 0;
+}
+/* Grey heading bar — kept when printing (browsers drop backgrounds otherwise). */
+.info-panel h3 {
+  margin: 0;
+  padding: 7px 14px;
+  background: #e9ecef;
+  border-bottom: 1px solid #aeb7c2;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.info-panel dl { margin: 0; padding: 10px 14px; }
+/* The receipt's product table matches the info boxes: square, darker lines,
+   grey heading row. Other tables in the app are unaffected. */
+.receipt .table-card {
+  border: 1px solid #aeb7c2;
+  border-radius: 0;
+  box-shadow: none;
+}
+.receipt th {
+  /* Headings as written (Title Case), not forced to capitals like app tables. */
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: #e9ecef;
+  color: var(--text);
+  border-bottom: 1px solid #aeb7c2;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.receipt td { border-bottom: 1px solid #aeb7c2; }
+/* Totals box: fully bordered like the info boxes and product table. */
+.receipt .totals-box { border: 1px solid #aeb7c2; min-width: 340px; }
+.receipt .totals-box .trow {
+  gap: 24px;
+  padding: 4px 12px;
+  border-bottom: 1px solid #aeb7c2;
+}
+.receipt .totals-box .trow:last-child { border-bottom: none; }
+.receipt .totals-box .trow.grand { border-top: none; margin-top: 0; padding-top: 4px; font-weight: 700; }
+.receipt th, .receipt td { padding: 7px 10px; }
+.receipt th:first-child, .receipt td:first-child { padding-left: 14px; }
+.receipt th:last-child, .receipt td:last-child { padding-right: 14px; }
+/* Description is sized to its longest text (width: 1% = no share of the
+   spare space); .cell-wrap caps that so a very long name wraps instead of
+   pushing the table off the page. The other columns absorb the spare width. */
+.receipt .col-fit { white-space: nowrap; }
+.receipt .col-wide { width: 1%; white-space: nowrap; }
+.receipt .cell-wrap { white-space: normal; width: max-content; max-width: 16em; }
+.receipt tbody tr:last-child td { border-bottom: none; }
+/* One text size across the whole receipt (only the title is larger); the
+   product description isn't bold, and codes/numbers in the mono font match. */
+.receipt th,
+.receipt td,
+.receipt td .strong,
+.receipt .mono,
+.receipt .info-panel h3,
+.receipt .info-row,
+.receipt .totals-box .trow,
+.receipt .totals-box .trow.grand,
+.receipt .receipt-note {
+  font-size: 0.85rem;
+}
+.receipt td .strong { font-weight: 400; }
+/* Every piece of receipt text in solid black (the app's greys print faint).
+   The red "not submitted" warning keeps its colour. */
+.receipt,
+.receipt th,
+.receipt td,
+.receipt td .strong,
+.receipt .info-panel h3,
+.receipt .info-row dt,
+.receipt .info-row dd,
+.receipt .totals-box .trow,
+.receipt .totals-box .trow.grand,
+.receipt .fbr-number {
+  color: #000;
+}
+.info-row { display: flex; gap: 6px; font-size: 0.85rem; padding: 2px 0; }
+.info-row dt { color: var(--muted); font-weight: 700; flex-shrink: 0; }
+.info-row dd { margin: 0; color: var(--text); font-weight: 400; overflow-wrap: anywhere; }
+/* Screen only — keep the boxes side by side on paper. */
+@media screen and (max-width: 768px) {
+  .receipt-info { grid-template-columns: 1fr; }
+}
+/* "Generated with Compliance.pk" + the app mark, under the closing note. */
+.receipt-credit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 0.72rem;
+  color: #6b7280;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.receipt-credit img { width: 14px; height: 14px; object-fit: contain; }
+.receipt-credit a { color: #374151; font-weight: 600; text-decoration: none; }
+.receipt-credit a:hover { text-decoration: underline; }
+/* The closing note: italic and greyed out, unlike the rest of the receipt. */
+.receipt-note {
+  text-align: center;
+  font-size: 0.78rem;
+  font-style: italic;
+  color: #6b7280;
+  margin: 24px 0 0;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
 .fbr-box { display: flex; flex-direction: row; align-items: flex-start; gap: 14px; text-align: center; flex-shrink: 0; }
 .fbr-box img { width: 116px; height: 116px; border-radius: 8px; border: 1px solid var(--border); padding: 4px; background: #fff; }
 .fbr-logo { width: 132px; height: auto !important; border: 0 !important; border-radius: 0 !important; padding: 0 !important; margin: 0 !important; background: transparent !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
@@ -835,8 +1012,8 @@ tr.row-selected td { background: var(--brand-50); }
 .fbr-verify { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .fbr-number { font-size: 0.7rem; font-weight: 700; word-break: break-all; max-width: 132px; color: var(--text); }
 .receipt .warn { color: var(--red-600); font-size: 0.82rem; font-weight: 700; border: 1.5px dashed var(--red-600); border-radius: 10px; padding: 14px; }
-.totals { display: flex; justify-content: flex-end; margin-top: 16px; }
-.totals-box { min-width: 260px; }
+.totals { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-top: 16px; }
+.totals-box { min-width: 260px; margin-left: auto; }
 .totals-box .trow { display: flex; justify-content: space-between; padding: 5px 0; font-size: 0.9rem; color: var(--text-2); }
 .totals-box .trow.grand { border-top: 1px solid var(--border-strong); margin-top: 6px; padding-top: 10px; font-weight: 700; color: var(--text); font-size: 1rem; }
 
@@ -880,12 +1057,18 @@ tr.row-selected td { background: var(--brand-50); }
   .page { padding: 18px 14px 40px; }
 }
 
+/* Receipts always print on A4 landscape — ~277mm of printable width, so the
+   table prints exactly as on screen. Zero page margins stop the browser
+   printing its own header / footer (date, page title, URL, page number); the
+   10mm margin is put back on each receipt instead. */
+@page { size: A4 landscape; margin: 0; }
+
 @media print {
   .sidebar, .topbar, .no-print { display: none !important; }
   body { background: #fff; }
   .page { padding: 0; max-width: 100%; }
   .card, .table-card { box-shadow: none; border: none; }
-  .receipt { padding: 0; }
+  .receipt { padding: 10mm; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
   /* "Print receipts": one receipt per page, no blank page after the last. */
   .receipt-sheet { break-after: page; page-break-after: always; margin: 0; }
   .receipt-sheet:last-child { break-after: auto; page-break-after: auto; }

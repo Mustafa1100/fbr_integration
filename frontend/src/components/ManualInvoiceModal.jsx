@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { AlertCircle, Loader2, Pencil, Plus, ReceiptText, Trash2, X } from 'lucide-react'
 import { api } from '../api'
-import { SALE_TYPE_VALUES } from '../data/columnGuide'
-import HsCodePicker from './HsCodePicker'
 import Modal from './Modal'
 
 // Column order doesn't matter to the backend (it parses by header name), but
@@ -46,11 +45,14 @@ function csvField(value) {
 // One CSV row per product line; every row repeats the shared invoice / buyer
 // fields, so rows sharing pos_invoice_no become one invoice with many items.
 function buildCsv(header, items) {
+  // Plus the user's custom field columns (product values, keyed by field key).
+  const customKeys = [...new Set(items.flatMap((it) => Object.keys(it.custom_fields || {})))]
+  const columns = [...CSV_COLUMNS, ...customKeys]
   const rows = items.map((item) => {
-    const merged = { ...header, ...item }
-    return CSV_COLUMNS.map((c) => csvField(merged[c])).join(',')
+    const merged = { ...header, ...item, ...item.custom_fields }
+    return columns.map((c) => csvField(merged[c])).join(',')
   })
-  return `${CSV_COLUMNS.join(',')}\n${rows.join('\n')}\n`
+  return `${columns.join(',')}\n${rows.join('\n')}\n`
 }
 
 function emptyHeader() {
@@ -58,7 +60,6 @@ function emptyHeader() {
     pos_invoice_no: '',
     invoice_date: new Date().toISOString().slice(0, 10),
     invoice_ref_no: '',
-    scenario_id: '',
     buyer_ntn_cnic: '',
     buyer_name: '',
     buyer_province: '',
@@ -69,38 +70,61 @@ function emptyHeader() {
 
 function emptyItem() {
   return {
-    product_description: '',
-    hs_code: '',
-    rate: '18%',
-    uom: 'Numbers, pieces, units',
-    quantity: '',
-    unit_price: '',
-    sale_type: 'Goods at standard rate (default)',
-    fixed_notified_value: '',
-    sro_schedule_no: '',
-    sro_item_serial_no: '',
-    // Optional amounts — blank means "let the app work it out" for
-    // sales_tax / total_values, and 0 for the rest.
-    sales_tax: '',
-    sales_tax_withheld_at_source: '',
-    extra_tax: '',
-    further_tax: '',
-    fed_payable: '',
+    product_id: '',
+    packs: '',
+    // Line totals, pre-filled from the product's per-pack amount × packs
+    // until the user types their own (then *_edited pins it). advance_tax is
+    // §236 advance income tax — a receipt figure summed onto the invoice.
     discount: '',
-    total_values: '',
-    // §236 advance income tax — a receipt figure; per-line values are summed
-    // onto the invoice.
     advance_tax: '',
+    discount_edited: false,
+    advance_tax_edited: false,
   }
 }
 
 function itemIsComplete(it) {
-  return (
-    it.product_description.trim() !== '' &&
-    it.hs_code.trim() !== '' &&
-    it.quantity !== '' &&
-    it.unit_price !== ''
-  )
+  return it.product_id !== '' && Number(it.packs) > 0
+}
+
+// FBR quantity is in the product's UOM: packs × pack size (2 × 50 KG = 100).
+// Rounded to 4dp so float noise (3 × 0.1) never reaches the payload.
+function lineQuantity(product, packs) {
+  return Math.round(Number(packs) * product.pack_size * 10000) / 10000
+}
+
+// A product's per-pack amount scaled to the line; '' stays '' (= auto / 0).
+// Before a pack count is entered it shows the amount for a single pack,
+// rather than amount × 0.
+function perPack(amount, packs) {
+  if (amount == null || amount === 0) return ''
+  const n = Number(packs) > 0 ? Number(packs) : 1
+  return Math.round(amount * n * 100) / 100
+}
+
+// The CSV row for one line: the saved product's FBR fields and per-pack
+// charges × packs, plus this line's own discount / advance tax.
+function toCsvItem(it, product) {
+  return {
+    sales_tax: perPack(product.sales_tax, it.packs),
+    total_values: perPack(product.total_values, it.packs),
+    further_tax: perPack(product.further_tax, it.packs),
+    fed_payable: perPack(product.fed_payable, it.packs),
+    extra_tax: perPack(product.extra_tax, it.packs),
+    sales_tax_withheld_at_source: perPack(product.st_withheld, it.packs),
+    discount: it.discount,
+    advance_tax: it.advance_tax,
+    product_description: product.description,
+    hs_code: product.hs_code,
+    rate: product.rate,
+    uom: product.uom,
+    quantity: lineQuantity(product, it.packs),
+    unit_price: product.unit_price,
+    sale_type: product.sale_type,
+    fixed_notified_value: product.fixed_notified_value || '',
+    sro_schedule_no: product.sro_schedule_no,
+    sro_item_serial_no: product.sro_item_serial_no,
+    custom_fields: product.custom_fields || {},
+  }
 }
 
 // Small red asterisk marker for a required field's label.
@@ -142,18 +166,52 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
   const [draft, setDraft] = useState(emptyItem)
   const [editIndex, setEditIndex] = useState(null) // null = adding a new line
   const [provinces, setProvinces] = useState([])
+  const [products, setProducts] = useState(null) // null = still loading
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const formRef = useRef(null)
 
   useEffect(() => {
     api.get('/api/reference/provinces').then(setProvinces).catch(() => {})
+    api
+      .get('/api/products')
+      .then(setProducts)
+      .catch((e) => {
+        setProducts([])
+        setError(e.message)
+      })
   }, [])
 
+  const productById = (id) => products?.find((p) => String(p.id) === String(id))
   const setH = (key) => (e) => setHeader({ ...header, [key]: e.target.value })
-  const setD = (key) => (e) => setDraft({ ...draft, [key]: e.target.value })
-  const showFixedValueFields =
-    draft.sale_type === '3rd Schedule Goods' || !/18\s*%/.test(draft.rate || '')
+  const draftProduct = productById(draft.product_id)
+
+  // Picking a product or changing packs re-fills discount / advance tax
+  // from the product, unless the user has typed their own value.
+  const setD = (key) => (e) => {
+    const next = { ...draft, [key]: e.target.value }
+    if (key === 'discount' || key === 'advance_tax') {
+      next[`${key}_edited`] = e.target.value !== ''
+    } else {
+      const product = productById(next.product_id)
+      for (const f of ['discount', 'advance_tax']) {
+        if (!next[`${f}_edited`]) next[f] = product ? perPack(product[f], next.packs) : ''
+      }
+    }
+    setDraft(next)
+  }
+
+  // FBR takes one scenarioId per invoice — like a CSV upload, the first
+  // line's product decides it (blank = the account default).
+  const scenarioLines = editIndex === null && itemIsComplete(draft) ? [...items, draft] : items
+  const lineScenarios = scenarioLines.map((it) => productById(it.product_id)?.scenario_id || '')
+  const invoiceScenario = lineScenarios[0] ?? ''
+  const mixedScenarios = new Set(lineScenarios).size > 1
+  const scenarioLabel = (code) => {
+    if (!code) return 'account default'
+    const s = scenarios?.find((x) => x.code === code)
+    return s ? `${code} — ${s.name}` : code
+  }
 
   function resetDraft() {
     setDraft(emptyItem())
@@ -162,7 +220,7 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
 
   function saveProduct() {
     if (!itemIsComplete(draft)) {
-      setError('Fill the product description, HS code, quantity and unit price before saving.')
+      setError('Pick a product and enter the number of packs before saving.')
       return
     }
     setError('')
@@ -199,7 +257,9 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
     setError('')
     setBusy(true)
     try {
-      const csv = buildCsv(header, finalItems)
+      const csvItems = finalItems.map((it) => toCsvItem(it, productById(it.product_id)))
+      const scenario_id = isProduction ? '' : invoiceScenario
+      const csv = buildCsv({ ...header, scenario_id }, csvItems)
       const filename = `manual-${header.pos_invoice_no || Date.now()}.csv`
       const formData = new FormData()
       formData.append('file', new Blob([csv], { type: 'text/csv' }), filename)
@@ -263,17 +323,12 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
               placeholder="Original invoice this one relates to"
             />
           </div>
-          {!isProduction && scenarios?.length > 0 && (
+          {!isProduction && (
             <div className="field">
-              <label>Test scenario</label>
-              <select value={header.scenario_id} onChange={setH('scenario_id')}>
-                <option value="">Use account default…</option>
-                {scenarios.map((s) => (
-                  <option key={s.code} value={s.code}>
-                    {s.code} — {s.name}
-                  </option>
-                ))}
-              </select>
+              <label>
+                Test scenario <span className="hint">(from the first product)</span>
+              </label>
+              <input value={scenarioLines.length ? scenarioLabel(invoiceScenario) : '—'} readOnly />
             </div>
           )}
         </div>
@@ -372,137 +427,83 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
             )}
           </div>
 
+          {products?.length === 0 && (
+            <div className="alert info">
+              <AlertCircle size={17} />
+              <span>
+                You haven&apos;t saved any products yet. Add them on the{' '}
+                <Link to="/products">Products</Link> page first.
+              </span>
+            </div>
+          )}
+
           <div className="form-grid">
             <div className="field">
               <label>
-                Description
+                Product
                 <Req />
               </label>
-              <input
-                value={draft.product_description}
-                onChange={setD('product_description')}
-                placeholder="Laptop Computer 15 inch"
-              />
-            </div>
-            <div className="field">
-              <label>
-                HS code
-                <Req />
-              </label>
-              <HsCodePicker
-                value={draft.hs_code}
-                onChange={(v) => setDraft({ ...draft, hs_code: v })}
-              />
-            </div>
-            <div className="field">
-              <label>Sale type</label>
-              <select value={draft.sale_type} onChange={setD('sale_type')}>
-                {SALE_TYPE_VALUES.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
+              <select value={draft.product_id} onChange={setD('product_id')} disabled={!products?.length}>
+                <option value="">{products === null ? 'Loading…' : 'Select a product…'}</option>
+                {products?.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.description} ({nfmt(p.pack_size)} {p.uom})
                   </option>
                 ))}
               </select>
             </div>
             <div className="field">
-              <label>Rate</label>
-              <input value={draft.rate} onChange={setD('rate')} placeholder="18%" />
-            </div>
-            <div className="field">
-              <label>UOM</label>
-              <input value={draft.uom} onChange={setD('uom')} placeholder="Numbers, pieces, units" />
-            </div>
-            <div className="field">
               <label>
-                Quantity
+                Packs
                 <Req />
               </label>
               <input
                 type="number"
                 step="any"
                 min="0"
-                value={draft.quantity}
-                onChange={setD('quantity')}
+                value={draft.packs}
+                onChange={setD('packs')}
                 placeholder="2"
               />
             </div>
-            <div className="field">
-              <label>
-                Unit price
-                <Req />
-              </label>
-              <input
-                type="number"
-                step="any"
-                min="0"
-                value={draft.unit_price}
-                onChange={setD('unit_price')}
-                placeholder="150000"
+          </div>
+
+          {draftProduct && (
+            <p className="muted" style={{ margin: '0 0 12px' }}>
+              {draftProduct.hs_code} · {draftProduct.rate} · {draftProduct.sale_type}
+              {!isProduction && draftProduct.scenario_id && ` · ${draftProduct.scenario_id}`}
+              {Number(draft.packs) > 0 && (
+                <>
+                  <br />
+                  FBR quantity: {nfmt(draft.packs)} × {nfmt(draftProduct.pack_size)} ={' '}
+                  <b>
+                    {nfmt(lineQuantity(draftProduct, draft.packs))} {draftProduct.uom}
+                  </b>{' '}
+                  × Rs {nfmt(draftProduct.unit_price)} ={' '}
+                  <b>
+                    Rs {nfmt(lineQuantity(draftProduct, draft.packs) * draftProduct.unit_price)}
+                  </b>{' '}
+                  before tax
+                </>
+              )}
+            </p>
+          )}
+
+          {draftProduct && (
+            <div className="form-grid">
+              <NumField
+                label="Discount"
+                hint="(for this line)"
+                value={draft.discount}
+                onChange={setD('discount')}
+              />
+              <NumField
+                label="Advance tax"
+                hint="(for this line)"
+                value={draft.advance_tax}
+                onChange={setD('advance_tax')}
               />
             </div>
-          </div>
-
-          <h4 className="section-title" style={{ fontSize: '0.85rem', marginTop: 14 }}>
-            Other taxes &amp; charges
-          </h4>
-          <p className="muted" style={{ margin: '0 0 12px' }}>
-            All optional. Leave blank unless the sale actually carries these — a blank{' '}
-            <code>sales tax</code> is worked out from the rate, everything else defaults to 0.
-          </p>
-          <div className="form-grid">
-            <NumField
-              label="Sales tax"
-              hint="(blank = auto-calculate)"
-              value={draft.sales_tax}
-              onChange={setD('sales_tax')}
-              placeholder="auto"
-            />
-            <NumField label="Discount" value={draft.discount} onChange={setD('discount')} />
-            <NumField label="Further tax" value={draft.further_tax} onChange={setD('further_tax')} />
-            <NumField label="FED payable" value={draft.fed_payable} onChange={setD('fed_payable')} />
-            <NumField label="Extra tax" value={draft.extra_tax} onChange={setD('extra_tax')} />
-            <NumField
-              label="Sales tax withheld at source"
-              value={draft.sales_tax_withheld_at_source}
-              onChange={setD('sales_tax_withheld_at_source')}
-            />
-            <NumField
-              label="Total value"
-              hint="(blank = auto-calculate)"
-              value={draft.total_values}
-              onChange={setD('total_values')}
-              placeholder="auto"
-            />
-            <NumField label="Advance tax" value={draft.advance_tax} onChange={setD('advance_tax')} />
-          </div>
-
-          {showFixedValueFields && (
-            <>
-              <h4 className="section-title" style={{ fontSize: '0.85rem', marginTop: 14 }}>
-                Retail price / SRO details
-              </h4>
-              <p className="muted" style={{ margin: '0 0 12px' }}>
-                Fixed / notified value is for "3rd Schedule Goods" (taxed on that value instead of the
-                sale price). An SRO / schedule no. is mandatory whenever the rate isn't 18%.
-              </p>
-              <div className="form-grid">
-                <NumField
-                  label="Fixed / notified value"
-                  hint="(per unit — e.g. the MRP on one pack)"
-                  value={draft.fixed_notified_value}
-                  onChange={setD('fixed_notified_value')}
-                  placeholder="1000"
-                />
-                <div className="field">
-                  <label>SRO schedule no.</label>
-                  <input value={draft.sro_schedule_no} onChange={setD('sro_schedule_no')} />
-                </div>
-                <div className="field">
-                  <label>SRO item serial no.</label>
-                  <input value={draft.sro_item_serial_no} onChange={setD('sro_item_serial_no')} />
-                </div>
-              </div>
-            </>
           )}
 
           <button
@@ -525,25 +526,31 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
                 <thead>
                   <tr>
                     <th>#</th>
-                    <th>Description</th>
+                    <th>Product</th>
                     <th>HS code</th>
-                    <th>Qty</th>
+                    <th>Packs</th>
+                    <th>FBR qty</th>
                     <th>Unit price</th>
-                    <th>Sale type</th>
+                    {!isProduction && <th>Scenario</th>}
                     <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((it, i) => (
+                  {items.map((it, i) => {
+                    const p = productById(it.product_id)
+                    return (
                     <tr key={i} style={{ background: editIndex === i ? 'var(--slate-50, #f7f9fb)' : undefined }}>
                       <td>{i + 1}</td>
                       <td>
-                        <span className="strong">{it.product_description}</span>
+                        <span className="strong">{p.description}</span>
                       </td>
-                      <td className="mono">{it.hs_code}</td>
-                      <td>{nfmt(it.quantity)}</td>
-                      <td>{nfmt(it.unit_price)}</td>
-                      <td>{it.sale_type}</td>
+                      <td className="mono">{p.hs_code}</td>
+                      <td>{nfmt(it.packs)}</td>
+                      <td>
+                        {nfmt(lineQuantity(p, it.packs))} {p.uom}
+                      </td>
+                      <td>{nfmt(p.unit_price)}</td>
+                      {!isProduction && <td className="mono">{p.scenario_id || '—'}</td>}
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <button
                           type="button"
@@ -565,11 +572,25 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
           </>
+        )}
+
+        {!isProduction && mixedScenarios && (
+          <div className="alert info">
+            <AlertCircle size={17} />
+            <span>
+              These products have different test scenarios. That&apos;s fine — the invoice still goes
+              through — but FBR records only one scenario per invoice, so it will be tagged{' '}
+              <b>{scenarioLabel(invoiceScenario)}</b> (the first product&apos;s), same as a CSV upload. If
+              you need sandbox credit for the other scenarios, submit those products on their own
+              invoice.
+            </span>
+          </div>
         )}
 
         <button className="btn btn-primary" disabled={busy} style={{ width: '100%', marginTop: 6 }}>
