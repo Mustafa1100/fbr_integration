@@ -1,17 +1,23 @@
 import { X } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 export default function Modal({ title, onClose, children, width = 480 }) {
+  const overlayRef = useRef(null)
+
   useEffect(() => {
     function onKey(e) {
-      if (e.key === 'Escape') onClose()
+      if (e.key !== 'Escape') return
+      // With a pop-up open on top of another (e.g. a calculator over a
+      // form), Escape closes only the top one.
+      const overlays = document.querySelectorAll('.modal-overlay')
+      if (overlays[overlays.length - 1] === overlayRef.current) onClose()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" ref={overlayRef} onClick={onClose}>
       <div className="modal-card" style={{ maxWidth: width }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{title}</h2>

@@ -749,6 +749,29 @@ pre {
   vertical-align: middle;
 }
 .select-check:disabled { cursor: not-allowed; }
+/* "Calculate unit price" pop-up: instructions, then the answer, big, with a
+   one-line working. */
+.calc-help { font-size: 0.86rem; color: var(--text-2); margin-bottom: 14px; line-height: 1.5; }
+.calc-help p { margin: 0 0 6px; }
+.calc-help ol { margin: 0; padding-left: 20px; }
+.calc-help li { margin: 2px 0; }
+.calc-note {
+  margin-top: 10px !important;
+  padding: 7px 10px;
+  border-left: 3px solid var(--amber-600, #d97706);
+  background: var(--amber-50, #fffbeb);
+}
+.calc-warn { color: var(--red-600); font-weight: 600; margin-top: 8px !important; }
+.calc-result {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--slate-50, #f7f9fb);
+  padding: 12px 14px;
+  text-align: center;
+}
+.calc-result-value { font-size: 1.3rem; font-weight: 700; color: var(--text); }
+.calc-result-value span { font-size: 0.85rem; font-weight: 500; color: var(--muted); }
+.calc-result-working { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
 /* A checkbox with its label beside it (Invoice Settings toggles). */
 .check-row {
   display: flex;
