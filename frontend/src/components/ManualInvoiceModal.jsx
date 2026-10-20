@@ -72,15 +72,16 @@ function emptyItem() {
   return {
     product_id: '',
     packs: '',
-    // Line totals, pre-filled from the product's per-pack amount × packs
-    // until the user types their own (then *_edited pins it). advance_tax is
-    // §236 advance income tax — a receipt figure summed onto the invoice.
-    discount: '',
-    advance_tax: '',
-    discount_edited: false,
-    advance_tax_edited: false,
+    // Line amounts (LINE_FIELDS), pre-filled from the product's per-pack
+    // amount × packs until the user types their own (then *_edited pins it).
+    ...Object.fromEntries(LINE_FIELDS.flatMap((f) => [[f, ''], [`${f}_edited`, false]])),
   }
 }
+
+// Amounts entered (or adjusted) per invoice line rather than taken from the
+// product as-is. advance_tax is §236 advance income tax — a receipt figure
+// kept per line and summed onto the invoice.
+const LINE_FIELDS = ['discount', 'further_tax', 'advance_tax']
 
 function itemIsComplete(it) {
   return it.product_id !== '' && Number(it.packs) > 0
@@ -102,17 +103,15 @@ function perPack(amount, packs) {
 }
 
 // The CSV row for one line: the saved product's FBR fields and per-pack
-// charges × packs, plus this line's own discount / advance tax.
+// charges × packs, plus this line's own discount / further tax / advance tax.
 function toCsvItem(it, product) {
   return {
     sales_tax: perPack(product.sales_tax, it.packs),
     total_values: perPack(product.total_values, it.packs),
-    further_tax: perPack(product.further_tax, it.packs),
     fed_payable: perPack(product.fed_payable, it.packs),
     extra_tax: perPack(product.extra_tax, it.packs),
     sales_tax_withheld_at_source: perPack(product.st_withheld, it.packs),
-    discount: it.discount,
-    advance_tax: it.advance_tax,
+    ...Object.fromEntries(LINE_FIELDS.map((f) => [f, it[f]])),
     product_description: product.description,
     hs_code: product.hs_code,
     rate: product.rate,
@@ -186,15 +185,15 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
   const setH = (key) => (e) => setHeader({ ...header, [key]: e.target.value })
   const draftProduct = productById(draft.product_id)
 
-  // Picking a product or changing packs re-fills discount / advance tax
-  // from the product, unless the user has typed their own value.
+  // Picking a product or changing packs re-fills the line amounts
+  // (LINE_FIELDS) from the product, unless the user has typed their own.
   const setD = (key) => (e) => {
     const next = { ...draft, [key]: e.target.value }
-    if (key === 'discount' || key === 'advance_tax') {
+    if (LINE_FIELDS.includes(key)) {
       next[`${key}_edited`] = e.target.value !== ''
     } else {
       const product = productById(next.product_id)
-      for (const f of ['discount', 'advance_tax']) {
+      for (const f of LINE_FIELDS) {
         if (!next[`${f}_edited`]) next[f] = product ? perPack(product[f], next.packs) : ''
       }
     }
@@ -496,6 +495,12 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
                 hint="(for this line)"
                 value={draft.discount}
                 onChange={setD('discount')}
+              />
+              <NumField
+                label="Further tax"
+                hint="(for this line)"
+                value={draft.further_tax}
+                onChange={setD('further_tax')}
               />
               <NumField
                 label="Advance tax"
