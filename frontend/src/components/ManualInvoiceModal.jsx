@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertCircle, Loader2, Pencil, Plus, ReceiptText, Trash2, X } from 'lucide-react'
+import { AlertCircle, Calculator, Loader2, Pencil, Plus, ReceiptText, Trash2, X } from 'lucide-react'
 import { api } from '../api'
 import Modal from './Modal'
+import UnitPriceCalculator from './UnitPriceCalculator'
 
 // Column order doesn't matter to the backend (it parses by header name), but
 // keeping it explicit and matching csv_processor.ALL_COLUMNS makes the
@@ -71,6 +72,10 @@ function emptyHeader() {
 function emptyItem() {
   return {
     product_id: '',
+    // This line's unit price — the product's saved price when picked, but
+    // can be changed (or calculated) for this invoice only, after "Edit".
+    unit_price: '',
+    unit_price_editing: false,
     packs: '',
     // Line amounts (LINE_FIELDS), pre-filled from the product's per-pack
     // amount × packs until the user types their own (then *_edited pins it).
@@ -82,6 +87,11 @@ function emptyItem() {
 // product as-is. advance_tax is §236 advance income tax — a receipt figure
 // kept per line and summed onto the invoice.
 const LINE_FIELDS = ['discount', 'further_tax', 'advance_tax']
+
+// The line's unit price: its own if set, else the product's saved one.
+function lineUnitPrice(it, product) {
+  return it.unit_price !== '' && it.unit_price != null ? Number(it.unit_price) : product.unit_price
+}
 
 function itemIsComplete(it) {
   return it.product_id !== '' && Number(it.packs) > 0
@@ -117,7 +127,7 @@ function toCsvItem(it, product) {
     rate: product.rate,
     uom: product.uom,
     quantity: lineQuantity(product, it.packs),
-    unit_price: product.unit_price,
+    unit_price: lineUnitPrice(it, product),
     sale_type: product.sale_type,
     fixed_notified_value: product.fixed_notified_value || '',
     sro_schedule_no: product.sro_schedule_no,
@@ -168,6 +178,7 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
   const [products, setProducts] = useState(null) // null = still loading
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [calcOpen, setCalcOpen] = useState(false) // unit-price calculator for the line
   const formRef = useRef(null)
 
   useEffect(() => {
@@ -191,8 +202,13 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
     const next = { ...draft, [key]: e.target.value }
     if (LINE_FIELDS.includes(key)) {
       next[`${key}_edited`] = e.target.value !== ''
-    } else {
+    } else if (key !== 'unit_price') {
       const product = productById(next.product_id)
+      // A different product brings its own saved unit price, locked again.
+      if (key === 'product_id') {
+        next.unit_price = product ? String(product.unit_price) : ''
+        next.unit_price_editing = false
+      }
       for (const f of LINE_FIELDS) {
         if (!next[`${f}_edited`]) next[f] = product ? perPack(product[f], next.packs) : ''
       }
@@ -275,6 +291,7 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
   const nfmt = (v) => (v === '' || v == null ? '—' : Number(v).toLocaleString())
 
   return (
+    <>
     <Modal title="Enter a single invoice" onClose={() => !busy && onClose()} width={900}>
       <form onSubmit={submit}>
         {error && (
@@ -478,9 +495,14 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
                   <b>
                     {nfmt(lineQuantity(draftProduct, draft.packs))} {draftProduct.uom}
                   </b>{' '}
-                  × Rs {nfmt(draftProduct.unit_price)} ={' '}
+                  × Rs {nfmt(lineUnitPrice(draft, draftProduct))} ={' '}
                   <b>
-                    Rs {nfmt(lineQuantity(draftProduct, draft.packs) * draftProduct.unit_price)}
+                    Rs{' '}
+                    {nfmt(
+                      Math.round(
+                        lineQuantity(draftProduct, draft.packs) * lineUnitPrice(draft, draftProduct) * 100
+                      ) / 100
+                    )}
                   </b>{' '}
                   before tax
                 </>
@@ -490,6 +512,64 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
 
           {draftProduct && (
             <div className="form-grid">
+              <div className="field">
+                <label>
+                  Unit price{' '}
+                  <span className="hint">(per {draftProduct.uom}, excl. tax — this invoice only)</span>
+                </label>
+                {/* Locked to the product's price until "Edit"; then editable
+                    with the calculator. */}
+                <div className="input-with-buttons">
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={draft.unit_price}
+                    onChange={setD('unit_price')}
+                    readOnly={!draft.unit_price_editing}
+                    className={draft.unit_price_editing ? undefined : 'input-locked'}
+                    aria-readonly={!draft.unit_price_editing}
+                  />
+                  {draft.unit_price_editing ? (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => setCalcOpen(true)}
+                      title="Work the unit price out from the price of one product including tax"
+                    >
+                      <Calculator size={14} /> Calculate
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-secondary has-tip"
+                      onClick={() => setDraft({ ...draft, unit_price_editing: true })}
+                      data-tip="Edit"
+                      aria-label="Edit unit price"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                  )}
+                </div>
+                {draft.unit_price_editing && (
+                  <div className="hint" style={{ marginTop: 4, fontSize: '0.78rem' }}>
+                    Product&apos;s saved price: Rs {draftProduct.unit_price}.{' '}
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          unit_price: String(draftProduct.unit_price),
+                          unit_price_editing: false,
+                        })
+                      }
+                    >
+                      Reset
+                    </button>
+                  </div>
+                )}
+              </div>
               <NumField
                 label="Discount"
                 hint="(for this line)"
@@ -554,7 +634,7 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
                       <td>
                         {nfmt(lineQuantity(p, it.packs))} {p.uom}
                       </td>
-                      <td>{nfmt(p.unit_price)}</td>
+                      <td>{nfmt(lineUnitPrice(it, p))}</td>
                       {!isProduction && <td className="mono">{p.scenario_id || '—'}</td>}
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <button
@@ -604,5 +684,20 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
         </button>
       </form>
     </Modal>
+    {/* After the form so it opens on top of it (a separate <form>, not nested). */}
+    {calcOpen && draftProduct && (
+      <UnitPriceCalculator
+        quantity={draftProduct.pack_size}
+        rate={draftProduct.rate}
+        unitLabel={draftProduct.uom}
+        source="the saved product"
+        onUse={(unitPrice) => {
+          setDraft({ ...draft, unit_price: unitPrice })
+          setCalcOpen(false)
+        }}
+        onClose={() => setCalcOpen(false)}
+      />
+    )}
+    </>
   )
 }
