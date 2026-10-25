@@ -54,6 +54,7 @@ def fbr_settings_out(fbr: FbrSettings) -> dict:
         "has_production_token": bool(fbr.production_token),
         "production_token_preview": _mask(fbr.production_token),
         "can_submit_production": fbr.can_submit_production,
+        "pack_pricing": fbr.pack_pricing,
         "seller_ntn_cnic": fbr.seller_ntn_cnic,
         "seller_ntn": fbr.seller_ntn,
         "seller_business_name": fbr.seller_business_name,
@@ -75,6 +76,8 @@ class FbrSettingsRequest(BaseModel):
     sandbox_token: str = ""
     production_token: str = ""
     can_submit_production: bool = False
+    # None = leave as is (a save that doesn't mention it never switches it off).
+    pack_pricing: bool | None = None
     seller_ntn_cnic: str = ""
     seller_ntn: str = ""
     seller_business_name: str = ""
@@ -93,6 +96,8 @@ def apply_fbr_settings(fbr: FbrSettings, body: FbrSettingsRequest) -> None:
     if body.production_token:
         fbr.production_token = body.production_token.strip()
     fbr.can_submit_production = bool(body.can_submit_production)
+    if body.pack_pricing is not None:
+        fbr.pack_pricing = bool(body.pack_pricing)
     fbr.seller_ntn_cnic = body.seller_ntn_cnic.strip()
     fbr.seller_ntn = body.seller_ntn.strip()
     fbr.seller_business_name = body.seller_business_name.strip()
@@ -133,7 +138,7 @@ def update_invoice_layout(
 ):
     """Unlike the FBR settings, the receipt layout is the user's own to edit."""
     fbr = get_or_create_fbr_settings(db, user)
-    layout = invoice_layout.normalize(body, strict=True)
+    layout = invoice_layout.normalize(body, strict=True, pack_pricing=fbr.pack_pricing)
     fbr.invoice_layout = invoice_layout.to_storage(layout)
     db.commit()
     return {"layout": invoice_layout.layout_for(fbr), "catalog": invoice_layout.catalog()}

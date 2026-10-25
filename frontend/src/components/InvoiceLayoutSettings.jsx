@@ -181,7 +181,9 @@ function sampleInvoice(layout, seller) {
     custom_fields: custom,
   })
   const items = [
-    line('Sample product A', '3102.1000', 50, 'KG', 94, 'Exempt', 0, 200, 22.5),
+    // Product A is sold per Maund (shown only to users with pack pricing).
+    { ...line('Sample product A', '3102.1000', 50, 'KG', 94, 'Exempt', 0, 200, 22.5),
+      pack_qty: 1.33963, pack_price: 3508.46 },
     line('Sample product B', '3105.3000', 2, 'Bag', 1000, '18%', 360, 0, 11.8),
   ]
   return {

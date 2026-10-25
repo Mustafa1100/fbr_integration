@@ -4,6 +4,7 @@ import { AlertCircle, Calculator, Loader2, Pencil, Plus, ReceiptText, Trash2, X 
 import { api } from '../api'
 import Modal from './Modal'
 import UnitPriceCalculator from './UnitPriceCalculator'
+import { isPackPriced, packLine } from '../packPricing'
 
 // Column order doesn't matter to the backend (it parses by header name), but
 // keeping it explicit and matching csv_processor.ALL_COLUMNS makes the
@@ -45,10 +46,16 @@ function csvField(value) {
 
 // One CSV row per product line; every row repeats the shared invoice / buyer
 // fields, so rows sharing pos_invoice_no become one invoice with many items.
+// Pack-priced lines also carry these (kept on the line for the receipt).
+const PACK_CSV_COLUMNS = ['pack_qty', 'pack_price', 'pack_name']
+
 function buildCsv(header, items) {
   // Plus the user's custom field columns (product values, keyed by field key).
   const customKeys = [...new Set(items.flatMap((it) => Object.keys(it.custom_fields || {})))]
-  const columns = [...CSV_COLUMNS, ...customKeys]
+  // Pack columns only when a line is pack-priced — any other invoice is
+  // sent exactly as before.
+  const packKeys = items.some((it) => it.pack_qty !== undefined) ? PACK_CSV_COLUMNS : []
+  const columns = [...CSV_COLUMNS, ...packKeys, ...customKeys]
   const rows = items.map((item) => {
     const merged = { ...header, ...item, ...item.custom_fields }
     return columns.map((c) => csvField(merged[c])).join(',')
@@ -77,6 +84,11 @@ function emptyItem() {
     unit_price: '',
     unit_price_editing: false,
     packs: '',
+    // Pack-priced products only (admin-enabled): quantity entered as packs
+    // (in `packs`) or as KG (in `kg`), and this line's price per pack.
+    qty_mode: 'packs',
+    kg: '',
+    pack_price: '',
     // Line amounts (LINE_FIELDS), pre-filled from the product's per-pack
     // amount × packs until the user types their own (then *_edited pins it).
     ...Object.fromEntries(LINE_FIELDS.flatMap((f) => [[f, ''], [`${f}_edited`, false]])),
@@ -94,7 +106,41 @@ function lineUnitPrice(it, product) {
 }
 
 function itemIsComplete(it) {
-  return it.product_id !== '' && Number(it.packs) > 0
+  // qty_mode is only ever 'kg' on a pack-priced line; every other line is
+  // checked exactly as before (packs > 0).
+  return (
+    it.product_id !== '' &&
+    (Number(it.packs) > 0 || (it.qty_mode === 'kg' && Number(it.kg) > 0))
+  )
+}
+
+// ── Pack-priced lines (admin-enabled per user) ──────────────────────────
+// The line's price per pack: its own if changed, else the product's.
+function linePackPrice(it, product) {
+  return it.pack_price !== '' && it.pack_price != null ? Number(it.pack_price) : product.pack_price
+}
+
+// Packs / KG / value / unit price for a pack-priced line, or null for any
+// other line (which then takes exactly the old path).
+function packInfo(it, product, packOn) {
+  if (!isPackPriced(product, packOn)) return null
+  return packLine({
+    mode: it.qty_mode,
+    amount: it.qty_mode === 'kg' ? it.kg : it.packs,
+    packSize: product.pack_size,
+    packPrice: linePackPrice(it, product),
+  })
+}
+
+// "Maund" -> "Maunds", but "Mounds" stays "Mounds" (no "Moundss").
+function plural(name) {
+  return /s$/i.test(name) ? name : `${name}s`
+}
+
+// Packs on the line — for scaling the product's per-pack charges.
+function linePacks(it, product, packOn) {
+  const pk = packInfo(it, product, packOn)
+  return pk ? pk.packs : it.packs
 }
 
 // FBR quantity is in the product's UOM: packs × pack size (2 × 50 KG = 100).
@@ -114,25 +160,33 @@ function perPack(amount, packs) {
 
 // The CSV row for one line: the saved product's FBR fields and per-pack
 // charges × packs, plus this line's own discount / further tax / advance tax.
-function toCsvItem(it, product) {
+// A pack-priced line sends the KG quantity and a unit price that lands
+// exactly on packs × price per pack (see packPricing.js); others as before.
+function toCsvItem(it, product, packOn = false) {
+  const pk = packInfo(it, product, packOn)
+  const packs = pk ? pk.packs : it.packs
   return {
-    sales_tax: perPack(product.sales_tax, it.packs),
-    total_values: perPack(product.total_values, it.packs),
-    fed_payable: perPack(product.fed_payable, it.packs),
-    extra_tax: perPack(product.extra_tax, it.packs),
-    sales_tax_withheld_at_source: perPack(product.st_withheld, it.packs),
+    sales_tax: perPack(product.sales_tax, packs),
+    total_values: perPack(product.total_values, packs),
+    fed_payable: perPack(product.fed_payable, packs),
+    extra_tax: perPack(product.extra_tax, packs),
+    sales_tax_withheld_at_source: perPack(product.st_withheld, packs),
     ...Object.fromEntries(LINE_FIELDS.map((f) => [f, it[f]])),
     product_description: product.description,
     hs_code: product.hs_code,
     rate: product.rate,
     uom: product.uom,
-    quantity: lineQuantity(product, it.packs),
-    unit_price: lineUnitPrice(it, product),
+    quantity: pk ? pk.quantity : lineQuantity(product, it.packs),
+    unit_price: pk ? pk.unitPrice : lineUnitPrice(it, product),
     sale_type: product.sale_type,
     fixed_notified_value: product.fixed_notified_value || '',
     sro_schedule_no: product.sro_schedule_no,
     sro_item_serial_no: product.sro_item_serial_no,
     custom_fields: product.custom_fields || {},
+    // Only on pack-priced lines (absent otherwise, so nothing changes).
+    ...(pk
+      ? { pack_qty: pk.packs, pack_price: linePackPrice(it, product), pack_name: product.pack_name || '' }
+      : {}),
   }
 }
 
@@ -179,10 +233,18 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [calcOpen, setCalcOpen] = useState(false) // unit-price calculator for the line
+  const [packPricing, setPackPricing] = useState(false) // admin-enabled per user
+  // Maunds or KG — remembered for the next line of this invoice, so a lot
+  // typed in KG isn't silently read as maunds on the following line.
+  const [lastQtyMode, setLastQtyMode] = useState('packs')
   const formRef = useRef(null)
 
   useEffect(() => {
     api.get('/api/reference/provinces').then(setProvinces).catch(() => {})
+    api
+      .get('/api/settings/fbr')
+      .then((s) => setPackPricing(!!s.pack_pricing))
+      .catch(() => {})
     api
       .get('/api/products')
       .then(setProducts)
@@ -195,6 +257,11 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
   const productById = (id) => products?.find((p) => String(p.id) === String(id))
   const setH = (key) => (e) => setHeader({ ...header, [key]: e.target.value })
   const draftProduct = productById(draft.product_id)
+  // Is the line being entered a pack-priced one (e.g. per Maund)?
+  const draftPack = isPackPriced(draftProduct, packPricing)
+  const draftPackInfo = packInfo(draft, draftProduct, packPricing)
+  const packName = draftProduct?.pack_name || 'pack'
+  const packNames = plural(packName)
 
   // Picking a product or changing packs re-fills the line amounts
   // (LINE_FIELDS) from the product, unless the user has typed their own.
@@ -202,16 +269,41 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
     const next = { ...draft, [key]: e.target.value }
     if (LINE_FIELDS.includes(key)) {
       next[`${key}_edited`] = e.target.value !== ''
-    } else if (key !== 'unit_price') {
+    } else if (key !== 'unit_price' && key !== 'pack_price') {
       const product = productById(next.product_id)
-      // A different product brings its own saved unit price, locked again.
+      // A different product brings its own saved prices, locked again; a
+      // pack-priced one starts in whichever unit (packs / KG) was used last.
       if (key === 'product_id') {
         next.unit_price = product ? String(product.unit_price) : ''
         next.unit_price_editing = false
+        const packed = isPackPriced(product, packPricing)
+        next.pack_price = packed ? String(product.pack_price) : ''
+        next.qty_mode = packed ? lastQtyMode : 'packs'
+        next.kg = ''
+        if (packed && lastQtyMode === 'kg') next.packs = ''
       }
+      const packs = product ? linePacks(next, product, packPricing) : next.packs
       for (const f of LINE_FIELDS) {
-        if (!next[`${f}_edited`]) next[f] = product ? perPack(product[f], next.packs) : ''
+        if (!next[`${f}_edited`]) next[f] = product ? perPack(product[f], packs) : ''
       }
+    }
+    setDraft(next)
+  }
+
+  // Switch a pack-priced line between entering packs and entering KG. The
+  // number typed stays as it is — clicking KG after typing 31339 means
+  // "31,339 KG", not "convert 31,339 Maunds to KG".
+  function setQtyMode(mode) {
+    if (mode === draft.qty_mode || !draftProduct) return
+    setLastQtyMode(mode)
+    const typed = draft.qty_mode === 'kg' ? draft.kg : draft.packs
+    const next = { ...draft, qty_mode: mode }
+    if (mode === 'kg') next.kg = typed
+    else next.packs = typed
+    // The line's charges follow the (re-read) quantity, unless typed by hand.
+    const packs = linePacks(next, draftProduct, packPricing)
+    for (const f of LINE_FIELDS) {
+      if (!next[`${f}_edited`]) next[f] = perPack(draftProduct[f], packs)
     }
     setDraft(next)
   }
@@ -272,7 +364,7 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
     setError('')
     setBusy(true)
     try {
-      const csvItems = finalItems.map((it) => toCsvItem(it, productById(it.product_id)))
+      const csvItems = finalItems.map((it) => toCsvItem(it, productById(it.product_id), packPricing))
       const scenario_id = isProduction ? '' : invoiceScenario
       const csv = buildCsv({ ...header, scenario_id }, csvItems)
       const filename = `manual-${header.pos_invoice_no || Date.now()}.csv`
@@ -289,6 +381,10 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
   }
 
   const nfmt = (v) => (v === '' || v == null ? '—' : Number(v).toLocaleString())
+  // Packs to 5 decimals (1,079.73422, as on the factory's sheet); money to 2.
+  const fmt5 = (v) => Number(v).toLocaleString(undefined, { maximumFractionDigits: 5 })
+  const money = (v) =>
+    Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   return (
     <>
@@ -468,27 +564,74 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
                 ))}
               </select>
             </div>
-            <div className="field">
-              <label>
-                Packs
-                <Req />
-              </label>
-              <input
-                type="number"
-                step="any"
-                min="0"
-                value={draft.packs}
-                onChange={setD('packs')}
-                placeholder="2"
-              />
-            </div>
+            {draftPack ? (
+              // Pack-priced product: enter the quantity in packs or in KG.
+              // The label names the unit being typed, so it can't be mixed up.
+              <div className="field">
+                <label>
+                  Quantity in {draft.qty_mode === 'kg' ? draftProduct.uom : packNames}
+                  <Req />
+                </label>
+                <div className="input-with-buttons">
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={draft.qty_mode === 'kg' ? draft.kg : draft.packs}
+                    onChange={setD(draft.qty_mode === 'kg' ? 'kg' : 'packs')}
+                  />
+                  <div className="seg-toggle" role="group" aria-label="Enter quantity in">
+                    <button
+                      type="button"
+                      className={draft.qty_mode !== 'kg' ? 'active' : undefined}
+                      onClick={() => setQtyMode('packs')}
+                    >
+                      {packNames}
+                    </button>
+                    <button
+                      type="button"
+                      className={draft.qty_mode === 'kg' ? 'active' : undefined}
+                      onClick={() => setQtyMode('kg')}
+                    >
+                      {draftProduct.uom}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="field">
+                <label>
+                  Packs
+                  <Req />
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={draft.packs}
+                  onChange={setD('packs')}
+                  placeholder="2"
+                />
+              </div>
+            )}
           </div>
 
           {draftProduct && (
             <p className="muted" style={{ margin: '0 0 12px' }}>
               {draftProduct.hs_code} · {draftProduct.rate} · {draftProduct.sale_type}
               {!isProduction && draftProduct.scenario_id && ` · ${draftProduct.scenario_id}`}
-              {Number(draft.packs) > 0 && (
+              {draftPack && draftPackInfo && (
+                <>
+                  <br />
+                  {fmt5(draftPackInfo.packs)} {packNames} ={' '}
+                  <b>
+                    {nfmt(draftPackInfo.quantity)} {draftProduct.uom}
+                  </b>{' '}
+                  (sent to FBR) · {fmt5(draftPackInfo.packs)} × Rs {nfmt(linePackPrice(draft, draftProduct))} ={' '}
+                  <b>Rs {money(draftPackInfo.value)}</b> before tax
+                </>
+              )}
+              {!draftPack && Number(draft.packs) > 0 && (
                 <>
                   <br />
                   FBR quantity: {nfmt(draft.packs)} × {nfmt(draftProduct.pack_size)} ={' '}
@@ -512,6 +655,66 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
 
           {draftProduct && (
             <div className="form-grid">
+              {draftPack ? (
+                // Pack-priced: the price per pack (e.g. per Maund) — locked
+                // until Edit, like the unit price on other lines.
+                <div className="field">
+                  <label>
+                    Price per {packName}{' '}
+                    <span className="hint">(excl. tax — this invoice only)</span>
+                  </label>
+                  <div className="input-with-buttons">
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={draft.pack_price}
+                      onChange={setD('pack_price')}
+                      readOnly={!draft.unit_price_editing}
+                      className={draft.unit_price_editing ? undefined : 'input-locked'}
+                      aria-readonly={!draft.unit_price_editing}
+                    />
+                    {draft.unit_price_editing ? (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => setCalcOpen(true)}
+                        title={`Work the price per ${packName} out from a price including tax`}
+                      >
+                        <Calculator size={14} /> Calculate
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-secondary has-tip"
+                        onClick={() => setDraft({ ...draft, unit_price_editing: true })}
+                        data-tip="Edit"
+                        aria-label={`Edit price per ${packName}`}
+                      >
+                        <Pencil size={15} />
+                      </button>
+                    )}
+                  </div>
+                  {draft.unit_price_editing && (
+                    <div className="hint" style={{ marginTop: 4, fontSize: '0.78rem' }}>
+                      Product&apos;s saved price: Rs {draftProduct.pack_price} per {packName}.{' '}
+                      <button
+                        type="button"
+                        className="link-button"
+                        onClick={() =>
+                          setDraft({
+                            ...draft,
+                            pack_price: String(draftProduct.pack_price),
+                            unit_price_editing: false,
+                          })
+                        }
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
               <div className="field">
                 <label>
                   Unit price{' '}
@@ -570,6 +773,7 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
                   </div>
                 )}
               </div>
+              )}
               <NumField
                 label="Discount"
                 hint="(for this line)"
@@ -623,6 +827,7 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
                 <tbody>
                   {items.map((it, i) => {
                     const p = productById(it.product_id)
+                    const pk = packInfo(it, p, packPricing) // null unless pack-priced
                     return (
                     <tr key={i} style={{ background: editIndex === i ? 'var(--slate-50, #f7f9fb)' : undefined }}>
                       <td>{i + 1}</td>
@@ -630,11 +835,17 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
                         <span className="strong">{p.description}</span>
                       </td>
                       <td className="mono">{p.hs_code}</td>
-                      <td>{nfmt(it.packs)}</td>
                       <td>
-                        {nfmt(lineQuantity(p, it.packs))} {p.uom}
+                        {pk ? `${fmt5(pk.packs)} ${plural(p.pack_name || 'pack')}` : nfmt(it.packs)}
                       </td>
-                      <td>{nfmt(lineUnitPrice(it, p))}</td>
+                      <td>
+                        {nfmt(pk ? pk.quantity : lineQuantity(p, it.packs))} {p.uom}
+                      </td>
+                      <td>
+                        {pk
+                          ? `${nfmt(linePackPrice(it, p))} / ${p.pack_name || 'pack'}`
+                          : nfmt(lineUnitPrice(it, p))}
+                      </td>
                       {!isProduction && <td className="mono">{p.scenario_id || '—'}</td>}
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <button
@@ -687,12 +898,17 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
     {/* After the form so it opens on top of it (a separate <form>, not nested). */}
     {calcOpen && draftProduct && (
       <UnitPriceCalculator
-        quantity={draftProduct.pack_size}
+        // Pack-priced: works out the price per pack (a quantity of 1 pack).
+        quantity={draftPack ? 1 : draftProduct.pack_size}
         rate={draftProduct.rate}
-        unitLabel={draftProduct.uom}
+        unitLabel={draftPack ? packName : draftProduct.uom}
         source="the saved product"
-        onUse={(unitPrice) => {
-          setDraft({ ...draft, unit_price: unitPrice })
+        onUse={(price) => {
+          setDraft(
+            draftPack
+              ? { ...draft, pack_price: String(Math.round(Number(price) * 100) / 100) }
+              : { ...draft, unit_price: price }
+          )
           setCalcOpen(false)
         }}
         onClose={() => setCalcOpen(false)}

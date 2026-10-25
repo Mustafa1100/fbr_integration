@@ -100,6 +100,14 @@ function cell(key, it, idx, fieldsByKey) {
       return it.sale_type
     case 'line_total':
       return fmt(it.displayTotal)
+    // Pack pricing (only offered to users with it enabled): the weight in
+    // packs and price per pack; "—" on any line that isn't pack-priced.
+    case 'pack_qty':
+      return it.pack_qty == null
+        ? '—'
+        : Number(it.pack_qty).toLocaleString(undefined, { maximumFractionDigits: 5 })
+    case 'pack_price':
+      return it.pack_price == null ? '—' : fmt(it.pack_price)
     // Per-line §236 advance tax and the line total including it (see
     // lineAdvanceTax for older invoices).
     case 'advance_tax':

@@ -754,6 +754,20 @@ pre {
 .input-with-buttons { display: flex; gap: 6px; align-items: stretch; }
 .input-with-buttons > input { flex: 1; min-width: 0; }
 .input-with-buttons > .btn { height: auto; white-space: nowrap; }
+/* Two-option switch beside an input (e.g. enter in Maunds | KG). */
+.seg-toggle { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+.seg-toggle > button {
+  border: none;
+  background: var(--surface);
+  padding: 0 12px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.seg-toggle > button + button { border-left: 1px solid var(--border); }
+.seg-toggle > button.active { background: var(--brand-600); color: #fff; }
 /* A read-only value shown in an input until "Edit" unlocks it. */
 input.input-locked { background: var(--slate-50, #f3f5f8); color: var(--text-2); cursor: default; }
 /* A button that looks like a text link (e.g. "Reset" under a field). */
