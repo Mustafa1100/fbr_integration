@@ -175,6 +175,20 @@ export default function UserFbrSettings() {
               Lets this user upload directly to production and promote sandbox-tested invoices.
             </p>
           </div>
+          <div className="field">
+            <label className="row-actions" style={{ gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={!!form.pack_pricing}
+                onChange={(e) => setForm({ ...form, pack_pricing: e.target.checked })}
+              />
+              <span>Pack pricing (e.g. Maunds)</span>
+            </label>
+            <p className="muted" style={{ margin: '4px 0 0' }}>
+              Products priced per pack (e.g. Rs 1,175 per Maund of 37.324 KG), entered in packs or
+              KG on a single invoice. Off for everyone else; file uploads are not affected.
+            </p>
+          </div>
           {tokenField('sandbox')}
           {tokenField('production')}
         </div>

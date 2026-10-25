@@ -75,7 +75,17 @@ OPTIONAL_NUMERIC_COLUMNS = [
     # §236 advance income tax collected on the invoice — a receipt figure;
     # per-row values are summed onto Invoice.advance_tax.
     "advance_tax",
+    # Pack pricing (receipt only; see PACK_COLUMNS). Validated as numbers
+    # only when present.
+    "pack_qty",
+    "pack_price",
 ]
+
+# Pack-priced lines from the single-invoice form (admin-enabled pack
+# pricing): the weight in packs, price per pack and pack name, kept on the
+# line for the receipt. Deliberately NOT in ALL_COLUMNS, so the downloadable
+# template is unchanged; absent or blank -> stored empty, exactly as before.
+PACK_COLUMNS = ("pack_qty", "pack_price", "pack_name")
 
 ALL_COLUMNS = [
     "pos_invoice_no",
@@ -243,6 +253,13 @@ def scenario_catalog() -> list[dict]:
 
 class CsvError(Exception):
     pass
+
+
+def _optional_amount(row: dict, col: str, places: int) -> float | None:
+    """An optional numeric cell -> float, or None when blank / absent (unlike
+    _row_amount, which turns blank into 0). Pre-validated as parseable."""
+    value = row.get(col)
+    return round(float(value), places) if value else None
 
 
 def _row_amount(row: dict, col: str) -> float:
@@ -542,6 +559,10 @@ def _process_rows(
                     # Kept per line too (shown on the receipt); the invoice
                     # total above is the sum of these.
                     advance_tax=_row_amount(row, "advance_tax"),
+                    # Pack-priced lines only; empty for every other row.
+                    pack_qty=_optional_amount(row, "pack_qty", 5),
+                    pack_price=_optional_amount(row, "pack_price", 2),
+                    pack_name=(row.get("pack_name") or "")[:30],
                 )
             )
         db.add(invoice)

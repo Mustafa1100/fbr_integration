@@ -5,6 +5,7 @@ import { SALE_TYPE_VALUES } from '../../data/columnGuide'
 import HsCodePicker from '../../components/HsCodePicker'
 import Modal from '../../components/Modal'
 import UnitPriceCalculator from '../../components/UnitPriceCalculator'
+import { isPackPriced, unitPriceFromPack } from '../../packPricing'
 import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
 import usePageTitle from '../../hooks/usePageTitle'
@@ -78,21 +79,34 @@ function CustomFieldInput({ field, value, onChange }) {
   return <input value={value} onChange={handle} />
 }
 
-function ProductModal({ product, uoms, scenarios, customFields, onClose, onSaved }) {
+function ProductModal({ product, uoms, scenarios, customFields, packPricing, onClose, onSaved }) {
   const isEdit = !!product.id
   const [form, setForm] = useState(() => ({
     ...emptyProduct(),
     ...product,
     custom_fields: product.custom_fields || {},
     fixed_notified_value: product.fixed_notified_value || '',
+    pack_name: product.pack_name || '',
+    pack_price: product.pack_price ?? '',
     // Show 0 / null amounts as blank so the "auto" / "0" placeholders read right.
     ...Object.fromEntries(CHARGE_FIELDS.map((f) => [f, product[f] || ''])),
   }))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [calcOpen, setCalcOpen] = useState(false) // optional unit-price calculator
-  const set = (key) => (e) => setForm({ ...form, [key]: e.target.value })
+  // Optional calculators: 'unit' (unit price) or 'pack' (price per pack).
+  const [calcOpen, setCalcOpen] = useState(null)
   const unitLabel = form.uom || 'unit'
+  // Pack pricing (admin-enabled): with a pack price, the per-UOM unit price
+  // follows from it and is locked.
+  const packMode = isPackPriced(form, packPricing)
+  const packLabel = form.pack_name.trim() || 'pack'
+  const set = (key) => (e) => {
+    const next = { ...form, [key]: e.target.value }
+    if (packPricing && (key === 'pack_price' || key === 'pack_size') && next.pack_price !== '') {
+      next.unit_price = unitPriceFromPack(next.pack_price, next.pack_size)
+    }
+    setForm(next)
+  }
   const showFixedValueFields =
     form.sale_type === '3rd Schedule Goods' ||
     (form.rate.trim() !== '' && !/18\s*%/.test(form.rate))
@@ -116,6 +130,9 @@ function ProductModal({ product, uoms, scenarios, customFields, onClose, onSaved
           form[f] === '' ? (AUTO_FIELDS.includes(f) ? null : 0) : Number(form[f]),
         ])
       ),
+      // Pack fields only matter (and are only saved) when the feature is on.
+      pack_name: form.pack_name,
+      pack_price: form.pack_price === '' ? null : Number(form.pack_price),
     }
     delete body.id
     delete body.created_at
@@ -192,10 +209,15 @@ function ProductModal({ product, uoms, scenarios, customFields, onClose, onSaved
           </div>
           <div className="field">
             <label>
-              Unit price <span className="hint">(per {unitLabel}, excl. sales tax)</span>
+              Unit price{' '}
+              <span className="hint">
+                {packMode
+                  ? `(per ${unitLabel}, worked out from the price per ${packLabel})`
+                  : `(per ${unitLabel}, excl. sales tax)`}
+              </span>
               <Req />
             </label>
-            <div className="row-actions" style={{ gap: 6 }}>
+            <div className="input-with-buttons">
               <input
                 type="number"
                 step="any"
@@ -204,16 +226,19 @@ function ProductModal({ product, uoms, scenarios, customFields, onClose, onSaved
                 onChange={set('unit_price')}
                 placeholder="0"
                 required
+                readOnly={packMode}
+                className={packMode ? 'input-locked' : undefined}
               />
-              <button
-                type="button"
-                className="btn btn-sm btn-secondary"
-                onClick={() => setCalcOpen(true)}
-                title="Work the unit price out from the price of one product including tax"
-                style={{ whiteSpace: 'nowrap' }}
-              >
-                <Calculator size={14} /> Calculate
-              </button>
+              {!packMode && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => setCalcOpen('unit')}
+                  title="Work the unit price out from the price of one product including tax"
+                >
+                  <Calculator size={14} /> Calculate
+                </button>
+              )}
             </div>
           </div>
           <div className="field">
@@ -247,6 +272,54 @@ function ProductModal({ product, uoms, scenarios, customFields, onClose, onSaved
             </select>
           </div>
         </div>
+
+        {packPricing && (
+          <>
+            <h4 className="section-title" style={{ fontSize: '0.85rem', marginTop: 4 }}>
+              Sold in packs <span className="hint">(optional — e.g. per Maund)</span>
+            </h4>
+            <p className="muted" style={{ margin: '0 0 12px' }}>
+              Price this product per pack, e.g. <b>Rs 1,175 per Maund</b> with Quantity{' '}
+              <b>37.324</b> {unitLabel} in one pack. On a single invoice you can then enter the
+              number of packs or the {unitLabel}, and the value is worked out as packs × price per
+              pack. Leave the price per pack empty to price per {unitLabel} as usual.
+            </p>
+            <div className="form-grid">
+              <div className="field">
+                <label>Pack name</label>
+                <input value={form.pack_name} onChange={set('pack_name')} maxLength={30} />
+              </div>
+              <div className="field">
+                <label>
+                  Price per {packLabel} <span className="hint">(excl. sales tax)</span>
+                </label>
+                <div className="input-with-buttons">
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={form.pack_price}
+                    onChange={set('pack_price')}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-secondary"
+                    onClick={() => setCalcOpen('pack')}
+                    title={`Work the price per ${packLabel} out from a price including tax`}
+                  >
+                    <Calculator size={14} /> Calculate
+                  </button>
+                </div>
+              </div>
+            </div>
+            {packMode && Number(form.pack_size) > 0 && (
+              <p className="muted" style={{ margin: '0 0 12px' }}>
+                1 {packLabel} = {form.pack_size} {unitLabel} · Rs {nfmt(form.pack_price)} per {packLabel}{' '}
+                = <b>Rs {form.unit_price} per {unitLabel}</b>
+              </p>
+            )}
+          </>
+        )}
 
         {customFields.length > 0 && (
           <div className="form-grid">
@@ -348,16 +421,35 @@ function ProductModal({ product, uoms, scenarios, customFields, onClose, onSaved
       </form>
     </Modal>
     {/* After the form so it opens on top of it (a separate <form>, not nested). */}
-    {calcOpen && (
+    {calcOpen === 'unit' && (
       <UnitPriceCalculator
         quantity={form.pack_size}
         rate={form.rate}
         unitLabel={unitLabel}
         onUse={(unitPrice) => {
           setForm({ ...form, unit_price: unitPrice })
-          setCalcOpen(false)
+          setCalcOpen(null)
         }}
-        onClose={() => setCalcOpen(false)}
+        onClose={() => setCalcOpen(null)}
+      />
+    )}
+    {/* Price per pack from a tax-inclusive pack price: the same calculator
+        with a quantity of 1 pack. */}
+    {calcOpen === 'pack' && (
+      <UnitPriceCalculator
+        quantity={1}
+        rate={form.rate}
+        unitLabel={packLabel}
+        onUse={(packPrice) => {
+          const price = String(Math.round(Number(packPrice) * 100) / 100)
+          setForm({
+            ...form,
+            pack_price: price,
+            unit_price: unitPriceFromPack(price, form.pack_size),
+          })
+          setCalcOpen(null)
+        }}
+        onClose={() => setCalcOpen(null)}
       />
     )}
     </>
@@ -375,6 +467,7 @@ export default function Products() {
   const [uoms, setUoms] = useState([])
   const [scenarios, setScenarios] = useState([])
   const [customFields, setCustomFields] = useState([])
+  const [packPricing, setPackPricing] = useState(false) // admin-enabled per user
   const [editing, setEditing] = useState(null) // null | {} (new) | product
   const [confirmDelete, setConfirmDelete] = useState(null)
 
@@ -410,6 +503,10 @@ export default function Products() {
     api
       .get('/api/settings/invoice-layout')
       .then((d) => setCustomFields(d.layout.custom_fields))
+      .catch(() => {})
+    api
+      .get('/api/settings/fbr')
+      .then((s) => setPackPricing(!!s.pack_pricing))
       .catch(() => {})
   }, [])
 
@@ -492,7 +589,18 @@ export default function Products() {
                     {nfmt(p.pack_size)} {p.uom}
                   </td>
                   <td>
-                    Rs {nfmt(p.unit_price)} / {p.uom}
+                    {isPackPriced(p, packPricing) ? (
+                      <>
+                        Rs {nfmt(p.pack_price)} / {p.pack_name || 'pack'}
+                        <div className="hint" style={{ fontSize: '0.75rem' }}>
+                          Rs {p.unit_price} / {p.uom}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        Rs {nfmt(p.unit_price)} / {p.uom}
+                      </>
+                    )}
                   </td>
                   <td>{p.rate}</td>
                   <td>{p.sale_type}</td>
@@ -548,6 +656,7 @@ export default function Products() {
           uoms={uoms}
           scenarios={scenarios}
           customFields={customFields}
+          packPricing={packPricing}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null)

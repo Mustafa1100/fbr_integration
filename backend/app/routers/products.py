@@ -38,6 +38,9 @@ class ProductRequest(BaseModel):
     advance_tax: float = Field(0.0, ge=0)
     # Values for the user's custom fields (Settings → Invoice Settings).
     custom_fields: dict[str, Any] = {}
+    # Pack pricing (only applied if the admin enabled it for this user).
+    pack_name: str = Field("", max_length=30)
+    pack_price: float | None = Field(None, ge=0)
 
 
 CHARGE_FIELDS = (
@@ -68,12 +71,15 @@ def product_out(p: Product) -> dict:
         "sro_item_serial_no": p.sro_item_serial_no,
         **{f: getattr(p, f) for f in CHARGE_FIELDS},
         "custom_fields": invoice_layout.load_values(p.custom_fields),
+        "pack_name": p.pack_name or "",
+        "pack_price": p.pack_price,
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
 
 
 def _apply(db: Session, user: User, p: Product, body: ProductRequest) -> None:
-    fields = invoice_layout.layout_for(get_or_create_fbr_settings(db, user))["custom_fields"]
+    fbr = get_or_create_fbr_settings(db, user)
+    fields = invoice_layout.layout_for(fbr)["custom_fields"]
     try:
         p.custom_fields = json.dumps(invoice_layout.clean_values(fields, body.custom_fields))
     except ValueError as exc:
@@ -91,6 +97,15 @@ def _apply(db: Session, user: User, p: Product, body: ProductRequest) -> None:
     p.sro_item_serial_no = body.sro_item_serial_no.strip()
     for f in CHARGE_FIELDS:
         setattr(p, f, getattr(body, f))
+    # Pack pricing only for users an admin enabled it for; otherwise the
+    # request's pack fields are ignored and saved ones are left untouched.
+    if fbr.pack_pricing:
+        p.pack_name = body.pack_name.strip()
+        p.pack_price = body.pack_price
+        if p.pack_price is not None:
+            # The per-UOM unit price follows from the pack price, so the two
+            # never disagree (8 dp: exact to the paisa on large quantities).
+            p.unit_price = round(p.pack_price / p.pack_size, 8)
 
 
 def _get_owned(db: Session, user: User, product_id: int) -> Product:

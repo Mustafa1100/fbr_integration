@@ -55,6 +55,10 @@ class FbrSettings(Base):
     # Whether this user may submit to FBR production at all (direct upload or
     # promoting a sandbox-tested invoice). Admin-granted.
     can_submit_production: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Admin-granted, off by default: products priced per pack (e.g. per
+    # Maund of 37.324 KG) and invoice lines entered in packs or KG — single
+    # invoice only. When off, everything behaves as before.
+    pack_pricing: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # The identifier sent to FBR as sellerNTNCNIC — in practice the seller's
     # CNIC for the current accounts. seller_ntn below is a separate,
@@ -228,6 +232,11 @@ class Product(Base):
     advance_tax: Mapped[float] = mapped_column(Float, default=0.0)
     # JSON {field key: value} for the user's custom fields (invoice_layout).
     custom_fields: Mapped[str] = mapped_column(Text, default="{}")
+    # Pack pricing (only used when the owner's FbrSettings.pack_pricing is
+    # on): price of one pack (pack_size UOM units) excl. tax, e.g. Rs 1,175
+    # per Maund. None = priced per UOM unit as usual.
+    pack_name: Mapped[str] = mapped_column(String(30), default="")
+    pack_price: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
@@ -275,6 +284,12 @@ class InvoiceItem(Base):
     # is Invoice.advance_tax). None = not recorded — invoices created before
     # per-line amounts were kept.
     advance_tax: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Pack-priced lines only (single invoice, admin-enabled pack pricing):
+    # the weight in packs (e.g. 1,079.73422 Maunds) and the price per pack,
+    # for the receipt. None on every other line. FBR still gets quantity (KG).
+    pack_qty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pack_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pack_name: Mapped[str] = mapped_column(String(30), default="")
 
     invoice: Mapped[Invoice] = relationship(back_populates="items")
 

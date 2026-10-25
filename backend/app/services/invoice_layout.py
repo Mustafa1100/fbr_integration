@@ -37,7 +37,14 @@ BUILTIN_COLUMNS = {
     # §236 advance income tax per line, and the line total including it.
     "advance_tax": "Advance Tax",
     "total_incl_adv": "Total",
+    # Pack pricing users only (see PACK_COLUMNS): weight in packs and price
+    # per pack. Renameable like any column.
+    "pack_qty": "Weight in Maunds",
+    "pack_price": "Price per Maund",
 }
+# Columns that exist only for users an admin enabled pack pricing for; for
+# everyone else they're left out of the layout entirely.
+PACK_COLUMNS = {"pack_qty", "pack_price"}
 # What the receipt showed before layouts existed.
 DEFAULT_VISIBLE_COLUMNS = {
     "index",
@@ -52,6 +59,8 @@ DEFAULT_VISIBLE_COLUMNS = {
     "sales_tax",
     "advance_tax",
     "total_incl_adv",
+    "pack_qty",
+    "pack_price",
 }
 
 # Totals box. These two are fixed: exclusive value first, inclusive last.
@@ -102,7 +111,7 @@ def _reserved_keys() -> set[str]:
     # Imported lazily — csv_processor imports this module.
     from app.services.csv_processor import ALL_COLUMNS
 
-    return set(ALL_COLUMNS) | set(BUILTIN_COLUMNS)
+    return set(ALL_COLUMNS) | set(BUILTIN_COLUMNS) | {"pack_name"}
 
 
 def _clean_custom_fields(raw, strict: bool) -> list[dict]:
@@ -147,15 +156,25 @@ def _clean_custom_fields(raw, strict: bool) -> list[dict]:
     return fields
 
 
-def normalize(raw: dict | None, strict: bool = False) -> dict:
+def normalize(raw: dict | None, strict: bool = False, pack_pricing: bool = False) -> dict:
     raw = raw if isinstance(raw, dict) else {}
     custom = _clean_custom_fields(raw.get("custom_fields"), strict)
-    labels = {**BUILTIN_COLUMNS, **{CUSTOM_PREFIX + f["key"]: f["label"] for f in custom}}
+    # The pack columns exist only for users with pack pricing enabled.
+    builtins = {k: v for k, v in BUILTIN_COLUMNS.items() if pack_pricing or k not in PACK_COLUMNS}
+    labels = {**builtins, **{CUSTOM_PREFIX + f["key"]: f["label"] for f in custom}}
     columns = _ordered_rows(
         raw.get("columns"),
         labels,
         lambda key: key in DEFAULT_VISIBLE_COLUMNS or key.startswith(CUSTOM_PREFIX),
     )
+    # When they first appear, put the pack columns right after the KG
+    # quantity rather than at the end; a saved order is kept as it is.
+    saved_keys = {c.get("key") for c in raw.get("columns") or [] if isinstance(c, dict)}
+    new_pack = [c for c in columns if c["key"] in PACK_COLUMNS and c["key"] not in saved_keys]
+    if new_pack and any(c["key"] == "quantity" for c in columns):
+        columns = [c for c in columns if c not in new_pack]
+        at = next(i for i, c in enumerate(columns) if c["key"] == "quantity") + 1
+        columns[at:at] = new_pack
 
     # Totals: the exclusive value is always first and the inclusive value
     # always last (both always shown, renameable); the rest in between.
@@ -237,7 +256,7 @@ def layout_for(fbr) -> dict:
         raw = json.loads(fbr.invoice_layout or "{}")
     except (TypeError, ValueError):
         raw = {}
-    return normalize(raw)
+    return normalize(raw, pack_pricing=bool(getattr(fbr, "pack_pricing", False)))
 
 
 def to_storage(layout: dict) -> str:

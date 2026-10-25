@@ -3297,3 +3297,124 @@ def test_advance_tax_kept_per_line(user_headers):
     # Shown by default as two receipt columns.
     visible = {c["key"] for c in detail["layout"]["columns"] if c["visible"]}
     assert {"advance_tax", "total_incl_adv"} <= visible
+
+
+def test_pack_pricing_is_admin_gated_and_exact(user_headers, admin_headers):
+    product = {
+        "description": "Oil Cake (Maund)",
+        "hs_code": "2306.1000",
+        "uom": "KG",
+        "pack_size": 37.324,
+        "unit_price": 30,
+        "rate": "10%",
+        "pack_name": "Maund",
+        "pack_price": 1175,
+    }
+    # Off by default: the user sees it off and pack fields are ignored.
+    assert client.get("/api/settings/fbr", headers=user_headers).json()["pack_pricing"] is False
+    resp = client.post("/api/products", json=product, headers=user_headers)
+    assert resp.status_code == 201, resp.text
+    off = resp.json()
+    assert (off["pack_name"], off["pack_price"], off["unit_price"]) == ("", None, 30)
+
+    # Admin enables it for this user only.
+    user_id = next(
+        u["id"] for u in client.get("/api/admin/users", headers=admin_headers).json()
+        if u["email"] == "shop@example.com"
+    )
+    settings = client.get(f"/api/admin/users/{user_id}/fbr-settings", headers=admin_headers).json()
+    assert settings["pack_pricing"] is False
+    resp = client.put(
+        f"/api/admin/users/{user_id}/fbr-settings",
+        json={**settings, "pack_pricing": True},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200 and resp.json()["pack_pricing"] is True
+    # A later admin save that doesn't mention it leaves it on.
+    body = {k: v for k, v in resp.json().items() if k != "pack_pricing"}
+    resp = client.put(f"/api/admin/users/{user_id}/fbr-settings", json=body, headers=admin_headers)
+    assert resp.json()["pack_pricing"] is True
+
+    # Now the pack price is kept and decides the per-KG unit price.
+    on = client.put(f"/api/products/{off['id']}", json=product, headers=user_headers).json()
+    assert (on["pack_name"], on["pack_price"]) == ("Maund", 1175)
+    assert on["unit_price"] == round(1175 / 37.324, 8)  # 31.48108456
+
+    # The factory's own invoice: 40,300 KG = 1,079.73422 maunds x Rs 1,175.
+    # The single-invoice form sends quantity in KG plus a unit price that
+    # reproduces the exact value; the normal upload pipeline must land on it.
+    value = round(1079.73422 * 1175, 2)  # 1,268,687.71
+    unit_price = f"{value / 40300:.12f}"
+    header = "pos_invoice_no,invoice_date,buyer_name,buyer_province,buyer_registration_type,product_description,hs_code,rate,uom,quantity,unit_price"
+    row = f"PACK-1,2026-10-23,Muhammad Shabeer,Sindh,Unregistered,Oil Cake,2306.1000,10%,KG,40300,{unit_price}"
+    resp = client.post(
+        "/api/uploads", files={"file": ("pack.csv", header + "\n" + row + "\n", "text/csv")},
+        headers=user_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    inv = client.get(f"/api/invoices?upload_id={resp.json()['id']}", headers=user_headers).json()[0]
+    item = client.get(f"/api/invoices/{inv['id']}", headers=user_headers).json()["items"][0]
+    assert item["quantity"] == 40300
+    assert item["value_excl_st"] == 1268687.71
+    assert item["sales_tax"] == 126868.77
+
+    # Clean up: switch off again, remove the product.
+    client.put(
+        f"/api/admin/users/{user_id}/fbr-settings",
+        json={**settings, "pack_pricing": False},
+        headers=admin_headers,
+    )
+    client.delete(f"/api/products/{off['id']}", headers=user_headers)
+
+
+def test_pack_columns_on_receipt_only_for_pack_users(user_headers, admin_headers):
+    keys = lambda layout: [c["key"] for c in layout["columns"]]
+    # Without pack pricing the receipt layout has no pack columns at all.
+    layout = client.get("/api/settings/invoice-layout", headers=user_headers).json()["layout"]
+    assert "pack_qty" not in keys(layout) and "pack_price" not in keys(layout)
+
+    user_id = next(
+        u["id"] for u in client.get("/api/admin/users", headers=admin_headers).json()
+        if u["email"] == "shop@example.com"
+    )
+    settings = client.get(f"/api/admin/users/{user_id}/fbr-settings", headers=admin_headers).json()
+    client.put(f"/api/admin/users/{user_id}/fbr-settings", json={**settings, "pack_pricing": True}, headers=admin_headers)
+
+    # With it: both appear, visible, right after the KG quantity, renameable.
+    layout = client.get("/api/settings/invoice-layout", headers=user_headers).json()["layout"]
+    k = keys(layout)
+    assert k[k.index("quantity") + 1 : k.index("quantity") + 3] == ["pack_qty", "pack_price"]
+    cols = {c["key"]: c for c in layout["columns"]}
+    assert cols["pack_qty"]["visible"] and cols["pack_qty"]["label"] == "Weight in Maunds"
+    assert cols["pack_price"]["visible"] and cols["pack_price"]["label"] == "Price per Maund"
+    renamed = [{**c, "label": "Weight in Bags"} if c["key"] == "pack_qty" else c for c in layout["columns"]]
+    saved = client.put("/api/settings/invoice-layout", json={**layout, "columns": renamed}, headers=user_headers).json()["layout"]
+    assert next(c for c in saved["columns"] if c["key"] == "pack_qty")["label"] == "Weight in Bags"
+
+    # The single-invoice form's row for a pack-priced line keeps the pack data.
+    head = "pos_invoice_no,invoice_date,buyer_name,buyer_province,product_description,hs_code,rate,uom,quantity,unit_price"
+    value = round(1079.73422 * 1175, 2)
+    pack_csv = (head + ",pack_qty,pack_price,pack_name\n"
+                f"PK-2,2026-10-23,Shabeer,Sindh,Oil Cake,2306.1000,10%,KG,40300,{value / 40300:.12f},1079.73422,1175,Maund\n")
+    up = client.post("/api/uploads", files={"file": ("p.csv", pack_csv, "text/csv")}, headers=user_headers).json()
+    inv = client.get(f"/api/invoices?upload_id={up['id']}", headers=user_headers).json()[0]
+    item = client.get(f"/api/invoices/{inv['id']}", headers=user_headers).json()["items"][0]
+    assert (item["pack_qty"], item["pack_price"], item["pack_name"]) == (1079.73422, 1175, "Maund")
+    assert item["value_excl_st"] == 1268687.71
+
+    # A normal row with the pack columns present but blank == the same row
+    # without them (what every other line / every existing file looks like).
+    def upload_items(csv_text, name):
+        r = client.post("/api/uploads", files={"file": (name, csv_text, "text/csv")}, headers=user_headers).json()
+        i = client.get(f"/api/invoices?upload_id={r['id']}", headers=user_headers).json()[0]
+        return client.get(f"/api/invoices/{i['id']}", headers=user_headers).json()["items"]
+    plain = upload_items(head + "\nPL-1,2026-10-23,Walk-in,Sindh,Laptop,8471.3010,18%,Numbers,2,150000\n", "plain.csv")
+    blank = upload_items(head + ",pack_qty,pack_price,pack_name\nPL-2,2026-10-23,Walk-in,Sindh,Laptop,8471.3010,18%,Numbers,2,150000,,,\n", "blank.csv")
+    assert plain == blank
+    assert plain[0]["pack_qty"] is None and plain[0]["pack_price"] is None and plain[0]["pack_name"] == ""
+
+    # Switch off again: the pack columns disappear from the layout.
+    client.put(f"/api/admin/users/{user_id}/fbr-settings", json={**settings, "pack_pricing": False}, headers=admin_headers)
+    layout = client.get("/api/settings/invoice-layout", headers=user_headers).json()["layout"]
+    assert "pack_qty" not in keys(layout)
+    client.put("/api/settings/invoice-layout", json={}, headers=user_headers)

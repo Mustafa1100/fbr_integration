@@ -221,6 +221,10 @@ def detail_out(inv: Invoice, fbr) -> dict:
                 "custom_fields": invoice_layout.load_values(it.custom_fields),
                 # None for invoices created before per-line amounts were kept.
                 "advance_tax": None if it.advance_tax is None else round(it.advance_tax, 2),
+                # Pack-priced lines only (None / '' otherwise).
+                "pack_qty": it.pack_qty,
+                "pack_price": it.pack_price,
+                "pack_name": it.pack_name or "",
             }
             for it in inv.items
         ],

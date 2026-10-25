@@ -111,6 +111,14 @@ def run_light_migrations() -> None:
                         "WHERE fbr_env = 'production'"
                     )
                 )
+        if "pack_pricing" not in fbr_columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE fbr_settings ADD COLUMN pack_pricing "
+                        "BOOLEAN NOT NULL DEFAULT FALSE"
+                    )
+                )
         if "invoice_layout" not in fbr_columns:
             with engine.begin() as conn:
                 conn.execute(
@@ -207,6 +215,8 @@ def run_light_migrations() -> None:
             ("st_withheld", "FLOAT NOT NULL DEFAULT 0"),
             ("advance_tax", "FLOAT NOT NULL DEFAULT 0"),
             ("custom_fields", "VARCHAR(8000) NOT NULL DEFAULT '{}'"),
+            ("pack_name", "VARCHAR(30) NOT NULL DEFAULT ''"),
+            ("pack_price", "FLOAT NULL"),
         ):
             if name not in product_columns:
                 with engine.begin() as conn:
@@ -234,3 +244,12 @@ def run_light_migrations() -> None:
             # since only the invoice total was kept for them.
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE invoice_items ADD COLUMN advance_tax FLOAT NULL"))
+        # Pack-priced lines only; NULL / '' everywhere else.
+        for name, ddl in (
+            ("pack_qty", "FLOAT NULL"),
+            ("pack_price", "FLOAT NULL"),
+            ("pack_name", "VARCHAR(30) NOT NULL DEFAULT ''"),
+        ):
+            if name not in item_columns:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE invoice_items ADD COLUMN {name} {ddl}"))
