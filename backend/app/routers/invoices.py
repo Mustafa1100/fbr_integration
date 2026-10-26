@@ -176,6 +176,7 @@ def detail_out(inv: Invoice, fbr) -> dict:
         "buyer_province": inv.buyer_province,
         "buyer_address": inv.buyer_address,
         "buyer_registration_type": inv.buyer_registration_type,
+        "buyer_strn": inv.buyer_strn or "",
         "fbr_dated": inv.fbr_dated,
         "seller": {
             "ntn_cnic": fbr.seller_ntn_cnic,

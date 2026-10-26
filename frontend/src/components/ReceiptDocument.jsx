@@ -322,6 +322,9 @@ export default function ReceiptDocument({ inv, strnChoice = '' }) {
           rows={[
             ['Name', inv.buyer_name],
             show('buyer_ntn_cnic') && ['NTN/CNIC', inv.buyer_ntn_cnic],
+            // Only when one was entered (pack pricing users' single invoices)
+            // and not unticked under Invoice Settings → Details to print.
+            show('buyer_strn') && inv.buyer_strn && ['STRN', inv.buyer_strn],
             show('buyer_registration_type') && ['Reg Type', inv.buyer_registration_type],
             show('buyer_address') && [
               'Address',

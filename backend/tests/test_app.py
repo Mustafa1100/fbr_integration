@@ -3418,3 +3418,53 @@ def test_pack_columns_on_receipt_only_for_pack_users(user_headers, admin_headers
     layout = client.get("/api/settings/invoice-layout", headers=user_headers).json()["layout"]
     assert "pack_qty" not in keys(layout)
     client.put("/api/settings/invoice-layout", json={}, headers=user_headers)
+
+
+def test_buyer_strn_is_optional_and_receipt_only(user_headers):
+    head = "pos_invoice_no,invoice_date,buyer_ntn_cnic,buyer_name,buyer_province,buyer_registration_type,product_description,hs_code,rate,uom,quantity,unit_price"
+    row = "STRN-1,2026-10-26,0698347,N.P. Cotton Mills,Sindh,Registered,Cotton Lint,5201.0090,18%,KG,100,490"
+
+    def upload(csv_text, name):
+        r = client.post("/api/uploads", files={"file": (name, csv_text, "text/csv")}, headers=user_headers).json()
+        i = client.get(f"/api/invoices?upload_id={r['id']}", headers=user_headers).json()[0]
+        return client.get(f"/api/invoices/{i['id']}", headers=user_headers).json()
+
+    # From the single-invoice form (pack pricing users): kept for the receipt.
+    with_strn = upload(f"{head},buyer_strn\n{row},1200520501673\n", "strn.csv")
+    assert with_strn["buyer_strn"] == "1200520501673"
+    # Never sent to FBR.
+    assert "1200520501673" not in json.dumps(with_strn["payload"])
+
+    # Every existing file has no such column: empty, and the invoice is the
+    # same as one with the column present but blank.
+    without = upload(f"{head}\n{row.replace('STRN-1', 'STRN-2')}\n", "plain.csv")
+    blank = upload(f"{head},buyer_strn\n{row.replace('STRN-1', 'STRN-3')},\n", "blank.csv")
+    assert without["buyer_strn"] == blank["buyer_strn"] == ""
+    strip = lambda d: {k: v for k, v in d.items() if k not in ("id", "pos_invoice_no", "upload_id", "fbr_invoice_number", "payload", "fbr_response", "qr", "fbr_dated")}
+    assert strip(without) == strip(blank)
+    assert without["payload"]["items"] == with_strn["payload"]["items"]
+
+
+def test_buyer_strn_print_toggle_only_for_pack_users(user_headers, admin_headers):
+    def settings():
+        return client.get("/api/settings/invoice-layout", headers=user_headers).json()
+    header_keys = lambda d: [h["key"] for h in d["catalog"]["header_fields"]]
+    # Without pack pricing: no Buyer STRN toggle, header unchanged.
+    off = settings()
+    assert "buyer_strn" not in header_keys(off) and "buyer_strn" not in off["layout"]["header"]
+
+    user_id = next(u["id"] for u in client.get("/api/admin/users", headers=admin_headers).json() if u["email"] == "shop@example.com")
+    fbr = client.get(f"/api/admin/users/{user_id}/fbr-settings", headers=admin_headers).json()
+    client.put(f"/api/admin/users/{user_id}/fbr-settings", json={**fbr, "pack_pricing": True}, headers=admin_headers)
+
+    # With it: the toggle is offered, ticked by default, and can be unticked.
+    on = settings()
+    assert "buyer_strn" in header_keys(on) and on["layout"]["header"]["buyer_strn"] is True
+    saved = client.put("/api/settings/invoice-layout",
+                       json={**on["layout"], "header": {**on["layout"]["header"], "buyer_strn": False}},
+                       headers=user_headers).json()
+    assert saved["layout"]["header"]["buyer_strn"] is False
+
+    client.put(f"/api/admin/users/{user_id}/fbr-settings", json={**fbr, "pack_pricing": False}, headers=admin_headers)
+    assert "buyer_strn" not in settings()["layout"]["header"]
+    client.put("/api/settings/invoice-layout", json={}, headers=user_headers)

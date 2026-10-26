@@ -156,6 +156,12 @@ def run_light_migrations() -> None:
                 )
     if "invoices" in inspector.get_table_names():
         invoice_columns = {c["name"] for c in inspector.get_columns("invoices")}
+        if "buyer_strn" not in invoice_columns:
+            # Receipt-only buyer STRN; '' for every existing invoice.
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE invoices ADD COLUMN buyer_strn VARCHAR(20) NOT NULL DEFAULT ''")
+                )
         if "is_paid" not in invoice_columns:
             with engine.begin() as conn:
                 conn.execute(

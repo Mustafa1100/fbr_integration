@@ -127,7 +127,7 @@ def get_invoice_layout(
     user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     fbr = get_or_create_fbr_settings(db, user)
-    return {"layout": invoice_layout.layout_for(fbr), "catalog": invoice_layout.catalog()}
+    return {"layout": invoice_layout.layout_for(fbr), "catalog": invoice_layout.catalog(fbr.pack_pricing)}
 
 
 @router.put("/invoice-layout")
@@ -141,7 +141,7 @@ def update_invoice_layout(
     layout = invoice_layout.normalize(body, strict=True, pack_pricing=fbr.pack_pricing)
     fbr.invoice_layout = invoice_layout.to_storage(layout)
     db.commit()
-    return {"layout": invoice_layout.layout_for(fbr), "catalog": invoice_layout.catalog()}
+    return {"layout": invoice_layout.layout_for(fbr), "catalog": invoice_layout.catalog(fbr.pack_pricing)}
 
 
 @router.put("/fbr")
