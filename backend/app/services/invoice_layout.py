@@ -93,6 +93,15 @@ HEADER_FIELDS = {
     "buyer_registration_type": "Buyer registration type",
     "buyer_address": "Buyer address",
 }
+# Header details that exist only for users with pack pricing (they're the
+# only ones who can enter them); left out of everyone else's layout.
+PACK_HEADER_FIELDS = {
+    "buyer_strn": "Buyer STRN",
+}
+
+
+def _header_fields(pack_pricing: bool) -> dict:
+    return {**HEADER_FIELDS, **(PACK_HEADER_FIELDS if pack_pricing else {})}
 
 # The FBR logo and QR code always sit together, in one of these places.
 POSITIONS = {
@@ -111,7 +120,7 @@ def _reserved_keys() -> set[str]:
     # Imported lazily — csv_processor imports this module.
     from app.services.csv_processor import ALL_COLUMNS
 
-    return set(ALL_COLUMNS) | set(BUILTIN_COLUMNS) | {"pack_name"}
+    return set(ALL_COLUMNS) | set(BUILTIN_COLUMNS) | {"pack_name", "buyer_strn"}
 
 
 def _clean_custom_fields(raw, strict: bool) -> list[dict]:
@@ -198,7 +207,7 @@ def normalize(raw: dict | None, strict: bool = False, pack_pricing: bool = False
     ]
 
     header_raw = raw.get("header") if isinstance(raw.get("header"), dict) else {}
-    header = {k: bool(header_raw.get(k, True)) for k in HEADER_FIELDS}
+    header = {k: bool(header_raw.get(k, True)) for k in _header_fields(pack_pricing)}
 
     # One position for both; qr_position mirrors it (the receipt reads both).
     # An older layout with any other corner falls back to top-right.
@@ -273,10 +282,10 @@ def to_storage(layout: dict) -> str:
     )
 
 
-def catalog() -> dict:
+def catalog(pack_pricing: bool = False) -> dict:
     """Labels for the settings screen."""
     return {
-        "header_fields": [{"key": k, "label": v} for k, v in HEADER_FIELDS.items()],
+        "header_fields": [{"key": k, "label": v} for k, v in _header_fields(pack_pricing).items()],
         "positions": [{"key": k, "label": v} for k, v in POSITIONS.items()],
         "field_types": [{"key": k, "label": v} for k, v in FIELD_TYPES.items()],
     }

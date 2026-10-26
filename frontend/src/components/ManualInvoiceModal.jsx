@@ -55,7 +55,9 @@ function buildCsv(header, items) {
   // Pack columns only when a line is pack-priced — any other invoice is
   // sent exactly as before.
   const packKeys = items.some((it) => it.pack_qty !== undefined) ? PACK_CSV_COLUMNS : []
-  const columns = [...CSV_COLUMNS, ...packKeys, ...customKeys]
+  // Buyer STRN (pack pricing users, receipt only) — only when filled in.
+  const strnKeys = (header.buyer_strn || '').trim() ? ['buyer_strn'] : []
+  const columns = [...CSV_COLUMNS, ...strnKeys, ...packKeys, ...customKeys]
   const rows = items.map((item) => {
     const merged = { ...header, ...item, ...item.custom_fields }
     return columns.map((c) => csvField(merged[c])).join(',')
@@ -504,6 +506,15 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
               placeholder="Karachi"
             />
           </div>
+          {packPricing && (
+            // Pack pricing users only: printed on the receipt, not sent to FBR.
+            <div className="field">
+              <label>
+                Buyer STRN <span className="hint">(optional — shown on the receipt)</span>
+              </label>
+              <input value={header.buyer_strn || ''} onChange={setH('buyer_strn')} maxLength={20} />
+            </div>
+          )}
         </div>
 
         {/* ── Product entry form ─────────────────────────────────────── */}

@@ -145,6 +145,9 @@ class Invoice(Base):
     buyer_registration_type: Mapped[str] = mapped_column(
         String(20), default="Unregistered"
     )
+    # Buyer's Sales Tax Registration Number — receipt only, never sent to FBR.
+    # Entered on the single invoice by users with pack pricing; '' otherwise.
+    buyer_strn: Mapped[str] = mapped_column(String(20), default="")
 
     # draft → submitted | failed
     status: Mapped[str] = mapped_column(String(20), default="draft")

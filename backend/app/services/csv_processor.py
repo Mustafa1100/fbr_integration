@@ -482,6 +482,9 @@ def _process_rows(
             buyer_address=first.get("buyer_address", ""),
             buyer_registration_type=first.get("buyer_registration_type")
             or "Unregistered",
+            # Receipt-only; from the single-invoice form (pack pricing users).
+            # Not in the template; absent / blank -> '' as before.
+            buyer_strn=(first.get("buyer_strn") or "")[:20],
             # Advance income tax — sum of the group's rows. Marked "set" so
             # the receipt's one-time back-fill isn't offered for it.
             advance_tax=round(
