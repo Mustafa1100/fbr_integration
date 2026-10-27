@@ -182,11 +182,12 @@ export default function UserFbrSettings() {
                 checked={!!form.pack_pricing}
                 onChange={(e) => setForm({ ...form, pack_pricing: e.target.checked })}
               />
-              <span>Pack pricing (e.g. Maunds)</span>
+              <span>Pack pricing (e.g. Maund, Bag, Carton)</span>
             </label>
             <p className="muted" style={{ margin: '4px 0 0' }}>
-              Products priced per pack (e.g. Rs 1,175 per Maund of 37.324 KG), entered in packs or
-              KG on a single invoice. Off for everyone else; file uploads are not affected.
+              Products priced per pack of any kind — e.g. Rs 1,175 per Maund of 37.324 KG, or per
+              40 KG Bag — entered in packs or in the product&apos;s unit on a single invoice. Off for
+              everyone else; file uploads are not affected.
             </p>
           </div>
           {tokenField('sandbox')}
