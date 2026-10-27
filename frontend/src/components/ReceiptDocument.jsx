@@ -8,6 +8,7 @@
 
 import { useLayoutEffect, useRef, useState } from 'react'
 import mark from '../assets/mark.png'
+import { adjustmentAmounts, adjustmentLabel } from '../receiptAdjustments'
 
 // Used only if an invoice arrives without a layout — the pre-layout receipt.
 const FALLBACK_LAYOUT = {
@@ -252,8 +253,33 @@ export default function ReceiptDocument({ inv, strnChoice = '' }) {
     further_tax: money(sumOf('further_tax')),
     fed_payable: money(sumOf('fed_payable')),
     advance_tax: money(advanceTax),
-    total_incl: money(displayGrandTotal + advanceTax),
   }
+  // Added total rows saved with this invoice (single invoices only): each
+  // prints in its place in the layout (or just above the last row if since
+  // removed from the settings) and changes the last row. % rows are of the
+  // total before adjustments. Without any, the box is exactly as before.
+  const beforeAdjustments = displayGrandTotal + advanceTax
+  const adjustments = adjustmentAmounts(beforeAdjustments, inv.adjustments)
+  const adjByKey = Object.fromEntries(adjustments.map((a) => [a.key, a]))
+  for (const a of adjustments) {
+    totalValues[a.key] = a.sign === 'subtract' ? `−${money(a.amount)}` : money(a.amount)
+  }
+  totalValues.total_incl = money(
+    beforeAdjustments + adjustments.reduce((sum, a) => sum + a.signed, 0)
+  )
+  const layoutKeys = new Set(totals.map((t) => t.key))
+  const totalRows = totals.flatMap((t) => {
+    if (String(t.key).startsWith('adj:')) {
+      const a = adjByKey[t.key]
+      return a ? [{ key: a.key, label: adjustmentLabel(a) }] : []
+    }
+    if (!t.visible) return []
+    if (t.key !== 'total_incl') return [t]
+    const orphans = adjustments
+      .filter((a) => !layoutKeys.has(a.key))
+      .map((a) => ({ key: a.key, label: adjustmentLabel(a) }))
+    return [...orphans, t]
+  })
 
   // The discount column only appears when something was discounted.
   const columns = layout.columns.filter(
@@ -367,14 +393,12 @@ export default function ReceiptDocument({ inv, strnChoice = '' }) {
       <div className="totals">
         {has('bottom-left') && <div className="fbr-box">{corner('bottom-left')}</div>}
         <div className="totals-box">
-          {totals
-            .filter((t) => t.visible)
-            .map((t) => (
-              <div key={t.key} className={`trow${t.key === 'total_incl' ? ' grand' : ''}`}>
-                <span>{t.label}</span>
-                <span>{totalValues[t.key]}</span>
-              </div>
-            ))}
+          {totalRows.map((t) => (
+            <div key={t.key} className={`trow${t.key === 'total_incl' ? ' grand' : ''}`}>
+              <span>{t.label}</span>
+              <span>{totalValues[t.key]}</span>
+            </div>
+          ))}
         </div>
       </div>
 

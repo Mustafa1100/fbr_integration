@@ -148,6 +148,10 @@ class Invoice(Base):
     # Buyer's Sales Tax Registration Number — receipt only, never sent to FBR.
     # Entered on the single invoice by users with pack pricing; '' otherwise.
     buyer_strn: Mapped[str] = mapped_column(String(20), default="")
+    # Extra totals rows from the single-invoice form (Invoice Settings ->
+    # Totals): JSON list of {key, label, sign, kind, value}. Receipt only,
+    # never sent to FBR; '' for file uploads and every older invoice.
+    receipt_adjustments: Mapped[str] = mapped_column(Text, default="")
 
     # draft → submitted | failed
     status: Mapped[str] = mapped_column(String(20), default="draft")

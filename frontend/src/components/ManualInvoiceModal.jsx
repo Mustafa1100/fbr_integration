@@ -57,7 +57,9 @@ function buildCsv(header, items) {
   const packKeys = items.some((it) => it.pack_qty !== undefined) ? PACK_CSV_COLUMNS : []
   // Buyer STRN (pack pricing users, receipt only) — only when filled in.
   const strnKeys = (header.buyer_strn || '').trim() ? ['buyer_strn'] : []
-  const columns = [...CSV_COLUMNS, ...strnKeys, ...packKeys, ...customKeys]
+  // Added total rows (receipt only) — only when the invoice has any.
+  const adjKeys = header.receipt_adjustments ? ['receipt_adjustments'] : []
+  const columns = [...CSV_COLUMNS, ...strnKeys, ...adjKeys, ...packKeys, ...customKeys]
   const rows = items.map((item) => {
     const merged = { ...header, ...item, ...item.custom_fields }
     return columns.map((c) => csvField(merged[c])).join(',')
@@ -239,9 +241,21 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
   // Maunds or KG — remembered for the next line of this invoice, so a lot
   // typed in KG isn't silently read as maunds on the following line.
   const [lastQtyMode, setLastQtyMode] = useState('packs')
+  // Added total rows from Invoice Settings → Totals, and this invoice's
+  // value for each (pre-filled with the saved default).
+  const [adjRows, setAdjRows] = useState([])
+  const [adjValues, setAdjValues] = useState({})
   const formRef = useRef(null)
 
   useEffect(() => {
+    api
+      .get('/api/settings/invoice-layout')
+      .then((d) => {
+        const rows = (d.layout?.totals || []).filter((t) => t.adjustment)
+        setAdjRows(rows)
+        setAdjValues(Object.fromEntries(rows.map((r) => [r.key, String(r.value ?? '')])))
+      })
+      .catch(() => {})
     api.get('/api/reference/provinces').then(setProvinces).catch(() => {})
     api
       .get('/api/settings/fbr')
@@ -368,7 +382,12 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
     try {
       const csvItems = finalItems.map((it) => toCsvItem(it, productById(it.product_id), packPricing))
       const scenario_id = isProduction ? '' : invoiceScenario
-      const csv = buildCsv({ ...header, scenario_id }, csvItems)
+      // Rows left at 0 aren't printed.
+      const adjustments = adjRows
+        .map(({ key, label, sign, kind }) => ({ key, label, sign, kind, value: Number(adjValues[key]) || 0 }))
+        .filter((a) => a.value > 0)
+      const receipt_adjustments = adjustments.length ? JSON.stringify(adjustments) : ''
+      const csv = buildCsv({ ...header, scenario_id, receipt_adjustments }, csvItems)
       const filename = `manual-${header.pos_invoice_no || Date.now()}.csv`
       const formData = new FormData()
       formData.append('file', new Blob([csv], { type: 'text/csv' }), filename)
@@ -898,6 +917,38 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
               invoice.
             </span>
           </div>
+        )}
+
+        {/* ── Added total rows (Invoice Settings → Totals) ─────────── */}
+        {adjRows.length > 0 && (
+          <>
+            <h3 className="section-title">Total adjustments</h3>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Printed on the receipt above the last total row and added to / taken off it. Not
+              sent to FBR. A % is of the total before these rows; leave 0 to skip a row.
+            </p>
+            <div className="form-grid">
+              {adjRows.map((r) => (
+                <div className="field" key={r.key}>
+                  <label>
+                    {r.label}{' '}
+                    <span className="hint">
+                      ({r.sign === 'subtract' ? '−' : '+'} {r.kind === 'pct' ? '%' : 'PKR'})
+                    </span>
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    max={r.kind === 'pct' ? 100 : undefined}
+                    value={adjValues[r.key] ?? ''}
+                    placeholder="0"
+                    onChange={(e) => setAdjValues({ ...adjValues, [r.key]: e.target.value })}
+                  />
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
         <button className="btn btn-primary" disabled={busy} style={{ width: '100%', marginTop: 6 }}>

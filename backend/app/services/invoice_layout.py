@@ -120,7 +120,86 @@ def _reserved_keys() -> set[str]:
     # Imported lazily — csv_processor imports this module.
     from app.services.csv_processor import ALL_COLUMNS
 
-    return set(ALL_COLUMNS) | set(BUILTIN_COLUMNS) | {"pack_name", "buyer_strn"}
+    return set(ALL_COLUMNS) | set(BUILTIN_COLUMNS) | {
+        "pack_name",
+        "buyer_strn",
+        ADJUSTMENTS_COLUMN,
+    }
+
+
+# User-made totals rows ("adjustments"): a named amount added to or taken off
+# the final total, as PKR or as a % of the total before adjustments. Defined
+# here with a default value; the value is set per single invoice. Receipt
+# only — never sent to FBR, not part of file uploads.
+ADJ_PREFIX = "adj:"
+MAX_ADJUSTMENTS = 10
+ADJ_SIGNS = ("add", "subtract")
+ADJ_KINDS = ("pkr", "pct")
+_ADJ_KEY_RE = re.compile(r"^adj:[a-z0-9]{1,20}$")
+# Invoice-level column the single-invoice form sends (not in the template).
+ADJUSTMENTS_COLUMN = "receipt_adjustments"
+
+
+def _adj_number(value) -> float | None:
+    try:
+        number = float(str(value if value is not None else "0").replace(",", "") or 0)
+    except ValueError:
+        return None
+    if number != number or number < 0 or number > 1e12:
+        return None
+    return round(number, 2)
+
+
+def _clean_adjustment(r, strict: bool) -> dict | None:
+    """One adjustment definition, or None (raises 400 when strict)."""
+
+    def fail(msg):
+        if strict:
+            raise HTTPException(400, msg)
+        return None
+
+    if not isinstance(r, dict) or not _ADJ_KEY_RE.match(str(r.get("key", ""))):
+        return fail("Invalid adjustment row.")
+    label = str(r.get("label") or "").strip()[:60]
+    if not label:
+        return fail("Every added total row needs a name.")
+    sign = r.get("sign")
+    kind = r.get("kind")
+    if sign not in ADJ_SIGNS:
+        return fail(f"'{label}': choose Add or Subtract.")
+    if kind not in ADJ_KINDS:
+        return fail(f"'{label}': choose PKR or %.")
+    value = _adj_number(r.get("value"))
+    if value is None or (kind == "pct" and value > 100):
+        return fail(
+            f"'{label}': the value must be a number from 0"
+            + (" to 100." if kind == "pct" else " up.")
+        )
+    return {"key": r["key"], "label": label, "sign": sign, "kind": kind, "value": value}
+
+
+def clean_invoice_adjustments(raw) -> str:
+    """The adjustments sent with a single invoice (JSON list) -> stored JSON
+    ('' when none / unreadable, so nothing changes on the receipt)."""
+    try:
+        items = json.loads(raw) if isinstance(raw, str) else raw
+    except ValueError:
+        return ""
+    out, seen = [], set()
+    for r in items if isinstance(items, list) else []:
+        adj = _clean_adjustment(r, strict=False)
+        if adj and adj["key"] not in seen:
+            seen.add(adj["key"])
+            out.append(adj)
+    return json.dumps(out[:MAX_ADJUSTMENTS]) if out else ""
+
+
+def load_adjustments(raw: str | None) -> list:
+    try:
+        value = json.loads(raw or "[]")
+    except (TypeError, ValueError):
+        return []
+    return value if isinstance(value, list) else []
 
 
 def _clean_custom_fields(raw, strict: bool) -> list[dict]:
@@ -187,11 +266,27 @@ def normalize(raw: dict | None, strict: bool = False, pack_pricing: bool = False
 
     # Totals: the exclusive value is always first and the inclusive value
     # always last (both always shown, renameable); the rest in between.
+    saved_totals = [t for t in raw.get("totals") or [] if isinstance(t, dict)]
+    adjustments = {}
+    for t in saved_totals:
+        if str(t.get("key", "")).startswith(ADJ_PREFIX):
+            adj = _clean_adjustment(t, strict)
+            if adj and adj["key"] not in adjustments:
+                adjustments[adj["key"]] = adj
+    if len(adjustments) > MAX_ADJUSTMENTS:
+        if strict:
+            raise HTTPException(400, f"At most {MAX_ADJUSTMENTS} added total rows.")
+        adjustments = dict(list(adjustments.items())[:MAX_ADJUSTMENTS])
     middle = _ordered_rows(
-        [t for t in raw.get("totals") or [] if isinstance(t, dict) and t.get("key") not in FIXED_TOTALS],
-        TOTAL_ROWS,
+        [t for t in saved_totals if t.get("key") not in FIXED_TOTALS],
+        {**TOTAL_ROWS, **{k: a["label"] for k, a in adjustments.items()}},
         lambda key: key in DEFAULT_VISIBLE_TOTALS,
     )
+    for r in middle:
+        adj = adjustments.get(r["key"])
+        if adj:
+            # Always shown (it changes the total); its name is its label.
+            r.update(adj, visible=True, default_label=adj["label"], adjustment=True)
     fixed = {
         r["key"]: r
         for r in _ordered_rows(
@@ -249,12 +344,17 @@ def _ordered_rows(saved, labels: dict, default_visible) -> list[dict]:
 
 def _rows_storage(rows: list[dict]) -> list[dict]:
     # A label is stored only when renamed, so default names keep following
-    # the built-in / field name.
+    # the built-in / field name. Adjustment rows keep their whole definition.
     return [
         {
             "key": r["key"],
             "visible": r["visible"],
             **({"label": r["label"]} if r["label"] != r["default_label"] else {}),
+            **(
+                {k: r[k] for k in ("label", "sign", "kind", "value")}
+                if r.get("adjustment")
+                else {}
+            ),
         }
         for r in rows
     ]
