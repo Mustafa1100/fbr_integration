@@ -262,7 +262,8 @@ export default function ReceiptDocument({ inv, strnChoice = '' }) {
   const adjustments = adjustmentAmounts(beforeAdjustments, inv.adjustments)
   const adjByKey = Object.fromEntries(adjustments.map((a) => [a.key, a]))
   for (const a of adjustments) {
-    totalValues[a.key] = a.sign === 'subtract' ? `−${money(a.amount)}` : money(a.amount)
+    // Printed without a +/− sign; the sign only decides the last row.
+    totalValues[a.key] = money(a.amount)
   }
   totalValues.total_incl = money(
     beforeAdjustments + adjustments.reduce((sum, a) => sum + a.signed, 0)
