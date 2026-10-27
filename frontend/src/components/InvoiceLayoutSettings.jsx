@@ -53,21 +53,52 @@ function syncColumns(columns, fields) {
 // Server layout -> editing state (each row's rename split out as `heading`).
 function toEditable(layout) {
   const editable = (rows) =>
-    rows.map((r) => ({ ...r, heading: r.label !== r.default_label ? r.label : '' }))
+    rows.map((r) => ({
+      ...r,
+      // An added total row has no built-in name: its name is always typed.
+      heading: r.adjustment || r.label !== r.default_label ? r.label : '',
+    }))
   return { ...layout, columns: editable(layout.columns), totals: editable(layout.totals) }
 }
 
 // Editing state -> what the API stores (an empty label = the default name).
 const forSave = (rows) =>
-  rows.map(({ key, visible, heading }) => ({ key, visible, label: heading.trim() }))
+  rows.map(({ key, visible, heading, adjustment, sign, kind, value }) => ({
+    key,
+    visible,
+    label: heading.trim(),
+    ...(adjustment ? { sign, kind, value: value === '' ? 0 : value } : {}),
+  }))
 
 // Totals rows print `heading || default_label`; columns get this via syncColumns.
-const withLabels = (rows) => rows.map((r) => ({ ...r, label: r.heading.trim() || r.default_label }))
+const withLabels = (rows) =>
+  rows.map((r) =>
+    r.adjustment
+      ? { ...r, label: r.heading.trim(), default_label: r.heading.trim() }
+      : { ...r, label: r.heading.trim() || r.default_label }
+  )
+
+// A new added total row ("adjustment"), placed just above the last row.
+const ADJ_PREFIX = 'adj:'
+const MAX_ADJUSTMENTS = 10
+function newAdjustment() {
+  return {
+    key: ADJ_PREFIX + Math.random().toString(36).slice(2, 10),
+    adjustment: true,
+    visible: true,
+    heading: '',
+    label: '',
+    default_label: '',
+    sign: 'subtract',
+    kind: 'pkr',
+    value: '',
+  }
+}
 
 // A list of rows (invoice columns, totals) to tick, rename and reorder.
 // `fixed` rows (the first / last totals) can be renamed but not hidden or
 // moved, and nothing can be moved past them.
-function RowList({ rows, onChange, describe }) {
+function RowList({ rows, onChange, describe, onRemove }) {
   const set = (i, patch) => onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
   const lo = rows[0]?.fixed ? 1 : 0
   const hi = rows[rows.length - 1]?.fixed ? rows.length - 2 : rows.length - 1
@@ -89,26 +120,80 @@ function RowList({ rows, onChange, describe }) {
                   type="checkbox"
                   className="select-check"
                   checked={r.visible}
-                  disabled={r.fixed}
+                  disabled={r.fixed || r.adjustment}
                   aria-label={`Show ${r.label}`}
+                  title={r.adjustment ? 'Always shown, as it changes the total' : undefined}
                   onChange={() => set(i, { visible: !r.visible })}
                 />
               </td>
-              <td>
-                {/* The name that prints; blank = the default name. */}
-                <input
-                  value={r.heading}
-                  placeholder={r.default_label || '(unnamed field)'}
-                  aria-label={`Name for ${r.default_label}`}
-                  maxLength={60}
-                  disabled={!r.visible}
-                  onChange={(e) => set(i, { heading: e.target.value })}
-                />
-                <div className="hint" style={{ marginTop: 3, fontSize: '0.75rem' }}>
-                  {r.heading.trim() && <>Original: {r.default_label} </>}
-                  {describe?.(r)}
-                </div>
-              </td>
+              {r.adjustment ? (
+                <td>
+                  <div className="adj-fields">
+                    <input
+                      value={r.heading}
+                      placeholder="Row name, e.g. Income Tax"
+                      aria-label="Row name"
+                      maxLength={60}
+                      onChange={(e) => set(i, { heading: e.target.value })}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max={r.kind === 'pct' ? 100 : undefined}
+                      step="any"
+                      value={r.value}
+                      placeholder="0"
+                      aria-label="Default value"
+                      title="Default value, can be changed on each single invoice"
+                      onChange={(e) => set(i, { value: e.target.value })}
+                    />
+                    <div className="adj-toggles">
+                      <div className="seg-toggle" role="group" aria-label="Add or subtract">
+                        {[['add', '+', 'Add'], ['subtract', '−', 'Subtract']].map(([v, sym, tip]) => (
+                          <button
+                            key={v}
+                            type="button"
+                            title={tip}
+                            aria-label={tip}
+                            className={r.sign === v ? 'active' : undefined}
+                            onClick={() => set(i, { sign: v })}
+                          >
+                            {sym}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="seg-toggle" role="group" aria-label="PKR or percent">
+                        {[['pkr', 'PKR'], ['pct', '%']].map(([v, text]) => (
+                          <button
+                            key={v}
+                            type="button"
+                            className={r.kind === v ? 'active' : undefined}
+                            onClick={() => set(i, { kind: v })}
+                          >
+                            {text}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </td>
+              ) : (
+                <td>
+                  {/* The name that prints; blank = the default name. */}
+                  <input
+                    value={r.heading}
+                    placeholder={r.default_label || '(unnamed field)'}
+                    aria-label={`Name for ${r.default_label}`}
+                    maxLength={60}
+                    disabled={!r.visible}
+                    onChange={(e) => set(i, { heading: e.target.value })}
+                  />
+                  <div className="hint" style={{ marginTop: 3, fontSize: '0.75rem' }}>
+                    {r.heading.trim() && <>Original: {r.default_label} </>}
+                    {describe?.(r)}
+                  </div>
+                </td>
+              )}
               <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                 {r.fixed ? (
                   <span className="badge draft">{i === 0 ? 'always first' : 'always last'}</span>
@@ -132,6 +217,20 @@ function RowList({ rows, onChange, describe }) {
                     >
                       <ArrowDown size={14} />
                     </button>
+                    {r.adjustment && onRemove && (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => onRemove(i)}
+                          aria-label="Remove row"
+                          title="Remove row"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </>
+                    )}
                   </>
                 )}
               </td>
@@ -210,6 +309,10 @@ function sampleInvoice(layout, seller) {
     items,
     total_tax: 360,
     advance_tax: 34.3, // the two lines' advance tax
+    // Added total rows, at their default values.
+    adjustments: layout.totals
+      .filter((t) => t.adjustment && t.label)
+      .map(({ key, label, sign, kind, value }) => ({ key, label, sign, kind, value: Number(value) || 0 })),
   }
 }
 
@@ -493,7 +596,23 @@ export default function InvoiceLayoutSettings() {
               exclusive value is always first and the taxes inclusive value always last (in bold).
               A hidden row still counts towards the inclusive value.
             </p>
-            <RowList rows={layout.totals} onChange={(totals) => update({ totals: withLabels(totals) })} />
+            <RowList
+              rows={layout.totals}
+              onChange={(totals) => update({ totals: withLabels(totals) })}
+              onRemove={(i) => update({ totals: layout.totals.filter((_, idx) => idx !== i) })}
+            />
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              style={{ marginTop: '0.75rem' }}
+              disabled={layout.totals.filter((t) => t.adjustment).length >= MAX_ADJUSTMENTS}
+              onClick={() => {
+                const rows = layout.totals
+                update({ totals: [...rows.slice(0, -1), newAdjustment(), rows[rows.length - 1]] })
+              }}
+            >
+              <Plus size={14} /> Add row
+            </button>
           </div>
 
           <div className="card" style={{ marginBottom: '1.5rem' }}>

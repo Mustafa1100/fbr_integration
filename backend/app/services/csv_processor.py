@@ -485,6 +485,11 @@ def _process_rows(
             # Receipt-only; from the single-invoice form (pack pricing users).
             # Not in the template; absent / blank -> '' as before.
             buyer_strn=(first.get("buyer_strn") or "")[:20],
+            # Extra totals rows — single-invoice form only (not in the
+            # template); absent -> '' and the receipt is as before.
+            receipt_adjustments=invoice_layout.clean_invoice_adjustments(
+                first.get(invoice_layout.ADJUSTMENTS_COLUMN) or ""
+            ),
             # Advance income tax — sum of the group's rows. Marked "set" so
             # the receipt's one-time back-fill isn't offered for it.
             advance_tax=round(

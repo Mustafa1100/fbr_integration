@@ -3468,3 +3468,75 @@ def test_buyer_strn_print_toggle_only_for_pack_users(user_headers, admin_headers
     client.put(f"/api/admin/users/{user_id}/fbr-settings", json={**fbr, "pack_pricing": False}, headers=admin_headers)
     assert "buyer_strn" not in settings()["layout"]["header"]
     client.put("/api/settings/invoice-layout", json={}, headers=user_headers)
+
+
+def test_totals_adjustment_rows_in_settings(user_headers):
+    def settings():
+        return client.get("/api/settings/invoice-layout", headers=user_headers).json()["layout"]
+
+    before = settings()
+    # Nothing changes until a user adds a row.
+    assert not any(t.get("adjustment") for t in before["totals"])
+    totals = before["totals"]
+    rows = totals[:-1] + [
+        {"key": "adj:inc1", "label": "Income Tax", "sign": "subtract", "kind": "pct", "value": 1, "visible": False},
+        {"key": "adj:frt1", "label": "Freight", "sign": "add", "kind": "pkr", "value": "250"},
+    ] + totals[-1:]
+    saved = client.put("/api/settings/invoice-layout", json={**before, "totals": rows}, headers=user_headers)
+    assert saved.status_code == 200, saved.text
+    keys = [t["key"] for t in settings()["totals"]]
+    # Kept where placed: before the always-last inclusive total.
+    assert keys[-3:] == ["adj:inc1", "adj:frt1", "total_incl"] and keys[0] == "total_excl"
+    inc = next(t for t in settings()["totals"] if t["key"] == "adj:inc1")
+    assert inc["visible"] is True and inc["value"] == 1 and inc["sign"] == "subtract" and inc["kind"] == "pct"
+    assert next(t for t in settings()["totals"] if t["key"] == "adj:frt1")["value"] == 250
+
+    # Moving one up keeps the new order.
+    moved = settings()["totals"]
+    i = [t["key"] for t in moved].index("adj:inc1")
+    moved[1], moved[i] = moved[i], moved[1]
+    client.put("/api/settings/invoice-layout", json={**settings(), "totals": moved}, headers=user_headers)
+    assert [t["key"] for t in settings()["totals"]][1] == "adj:inc1"
+
+    # Bad rows are refused when saving.
+    for bad in (
+        {"key": "adj:x1", "label": "", "sign": "add", "kind": "pkr", "value": 1},
+        {"key": "adj:x1", "label": "A", "sign": "times", "kind": "pkr", "value": 1},
+        {"key": "adj:x1", "label": "A", "sign": "add", "kind": "pct", "value": 150},
+        {"key": "adj:x1", "label": "A", "sign": "add", "kind": "pkr", "value": -5},
+    ):
+        r = client.put("/api/settings/invoice-layout", json={**before, "totals": totals[:-1] + [bad] + totals[-1:]}, headers=user_headers)
+        assert r.status_code == 400, bad
+
+    client.put("/api/settings/invoice-layout", json={}, headers=user_headers)
+    assert not any(t.get("adjustment") for t in settings()["totals"])
+
+
+def test_receipt_adjustments_only_from_single_invoice(user_headers):
+    head = "pos_invoice_no,invoice_date,buyer_ntn_cnic,buyer_name,buyer_province,buyer_registration_type,product_description,hs_code,rate,uom,quantity,unit_price"
+    row = "ADJ-1,2026-10-27,0698347,N.P. Cotton Mills,Sindh,Registered,Cotton Lint,5201.0090,18%,KG,100,490"
+
+    def upload(csv_text, name):
+        r = client.post("/api/uploads", files={"file": (name, csv_text, "text/csv")}, headers=user_headers).json()
+        i = client.get(f"/api/invoices?upload_id={r['id']}", headers=user_headers).json()[0]
+        return client.get(f"/api/invoices/{i['id']}", headers=user_headers).json()
+
+    adj = json.dumps([
+        {"key": "adj:inc1", "label": "Income Tax", "sign": "subtract", "kind": "pct", "value": "1"},
+        {"key": "adj:frt1", "label": "Freight", "sign": "add", "kind": "pkr", "value": 250},
+        {"key": "bad", "label": "Nope", "sign": "add", "kind": "pkr", "value": 1},
+    ])
+    cell = '"' + adj.replace('"', '""') + '"'
+    with_adj = upload(f"{head},receipt_adjustments\n{row},{cell}\n", "adj.csv")
+    assert with_adj["adjustments"] == [
+        {"key": "adj:inc1", "label": "Income Tax", "sign": "subtract", "kind": "pct", "value": 1.0},
+        {"key": "adj:frt1", "label": "Freight", "sign": "add", "kind": "pkr", "value": 250.0},
+    ]
+    # Never sent to FBR.
+    assert "Freight" not in json.dumps(with_adj["payload"])
+
+    # Files without the column (every upload) are exactly as before.
+    without = upload(f"{head}\n{row.replace('ADJ-1', 'ADJ-2')}\n", "plain.csv")
+    junk = upload(f"{head},receipt_adjustments\n{row.replace('ADJ-1', 'ADJ-3')},not json\n", "junk.csv")
+    assert without["adjustments"] == junk["adjustments"] == []
+    assert without["payload"]["items"] == with_adj["payload"]["items"]

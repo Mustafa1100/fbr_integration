@@ -1134,3 +1134,9 @@ tr.row-selected td { background: var(--brand-50); }
   .receipt-sheet { break-after: page; page-break-after: always; margin: 0; }
   .receipt-sheet:last-child { break-after: auto; page-break-after: auto; }
 }
+
+/* Invoice Settings → Totals: an added row's name, +/−, PKR/% and default value. */
+.adj-fields { display: grid; grid-template-columns: 1fr 90px; gap: 6px; }
+.adj-fields > input { min-width: 0; }
+.adj-toggles { grid-column: 1 / -1; display: flex; gap: 6px; }
+.adj-toggles .seg-toggle > button { min-width: 34px; padding: 4px 10px; }

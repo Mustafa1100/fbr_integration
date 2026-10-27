@@ -177,6 +177,7 @@ def detail_out(inv: Invoice, fbr) -> dict:
         "buyer_address": inv.buyer_address,
         "buyer_registration_type": inv.buyer_registration_type,
         "buyer_strn": inv.buyer_strn or "",
+        "adjustments": invoice_layout.load_adjustments(inv.receipt_adjustments),
         "fbr_dated": inv.fbr_dated,
         "seller": {
             "ntn_cnic": fbr.seller_ntn_cnic,

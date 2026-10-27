@@ -162,6 +162,12 @@ def run_light_migrations() -> None:
                 conn.execute(
                     text("ALTER TABLE invoices ADD COLUMN buyer_strn VARCHAR(20) NOT NULL DEFAULT ''")
                 )
+        if "receipt_adjustments" not in invoice_columns:
+            # Receipt-only extra totals rows; '' (none) for every existing invoice.
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE invoices ADD COLUMN receipt_adjustments TEXT NOT NULL DEFAULT ''")
+                )
         if "is_paid" not in invoice_columns:
             with engine.begin() as conn:
                 conn.execute(
