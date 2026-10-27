@@ -276,13 +276,14 @@ function ProductModal({ product, uoms, scenarios, customFields, packPricing, onC
         {packPricing && (
           <>
             <h4 className="section-title" style={{ fontSize: '0.85rem', marginTop: 4 }}>
-              Sold in packs <span className="hint">(optional — e.g. per Maund)</span>
+              Sold in packs <span className="hint">(optional — e.g. per Maund, Bag or Carton)</span>
             </h4>
             <p className="muted" style={{ margin: '0 0 12px' }}>
-              Price this product per pack, e.g. <b>Rs 1,175 per Maund</b> with Quantity{' '}
-              <b>37.324</b> {unitLabel} in one pack. On a single invoice you can then enter the
-              number of packs or the {unitLabel}, and the value is worked out as packs × price per
-              pack. Leave the price per pack empty to price per {unitLabel} as usual.
+              Price this product per pack of any kind — a Maund, Bag, Carton, Dozen, Drum… Give the
+              pack a name (singular, e.g. <b>Bag</b>), set Quantity to the {unitLabel} in one pack
+              (e.g. <b>40</b>) and enter the price per pack. On a single invoice you can then enter
+              the number of packs or the {unitLabel}, and the value is worked out as packs × price
+              per pack. Leave the price per pack empty to price per {unitLabel} as usual.
             </p>
             <div className="form-grid">
               <div className="field">
