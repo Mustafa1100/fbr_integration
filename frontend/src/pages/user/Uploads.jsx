@@ -19,6 +19,7 @@ import {
   RotateCw,
 } from 'lucide-react'
 import { api } from '../../api'
+import GridTemplateModal from '../../components/GridTemplateModal'
 import ManualInvoiceModal from '../../components/ManualInvoiceModal'
 import Modal from '../../components/Modal'
 import PaginationBar from '../../components/PaginationBar'
@@ -56,6 +57,11 @@ export default function Uploads() {
   const [canProd, setCanProd] = useState(false)
   const [submitTarget, setSubmitTarget] = useState('sandbox') // 'sandbox' | 'production'
   const [showManualModal, setShowManualModal] = useState(false)
+  const [showTemplate, setShowTemplate] = useState(false)
+  // Check of the chosen file (product-grid files only): null = none,
+  // 'checking', or the server's answer { format, ok, errors, summary }.
+  const [fileCheck, setFileCheck] = useState(null)
+  const checkSeq = useRef(0)
   const fileRef = useRef()
   const isProdTarget = submitTarget === 'production'
 
@@ -115,6 +121,7 @@ export default function Uploads() {
       else setLastResult(result)
       fileRef.current.value = ''
       setFileName('')
+      setFileCheck(null)
       if (page === 1) await refresh()
       else setPage(1)
     } catch (err) {
@@ -127,7 +134,34 @@ export default function Uploads() {
   function clearFile(e) {
     e.stopPropagation()
     setFileName('')
+    checkSeq.current += 1
+    setFileCheck(null)
     if (fileRef.current) fileRef.current.value = ''
+  }
+
+  // Check a chosen file straight away, before Upload — nothing is saved or
+  // sent. Only product-grid files get a result; a normal file comes back as
+  // "standard" and uploads exactly as before.
+  async function checkFile(file) {
+    const seq = ++checkSeq.current
+    setFileCheck(null)
+    if (!file) return
+    setFileCheck('checking')
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('target', submitTarget)
+      const result = await api.upload('/api/uploads/check', formData)
+      if (seq === checkSeq.current) setFileCheck(result.format === 'grid' ? result : null)
+    } catch {
+      // The check is only a helper; the upload still validates the file.
+      if (seq === checkSeq.current) setFileCheck(null)
+    }
+  }
+
+  function pickFile(file) {
+    setFileName(file?.name || '')
+    checkFile(file)
   }
 
   function handleDrop(e) {
@@ -138,7 +172,7 @@ export default function Uploads() {
     const dt = new DataTransfer()
     dt.items.add(file)
     fileRef.current.files = dt.files
-    setFileName(file.name)
+    pickFile(file)
   }
 
   async function downloadTemplate(scenario) {
@@ -182,7 +216,7 @@ export default function Uploads() {
           </p>
         </div>
         <div className="page-actions">
-          <button type="button" className="btn btn-secondary" onClick={() => downloadTemplate()}>
+          <button type="button" className="btn btn-secondary" onClick={() => setShowTemplate(true)}>
             <Download size={16} /> Download template
           </button>
           <Link to="/columns" className="btn btn-secondary">
@@ -266,7 +300,7 @@ export default function Uploads() {
                   ref={fileRef}
                   required
                   className="dropzone-input"
-                  onChange={(e) => setFileName(e.target.files[0]?.name || '')}
+                  onChange={(e) => pickFile(e.target.files[0])}
                 />
                 {fileName ? (
                   <>
@@ -288,8 +322,12 @@ export default function Uploads() {
                 )}
               </div>
             </div>
+            <FileCheckResult check={fileCheck} />
             <div className="row-actions" style={{ flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" disabled={busy}>
+              <button
+                className="btn btn-primary"
+                disabled={busy || fileCheck === 'checking' || (fileCheck != null && !fileCheck.ok)}
+              >
                 {busy ? (
                   <>
                     <Loader2 size={16} className="spin" /> Processing…
@@ -590,6 +628,16 @@ export default function Uploads() {
         </Modal>
       )}
 
+      {showTemplate && (
+        <GridTemplateModal
+          onClose={() => setShowTemplate(false)}
+          onStandardTemplate={() => {
+            setShowTemplate(false)
+            downloadTemplate()
+          }}
+        />
+      )}
+
       {showManualModal && (
         <ManualInvoiceModal
           onClose={() => setShowManualModal(false)}
@@ -599,5 +647,62 @@ export default function Uploads() {
         />
       )}
     </>
+  )
+}
+
+// 2026-11-01 -> 01/11/2026
+const dmy = (iso) => (iso ? iso.split('-').reverse().join('/') : '')
+const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`
+
+// What the check of a chosen product-grid file found: every problem (Upload
+// stays disabled), or a short summary of what will be created.
+function FileCheckResult({ check }) {
+  if (!check) return null
+  if (check === 'checking') {
+    return (
+      <p className="hint file-check">
+        <Loader2 size={14} className="spin" /> Checking file…
+      </p>
+    )
+  }
+  if (check.ok) {
+    const s = check.summary
+    const dates = s.date_from === s.date_to ? dmy(s.date_from) : `${dmy(s.date_from)} to ${dmy(s.date_to)}`
+    return (
+      <div className="alert ok file-check">
+        <CheckCircle2 size={17} />
+        <span>
+          <strong>File checked:</strong> {plural(s.invoices, 'invoice')}, {plural(s.buyers, 'buyer')},{' '}
+          {plural(s.products, 'product')}, {s.packs.toLocaleString()} packs, dated {dates}. Click Upload
+          to continue.
+        </span>
+      </div>
+    )
+  }
+  const { products, buyers, other } = check.errors
+  const section = (title, items) =>
+    items.length > 0 && (
+      <>
+        <h4>
+          {title} ({items.length})
+        </h4>
+        <ul>
+          {items.map((m, i) => (
+            <li key={i}>{m}</li>
+          ))}
+        </ul>
+      </>
+    )
+  return (
+    <div className="alert error file-check">
+      <AlertCircle size={17} />
+      <div>
+        <strong>This file can&apos;t be uploaded yet. Nothing has been sent to FBR.</strong>
+        {section('Products not found in your saved Products', products)}
+        {section('Buyers not found in your saved Customers', buyers)}
+        {section('Other problems', other)}
+        <p style={{ margin: '10px 0 0' }}>Fix these and choose the file again.</p>
+      </div>
+    </div>
   )
 }

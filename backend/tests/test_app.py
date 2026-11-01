@@ -3540,3 +3540,287 @@ def test_receipt_adjustments_only_from_single_invoice(user_headers):
     junk = upload(f"{head},receipt_adjustments\n{row.replace('ADJ-1', 'ADJ-3')},not json\n", "junk.csv")
     assert without["adjustments"] == junk["adjustments"] == []
     assert without["payload"]["items"] == with_adj["payload"]["items"]
+
+
+def test_customers_crud_and_soft_delete(user_headers, admin_headers):
+    body = {"name": "  N.P. Cotton Mills ", "ntn_cnic": "0698347", "registration_type": "Registered",
+            "province": "Sindh", "address": "Karachi", "strn": "1200520501673"}
+    r = client.post("/api/customers", json=body, headers=user_headers)
+    assert r.status_code == 201, r.text
+    c = r.json()
+    assert c["name"] == "N.P. Cotton Mills" and c["registration_type"] == "Registered"
+    cid = c["id"]
+
+    # Minimal: just a name.
+    walk = client.post("/api/customers", json={"name": "Ahmed Traders"}, headers=user_headers).json()
+    assert walk["registration_type"] == "Unregistered" and walk["ntn_cnic"] == ""
+    names = [x["name"] for x in client.get("/api/customers", headers=user_headers).json()]
+    assert names == ["Ahmed Traders", "N.P. Cotton Mills"]
+
+    # Validation.
+    assert client.post("/api/customers", json={"name": " "}, headers=user_headers).status_code == 422
+    assert client.post("/api/customers", json={"name": "X", "registration_type": "Other"}, headers=user_headers).status_code == 422
+
+    # Update.
+    r = client.put(f"/api/customers/{cid}", json={**body, "address": "Site Area"}, headers=user_headers)
+    assert r.json()["address"] == "Site Area"
+
+    # Other users can't see or touch them.
+    other = client.post("/api/admin/users", json={"email": "cust-other@example.com", "full_name": "O", "password": "Password123!"}, headers=admin_headers)
+    if other.status_code in (200, 201):
+        tok = client.post("/api/auth/login", json={"email": "cust-other@example.com", "password": "Password123!"}).json().get("access_token")
+        if tok:
+            h = {"Authorization": f"Bearer {tok}"}
+            assert client.get("/api/customers", headers=h).json() == []
+            assert client.delete(f"/api/customers/{cid}", headers=h).status_code in (403, 404)
+
+    # Soft delete.
+    assert client.delete(f"/api/customers/{cid}", headers=user_headers).status_code == 200
+    assert [x["name"] for x in client.get("/api/customers", headers=user_headers).json()] == ["Ahmed Traders"]
+    assert client.put(f"/api/customers/{cid}", json=body, headers=user_headers).status_code == 404
+    client.delete(f"/api/customers/{walk['id']}", headers=user_headers)
+
+
+def test_customer_registration_type_lookup(user_headers, admin_headers, monkeypatch):
+    import httpx as _httpx
+    from app.fbr import client as fbr_client
+
+    url = "/api/customers/registration-type?number="
+    # Not a valid NTN / CNIC: not checked.
+    assert client.get(url + "12", headers=user_headers).json() == {"registration_type": None}
+
+    user_id = next(u["id"] for u in client.get("/api/admin/users", headers=admin_headers).json() if u["email"] == "shop@example.com")
+    fbr = client.get(f"/api/admin/users/{user_id}/fbr-settings", headers=admin_headers).json()
+    client.put(f"/api/admin/users/{user_id}/fbr-settings",
+               json={**fbr, "sandbox_token": "good-test", "production_token": "bad-live"}, headers=admin_headers)
+
+    calls = []
+
+    def fake_post(u, headers=None, json=None, timeout=None):
+        calls.append(headers["Authorization"])
+        req = _httpx.Request("POST", u)
+        if headers["Authorization"] == "Bearer bad-live":
+            return _httpx.Response(401, request=req, text="Unauthorized")
+        kind = "Registered" if json["Registration_No"] == "4120144015589" else "unregistered"
+        return _httpx.Response(200, request=req, json={"statuscode": "00", "REGISTRATION_NO": json["Registration_No"], "REGISTRATION_TYPE": kind})
+
+    monkeypatch.setattr(fbr_client.httpx, "post", fake_post)
+    # Live token rejected -> falls back to the test token.
+    assert client.get(url + "41201-4401558-9", headers=user_headers).json() == {"registration_type": "Registered"}
+    assert calls == ["Bearer bad-live", "Bearer good-test"]
+    assert client.get(url + "1234567", headers=user_headers).json() == {"registration_type": "Unregistered"}
+
+    # FBR unreachable: not checked, no error.
+    def down(*a, **k):
+        raise _httpx.ConnectError("down")
+    monkeypatch.setattr(fbr_client.httpx, "post", down)
+    assert client.get(url + "1234567", headers=user_headers).json() == {"registration_type": None}
+
+    client.put(f"/api/admin/users/{user_id}/fbr-settings", json={**fbr, "sandbox_token": "", "production_token": ""}, headers=admin_headers)
+
+
+def test_customers_one_per_ntn_cnic(user_headers):
+    a = client.post("/api/customers", json={"name": "A", "ntn_cnic": "4120144015589"}, headers=user_headers).json()
+    # The same number is refused, naming the saved one.
+    r = client.post("/api/customers", json={"name": "B", "ntn_cnic": "4120144015589"}, headers=user_headers)
+    assert r.status_code == 409 and "A" in r.json()["detail"]
+    # Numbers only: dashes or spaces are refused.
+    for bad in ("41201-4401558-9", "4120 144015589", "abc"):
+        assert client.post("/api/customers", json={"name": "D", "ntn_cnic": bad}, headers=user_headers).status_code == 422
+    # Editing a customer keeps its own number; another can't take it.
+    assert client.put(f"/api/customers/{a['id']}", json={"name": "A2", "ntn_cnic": "4120144015589"}, headers=user_headers).status_code == 200
+    b = client.post("/api/customers", json={"name": "B", "ntn_cnic": "1234567"}, headers=user_headers).json()
+    assert client.put(f"/api/customers/{b['id']}", json={"name": "B", "ntn_cnic": "4120144015589"}, headers=user_headers).status_code == 409
+    # Blank numbers are fine many times; a deleted customer frees its number.
+    for n in ("W1", "W2"):
+        assert client.post("/api/customers", json={"name": n}, headers=user_headers).status_code == 201
+    client.delete(f"/api/customers/{a['id']}", headers=user_headers)
+    c = client.post("/api/customers", json={"name": "C", "ntn_cnic": "4120144015589"}, headers=user_headers)
+    assert c.status_code == 201
+    for x in client.get("/api/customers", headers=user_headers).json():
+        client.delete(f"/api/customers/{x['id']}", headers=user_headers)
+
+
+# ── Product-grid uploads (Date / Invoice No / Buyer Name + product columns) ──
+
+
+def _xlsx(rows):
+    import io as _io
+
+    import openpyxl as _openpyxl
+
+    wb = _openpyxl.Workbook()
+    for r in rows:
+        wb.active.append(r)
+    buf = _io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _grid_account(admin_headers, email, **fbr):
+    h, uid = _make_account(admin_headers, email, **fbr)
+
+    def prod(**b):
+        body = {"hs_code": "2402.2000", "uom": "Numbers, pieces, units", "rate": "18%", **b}
+        return client.post("/api/products", json=body, headers=h).json()
+
+    capstan = prod(description="CAPSTAN  FILTER 20 HL", pack_size=10, unit_price=100)
+    gold = prod(description="GOLD LEAF 20HL", pack_size=1, unit_price=500, sales_tax=95, discount=10)
+    prod(description="VELO MIX 10 MG", pack_size=1, unit_price=50)
+    akram = client.post("/api/customers", json={
+        "name": "AKRAM HYD NAWABSHAH", "ntn_cnic": "1234567", "registration_type": "Registered",
+        "province": "Sindh", "address": "Nawabshah"}, headers=h).json()
+    client.post("/api/customers", json={"name": "A-ONE"}, headers=h)
+    return h, capstan, gold, akram
+
+
+def test_grid_upload_end_to_end(admin_headers):
+    h, capstan, gold, akram = _grid_account(admin_headers, "grid1@example.com")
+    raw = _xlsx([
+        ["Filer"],  # title row above the headings: ignored
+        ["Date", "Invoice No", "Buyer Name", "capstan filter 20 hl", None, "GOLD LEAF 20HL", "Total"],
+        [None, None, None, "Pack", None, "Pack", "Pack"],  # sub-heading: ignored
+        [datetime(2026, 11, 1), "WS-1", "Akram Hyd  Nawabshah", 2.5, None, 3, 999],
+        ["01/11/2026", 102, "A-ONE", 0, None, 1, 1],
+        ["01/11/2026", "WS-3", "A-ONE", 0, None, None, 0],  # nothing sold: skipped
+        [None, None, "Grand Total", 2.5, None, 4, 1000],
+    ])
+    files = {"file": ("WholeSaler.xlsx", raw, XLSX)}
+    check = client.post("/api/uploads/check", files=files, headers=h).json()
+    assert check["format"] == "grid" and check["ok"], check
+    assert check["summary"] == {"invoices": 2, "lines": 3, "buyers": 2, "products": 2,
+                                "packs": 6.5, "date_from": "2026-11-01", "date_to": "2026-11-01"}
+
+    up = client.post("/api/uploads", files=files, headers=h).json()
+    assert up["status"] == "completed", up
+    assert up["invoices_created"] == 2 and up["total_rows"] == 3
+    invoices = {i["pos_invoice_no"]: i for i in client.get("/api/invoices", headers=h).json()}
+    assert set(invoices) == {"WS-1", "102"}
+    d = client.get(f"/api/invoices/{invoices['WS-1']['id']}", headers=h).json()
+    p = d["payload"]
+    # Buyer from the saved customer.
+    assert p["buyerNTNCNIC"] == "1234567" and p["buyerBusinessName"] == "AKRAM HYD NAWABSHAH"
+    assert p["buyerRegistrationType"] == "Registered" and p["buyerProvince"] == "Sindh"
+    items = {i["productDescription"]: i for i in p["items"]}
+    # 2.5 packs × 10 per pack = 25 units × 100 = 2,500; tax auto 18%.
+    cap = items["CAPSTAN  FILTER 20 HL"]
+    assert cap["quantity"] == 25 and cap["valueSalesExcludingST"] == 2500 and cap["salesTaxApplicable"] == 450
+    # Saved per-pack amounts × packs (3): sales tax 285, discount 30.
+    gl = items["GOLD LEAF 20HL"]
+    assert gl["quantity"] == 3 and gl["valueSalesExcludingST"] == 1500
+    assert gl["salesTaxApplicable"] == 285 and gl["discount"] == 30
+    # A buyer saved without a number: same defaults as a normal upload.
+    d2 = client.get(f"/api/invoices/{invoices['102']['id']}", headers=h).json()
+    assert d2["payload"]["buyerBusinessName"] == "A-ONE"
+    assert d2["payload"]["buyerRegistrationType"] == "Unregistered"
+
+
+def test_grid_upload_lists_every_problem_and_creates_nothing(admin_headers):
+    h, *_ = _grid_account(admin_headers, "grid2@example.com")
+    raw = _xlsx([
+        ["Date", "Invoice No", "Buyer Name", "CAPSTAN FILTER 20 HL", "GOLDLEAF 20HL", "VELO MINT"],
+        ["2026-11-01", "A1", "ARSLAN HYDERABAD", 1, 1, None],
+        ["2026-11-01", "A1", "A-ONE", 1, None, None],
+        ["31/31/2026", "A3", "arslan hyderabad", "two", None, None],
+        ["2026-11-01", None, "A-ONE", 1, None, None],
+    ])
+    files = {"file": ("bad.xlsx", raw, XLSX)}
+    check = client.post("/api/uploads/check", files=files, headers=h).json()
+    assert check["format"] == "grid" and not check["ok"]
+    e = check["errors"]
+    assert len(e["products"]) == 2
+    assert 'Column E: "GOLDLEAF 20HL" is not a saved product' in e["products"][0]
+    assert 'Column F: "VELO MINT"' in e["products"][1]
+    assert e["buyers"] == ['Rows 2, 4: "ARSLAN HYDERABAD" is not a saved customer. Check the spelling, '
+                           "or add them on the Customers page."]
+    other = " | ".join(e["other"])
+    assert 'Rows 2 and 3: invoice number "A1" is used twice' in other
+    assert '"31/31/2026" is not a date' in other
+    assert '"two" is not a number of packs' in other
+    assert "Row 5: Invoice No is missing." in other
+
+    up = client.post("/api/uploads", files=files, headers=h).json()
+    assert up["status"] == "failed" and up["invoices_created"] == 0
+    assert up["error"].startswith("This file wasn't uploaded. Nothing was sent to FBR.")
+    assert "GOLDLEAF 20HL" in up["error"] and "ARSLAN HYDERABAD" in up["error"]
+    assert client.get("/api/invoices", headers=h).json() == []
+
+
+def test_grid_check_leaves_normal_files_alone(user_headers):
+    # A normal file: the check says "standard" and the upload is unchanged.
+    for name, body in (("sales.csv", _ENV_CSV), ("bad.csv", "foo,bar\n1,2\n"),
+                       ("half.csv", "buyer_name,invoice no,date\nX,1,2026-11-01\n")):
+        r = client.post("/api/uploads/check", files={"file": (name, body, "text/csv")}, headers=user_headers)
+        assert r.json() == {"format": "standard"}, name
+    up = client.post("/api/uploads", files={"file": ("bad.csv", "foo,bar\n1,2\n", "text/csv")},
+                     headers=user_headers).json()
+    assert up["status"] == "failed" and up["error"].startswith("Missing required columns")
+    # Grid-looking headings next to the normal format's columns: still normal.
+    mixed = "Date,Invoice No,Buyer Name,pos_invoice_no\n2026-11-01,1,X,1\n"
+    r = client.post("/api/uploads/check", files={"file": ("m.csv", mixed, "text/csv")}, headers=user_headers)
+    assert r.json() == {"format": "standard"}
+    # Excel in the normal format.
+    rows = [
+        ["pos_invoice_no", "invoice_date", "product_description", "hs_code", "quantity", "unit_price"],
+        ["P1", "2026-11-01", "W", "0101.2100", 1, 10],
+    ]
+    r = client.post("/api/uploads/check", files={"file": ("n.xlsx", _xlsx(rows), XLSX)}, headers=user_headers)
+    assert r.json() == {"format": "standard"}
+
+
+def test_grid_csv_and_pack_pricing(admin_headers):
+    h, *_ = _grid_account(admin_headers, "grid3@example.com", pack_pricing=True)
+    client.post("/api/products", json={
+        "description": "Wheat Bran", "hs_code": "2302.3000", "uom": "KG", "rate": "18%",
+        "pack_size": 37.324, "unit_price": 1, "pack_name": "Maund", "pack_price": 1175}, headers=h)
+    client.post("/api/customers", json={"name": "Mill One", "strn": "1200520501673"}, headers=h)
+    csv_body = "Date,Invoice No,Buyer Name,Wheat Bran\n2026-11-01,M-1,Mill One,1079.73422\n"
+    files = {"file": ("bran.csv", csv_body, "text/csv")}
+    assert client.post("/api/uploads/check", files=files, headers=h).json()["ok"]
+    up = client.post("/api/uploads", files=files, headers=h).json()
+    assert up["status"] == "completed", up
+    inv = client.get("/api/invoices", headers=h).json()[0]
+    d = client.get(f"/api/invoices/{inv['id']}", headers=h).json()
+    item = d["payload"]["items"][0]
+    # Same as the single-invoice form: KG to FBR, value = packs × price per pack.
+    assert item["quantity"] == 40300.0
+    assert item["valueSalesExcludingST"] == round(1079.73422 * 1175, 2)
+    line = d["items"][0]
+    assert line["pack_qty"] == 1079.73422 and line["pack_price"] == 1175 and line["pack_name"] == "Maund"
+    assert d["buyer_strn"] == "1200520501673"
+
+
+def test_grid_template_download(admin_headers):
+    import io as _io
+
+    import openpyxl as _openpyxl
+
+    h, capstan, gold, _ = _grid_account(admin_headers, "grid4@example.com")
+    r = client.get(f"/api/uploads/grid-template?products={gold['id']},{capstan['id']}&customers=true", headers=h)
+    assert r.status_code == 200
+    ws = _openpyxl.load_workbook(_io.BytesIO(r.content)).active
+    assert [c.value for c in ws[1]] == ["Date", "Invoice No", "Buyer Name", "GOLD LEAF 20HL", "CAPSTAN  FILTER 20 HL"]
+    assert [ws.cell(n, 3).value for n in (2, 3)] == ["A-ONE", "AKRAM HYD NAWABSHAH"]
+    # The untouched template is a valid grid with nothing entered.
+    check = client.post("/api/uploads/check", files={"file": ("t.xlsx", r.content, XLSX)}, headers=h).json()
+    assert check["format"] == "grid" and not check["ok"]
+    assert check["errors"]["other"] == ["The file has no packs entered. Enter at least one pack to make an invoice."]
+    # Another user's products can't be used.
+    other, *_ = _grid_account(admin_headers, "grid5@example.com")
+    assert client.get(f"/api/uploads/grid-template?products={gold['id']}", headers=other).status_code == 400
+
+
+def test_customer_names_are_unique(user_headers):
+    a = client.post("/api/customers", json={"name": "Rehman Bhai Karachi"}, headers=user_headers).json()
+    r = client.post("/api/customers", json={"name": "  rehman  bhai KARACHI "}, headers=user_headers)
+    assert r.status_code == 409 and "already saved" in r.json()["detail"]
+    # Editing keeps its own name; deleting frees it.
+    assert client.put(f"/api/customers/{a['id']}", json={"name": "Rehman Bhai Karachi", "address": "X"},
+                      headers=user_headers).status_code == 200
+    client.delete(f"/api/customers/{a['id']}", headers=user_headers)
+    b = client.post("/api/customers", json={"name": "Rehman Bhai Karachi"}, headers=user_headers)
+    assert b.status_code == 201
+    client.delete(f"/api/customers/{b.json()['id']}", headers=user_headers)

@@ -582,6 +582,7 @@ input[type='file'] { width: auto; border: none; padding: 0; background: none; }
 .alert.error { background: var(--red-50); color: #8f1d14; border-color: #f3c0bb; }
 .alert.ok { background: var(--brand-50); color: #085c3d; border-color: #b5e2ce; }
 .alert.info { background: var(--blue-50); color: #0b3a75; border-color: #bcd6f7; }
+.alert.warn { background: #fff7e6; color: #7a4b00; border-color: #f5d79e; }
 .alert a { color: inherit; font-weight: 600; text-decoration: underline; }
 
 .empty-state {
@@ -1140,3 +1141,129 @@ tr.row-selected td { background: var(--brand-50); }
 .adj-fields > input { min-width: 0; }
 .adj-toggles { grid-column: 1 / -1; display: flex; gap: 6px; }
 .adj-toggles .seg-toggle > button { min-width: 34px; padding: 4px 10px; }
+
+/* Template pop-up: the product checklist. */
+/* Only the product list scrolls; the pop-up itself stays fixed and the list
+   shrinks to fit a short screen. */
+.modal-body:has(> .pick-modal) { overflow: hidden; display: flex; flex-direction: column; }
+.pick-modal { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.pick-modal > * { flex-shrink: 0; }
+.grid-pick-list {
+  flex: 0 1 auto;
+  max-height: 280px;
+  min-height: 96px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.pick-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 9px 12px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.grid-pick-list .pick-row + .pick-row { border-top: 1px solid var(--border); }
+.grid-pick-list .pick-row:hover { background: var(--slate-50, #f7f9fb); }
+.grid-pick-list .pick-row.on { background: var(--brand-50); }
+.pick-row.disabled { opacity: 0.55; cursor: default; }
+.pick-row input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  flex: none;
+  accent-color: var(--brand-600);
+  cursor: inherit;
+}
+.pick-name { flex: 1; min-width: 0; text-align: left; }
+.pick-name small { display: block; font-weight: 400; color: var(--muted); }
+.pick-col {
+  flex: none;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--brand-600);
+  background: var(--surface);
+  border: 1px solid #b5e2ce;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.pick-option { padding: 12px 2px 4px; }
+.pick-empty { padding: 12px; margin: 0; }
+.pick-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 0.84rem;
+  color: var(--text-2, var(--muted));
+}
+/* A small on/off switch drawn over a hidden checkbox. */
+.pick-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.84rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.pick-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.pick-switch-track {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--border-strong);
+  transition: background 0.15s;
+  flex: none;
+}
+.pick-switch-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+.pick-switch input:checked + .pick-switch-track { background: var(--brand-600); }
+.pick-switch input:checked + .pick-switch-track::after { transform: translateX(14px); }
+.pick-switch input:focus-visible + .pick-switch-track { outline: 2px solid var(--brand-600); outline-offset: 2px; }
+.pick-move { display: inline-flex; gap: 2px; flex: none; }
+.pick-move button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.pick-move button:disabled { opacity: 0.35; cursor: default; }
+.pick-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.pick-footer .link-button { font-size: 0.85rem; }
+.pick-buttons { display: flex; gap: 8px; margin-left: auto; }
+/* Result of checking a chosen file before upload. */
+.file-check { margin: 4px 0 14px; }
+.file-check h4 { margin: 10px 0 4px; font-size: 0.88rem; }
+.file-check ul { margin: 0; padding-left: 18px; }
+.file-check li { margin: 3px 0; }

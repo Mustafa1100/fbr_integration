@@ -252,6 +252,30 @@ class Product(Base):
     )
 
 
+
+class Customer(Base):
+    """A user's saved buyer — picked on the single-invoice form to fill the
+    buyer fields instead of typing them every time (still editable there)."""
+
+    __tablename__ = "customers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+
+    name: Mapped[str] = mapped_column(String(200))
+    ntn_cnic: Mapped[str] = mapped_column(String(20), default="")
+    registration_type: Mapped[str] = mapped_column(String(20), default="Unregistered")
+    province: Mapped[str] = mapped_column(String(60), default="")
+    address: Mapped[str] = mapped_column(String(300), default="")
+    # Receipt-only buyer STRN (shown for pack pricing users).
+    strn: Mapped[str] = mapped_column(String(20), default="")
+
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, onupdate=_utcnow
+    )
+
 class InvoiceItem(Base):
     __tablename__ = "invoice_items"
 

@@ -5,7 +5,7 @@ from app.auth import hash_password
 from app.config import get_settings
 from app.database import Base, SessionLocal, engine, run_light_migrations
 from app.models import User
-from app.routers import admin, auth, invoices, products, reference, settings, stats, uploads
+from app.routers import admin, auth, customers, invoices, products, reference, settings, stats, uploads
 
 Base.metadata.create_all(bind=engine)
 run_light_migrations()
@@ -65,6 +65,7 @@ app.include_router(settings.router)
 app.include_router(uploads.router)
 app.include_router(invoices.router)
 app.include_router(products.router)
+app.include_router(customers.router)
 app.include_router(reference.router)
 app.include_router(stats.router)
 
