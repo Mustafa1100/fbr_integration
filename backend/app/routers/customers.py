@@ -1,0 +1,177 @@
+"""Saved buyers ("Customers") — picked on the single-invoice form to fill the
+buyer fields. Only a convenience: invoices keep their own copy of the buyer
+details, so editing or deleting a customer never changes an invoice."""
+
+from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from app.auth import get_current_user, require_password_already_set
+from app.database import get_db
+from app.fbr import client as fbr_client
+from app.models import Customer, User
+from app.pagination import DEFAULT_PAGE_SIZE, paginate
+from app.routers.settings import get_or_create_fbr_settings
+from app.services.grid_upload import name_key
+
+router = APIRouter(prefix="/api/customers", tags=["customers"])
+
+REGISTRATION_TYPES = ("Registered", "Unregistered")
+
+
+class CustomerRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    ntn_cnic: str = Field("", max_length=20)
+    registration_type: str = "Unregistered"
+    province: str = Field("", max_length=60)
+    address: str = Field("", max_length=300)
+    strn: str = Field("", max_length=20)
+
+
+def customer_out(c: Customer) -> dict:
+    return {
+        "id": c.id,
+        "name": c.name,
+        "ntn_cnic": c.ntn_cnic or "",
+        "registration_type": c.registration_type or "Unregistered",
+        "province": c.province or "",
+        "address": c.address or "",
+        "strn": c.strn or "",
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+    }
+
+
+def _apply(c: Customer, body: CustomerRequest) -> None:
+    if body.registration_type not in REGISTRATION_TYPES:
+        raise HTTPException(422, "Registration type must be Registered or Unregistered.")
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(422, "Customer name is required.")
+    number = body.ntn_cnic.strip()
+    c.name = name
+    c.ntn_cnic = number
+    c.registration_type = body.registration_type
+    c.province = body.province.strip()
+    c.address = body.address.strip()
+    c.strn = body.strn.strip()
+
+
+def _digits(value: str) -> str:
+    return "".join(ch for ch in value or "" if ch.isdigit())
+
+
+def _check_unique(db: Session, user: User, body: CustomerRequest, own_id: int | None) -> None:
+    """NTN / CNIC is numbers only, and one saved customer per number. A blank
+    NTN / CNIC is allowed any number of times (e.g. walk-in buyers). Names
+    are unique too (ignoring case and extra spaces), because file uploads
+    find the buyer by name."""
+    raw = body.ntn_cnic.strip()
+    if raw and not (raw.isascii() and raw.isdigit()):
+        raise HTTPException(422, "NTN / CNIC must be numbers only, without dashes or spaces.")
+    number = _digits(raw)
+    name = name_key(body.name)
+    others = [
+        o
+        for o in db.query(Customer).filter(
+            Customer.user_id == user.id, Customer.is_deleted.is_(False)
+        )
+        if o.id != own_id
+    ]
+    for other in others:
+        if name and name_key(other.name) == name:
+            raise HTTPException(
+                409,
+                f"A customer named {other.name} is already saved. "
+                "Use a different name or edit that customer instead.",
+            )
+    if not number:
+        return
+    for other in others:
+        if _digits(other.ntn_cnic) == number:
+            raise HTTPException(
+                409,
+                f"A customer with NTN / CNIC {body.ntn_cnic.strip()} is already saved: "
+                f"{other.name}. Edit that customer instead.",
+            )
+
+
+def _get_owned(db: Session, user: User, customer_id: int) -> Customer:
+    c = db.get(Customer, customer_id)
+    if not c or c.user_id != user.id or c.is_deleted:
+        raise HTTPException(404, "Customer not found")
+    return c
+
+
+@router.get("")
+def list_customers(
+    response: Response,
+    page: int = 1,
+    page_size: int = DEFAULT_PAGE_SIZE,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # The invoice form calls this without page_size and gets everything; the
+    # Customers page passes page / page_size.
+    query = (
+        db.query(Customer)
+        .filter(Customer.user_id == user.id, Customer.is_deleted.is_(False))
+        .order_by(Customer.name, Customer.id)
+    )
+    return [customer_out(c) for c in paginate(query, response, page, page_size)]
+
+
+@router.get("/registration-type")
+def registration_type(
+    number: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """FBR's answer for an NTN (7-9 digits) or CNIC (13 digits): "Registered",
+    "Unregistered", or null when it couldn't be checked (no working token,
+    FBR unreachable, or not a valid number) — the user then picks by hand."""
+    digits = "".join(ch for ch in number if ch.isdigit())
+    if len(digits) not in (7, 8, 9, 13):
+        return {"registration_type": None}
+    fbr = get_or_create_fbr_settings(db, user)
+    return {"registration_type": fbr_client.lookup_registration_type(digits, fbr)}
+
+
+@router.post("", status_code=201)
+def create_customer(
+    body: CustomerRequest,
+    user: User = Depends(require_password_already_set),
+    db: Session = Depends(get_db),
+):
+    _check_unique(db, user, body, None)
+    c = Customer(user_id=user.id)
+    _apply(c, body)
+    db.add(c)
+    db.commit()
+    return customer_out(c)
+
+
+@router.put("/{customer_id}")
+def update_customer(
+    customer_id: int,
+    body: CustomerRequest,
+    user: User = Depends(require_password_already_set),
+    db: Session = Depends(get_db),
+):
+    c = _get_owned(db, user, customer_id)
+    _check_unique(db, user, body, c.id)
+    _apply(c, body)
+    db.commit()
+    return customer_out(c)
+
+
+@router.delete("/{customer_id}")
+def delete_customer(
+    customer_id: int,
+    user: User = Depends(require_password_already_set),
+    db: Session = Depends(get_db),
+):
+    # Soft delete, like products.
+    c = _get_owned(db, user, customer_id)
+    c.is_deleted = True
+    db.commit()
+    return {"ok": True}

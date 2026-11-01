@@ -223,3 +223,46 @@ def error_text(fbr_response: dict) -> str:
             msg = f"Item {item_status.get('itemSNo', '?')}: {item_status['error']}"
             parts.append(_with_guidance(msg, item_status.get("errorCode", "")))
     return " ".join(p for p in parts if p) or "Unknown FBR validation error"
+
+
+REG_TYPE_URL = "https://gw.fbr.gov.pk/dist/v1/Get_Reg_Type"
+REG_TYPE_TIMEOUT = httpx.Timeout(8.0, connect=5.0)
+
+
+def lookup_registration_type(registration_no: str, fbr: FbrSettings) -> str | None:
+    """Ask FBR whether an NTN / CNIC is "Registered" or "Unregistered".
+
+    Tries the live token first, then the test token (one may be missing or
+    wrong). Returns None when no token works or FBR can't be reached — the
+    caller then leaves the choice to the user. Never raises."""
+    for token in (fbr.production_token, fbr.sandbox_token):
+        token = (token or "").strip()
+        if not token:
+            continue
+        request = dict(
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json={"Registration_No": registration_no},
+            timeout=REG_TYPE_TIMEOUT,
+        )
+        try:
+            resp = httpx.post(REG_TYPE_URL, **request)
+            if resp.status_code == 405:
+                # FBR's spec calls this "HTTP method Get" while showing a JSON
+                # body; if POST isn't allowed, send the same body with GET.
+                resp = httpx.request("GET", REG_TYPE_URL, **request)
+            if resp.status_code != 200:
+                continue  # rejected token / gateway error: try the next one
+            data = resp.json()
+        except (httpx.HTTPError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        value = next(
+            (str(v) for k, v in data.items() if k.lower().replace("_", "") == "registrationtype"),
+            "",
+        ).strip().lower()
+        if value.startswith("unregistered"):
+            return "Unregistered"
+        if value.startswith("registered"):
+            return "Registered"
+    return None

@@ -389,6 +389,34 @@ def _custom_fields(fbr: FbrSettings) -> list[dict]:
     return invoice_layout.layout_for(fbr)["custom_fields"]
 
 
+def _grid_rows(
+    db: Session,
+    user: User,
+    fbr: FbrSettings,
+    sheet: list[list[str]] | None,
+    normal_error: CsvError,
+    target_env: str,
+) -> list[dict]:
+    """Second chance for a file the normal format rejected: if it is a
+    product grid (Date / Invoice No / Buyer Name + saved product columns),
+    turn it into normal rows. Anything else gets the normal format's own
+    error, exactly as before."""
+    from app.services import grid_upload
+
+    if not grid_upload.is_grid(sheet):
+        raise normal_error
+    result = grid_upload.build(db, user, fbr, sheet, target_env)
+    if not result.ok:
+        raise CsvError(result.error_text())
+    return grid_rows_validated(result, _custom_fields(fbr))
+
+
+def grid_rows_validated(result, custom_fields: list[dict]) -> list[dict]:
+    """The grid's rows through the same validation as any uploaded file."""
+    fieldnames = sorted({k for _, row in result.rows for k in row})
+    return _validate_and_collect(fieldnames, iter(result.rows), custom_fields)
+
+
 def _new_upload(user: User, filename: str, fbr_env: str) -> Upload:
     return Upload(
         user_id=user.id,
@@ -414,7 +442,12 @@ def process_upload(
     upload = _new_upload(user, filename, target_env)
     db.add(upload)
     try:
-        rows = _parse_rows(content, _custom_fields(fbr))
+        try:
+            rows = _parse_rows(content, _custom_fields(fbr))
+        except CsvError as exc:
+            from app.services import grid_upload
+
+            rows = _grid_rows(db, user, fbr, grid_upload.sheet_from_csv(content), exc, target_env)
     except CsvError as exc:
         upload.status = "failed"
         upload.error = str(exc)
@@ -436,7 +469,12 @@ def process_upload_excel(
     upload = _new_upload(user, filename, target_env)
     db.add(upload)
     try:
-        rows = _parse_excel_rows(raw, _custom_fields(fbr))
+        try:
+            rows = _parse_excel_rows(raw, _custom_fields(fbr))
+        except CsvError as exc:
+            from app.services import grid_upload
+
+            rows = _grid_rows(db, user, fbr, grid_upload.sheet_from_excel(raw), exc, target_env)
     except CsvError as exc:
         upload.status = "failed"
         upload.error = str(exc)

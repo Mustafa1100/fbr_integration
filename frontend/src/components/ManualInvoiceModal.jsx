@@ -245,6 +245,9 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
   // value for each (pre-filled with the saved default).
   const [adjRows, setAdjRows] = useState([])
   const [adjValues, setAdjValues] = useState({})
+  // Saved buyers (Customers page); '' = entering the buyer by hand.
+  const [customers, setCustomers] = useState([])
+  const [customerId, setCustomerId] = useState('')
   const formRef = useRef(null)
 
   useEffect(() => {
@@ -257,6 +260,7 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
       })
       .catch(() => {})
     api.get('/api/reference/provinces').then(setProvinces).catch(() => {})
+    api.get('/api/customers').then(setCustomers).catch(() => {})
     api
       .get('/api/settings/fbr')
       .then((s) => setPackPricing(!!s.pack_pricing))
@@ -272,6 +276,22 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
 
   const productById = (id) => products?.find((p) => String(p.id) === String(id))
   const setH = (key) => (e) => setHeader({ ...header, [key]: e.target.value })
+
+  // Picking a saved customer fills the buyer fields (still editable for
+  // this invoice); "Enter manually" clears them.
+  function pickCustomer(id) {
+    setCustomerId(id)
+    const c = customers.find((x) => String(x.id) === String(id))
+    setHeader({
+      ...header,
+      buyer_name: c ? c.name : '',
+      buyer_ntn_cnic: c ? c.ntn_cnic : '',
+      buyer_registration_type: c ? c.registration_type : 'Unregistered',
+      buyer_province: c ? c.province : '',
+      buyer_address: c ? c.address : '',
+      buyer_strn: c && packPricing ? c.strn : '',
+    })
+  }
   const draftProduct = productById(draft.product_id)
   // Is the line being entered a pack-priced one (e.g. per Maund)?
   const draftPack = isPackPriced(draftProduct, packPricing)
@@ -467,6 +487,23 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
         </div>
 
         <h3 className="section-title">Buyer</h3>
+        <div className="form-grid">
+          <div className="field">
+            <label>
+              Saved customer{' '}
+              {customers.length === 0 && <span className="hint">(add them on the Customers page)</span>}
+            </label>
+            <select value={customerId} onChange={(e) => pickCustomer(e.target.value)}>
+              <option value="">Enter manually</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                  {c.ntn_cnic ? ` (${c.ntn_cnic})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
         <div className="form-grid">
           <div className="field">
             <label>Registration type</label>

@@ -20,6 +20,7 @@ import Invoices from './pages/user/Invoices'
 import Receipt from './pages/user/Receipt'
 import PrintReceipts from './pages/user/PrintReceipts'
 import Products from './pages/user/Products'
+import Customers from './pages/user/Customers'
 import Uploads from './pages/user/Uploads'
 
 function homeFor(user) {
@@ -171,6 +172,14 @@ export default function App() {
           element={
             <RequireAuth role="user">
               <Products />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/customers"
+          element={
+            <RequireAuth role="user">
+              <Customers />
             </RequireAuth>
           }
         />

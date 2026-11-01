@@ -7,6 +7,7 @@ import {
   LogOut,
   Menu,
   Package,
+  Contact,
   ReceiptText,
   Server,
   Settings,
@@ -147,6 +148,10 @@ export default function Layout() {
             <NavLink to="/products" className={link} title="Products">
               <Package size={18} />
               <span>Products</span>
+            </NavLink>
+            <NavLink to="/customers" className={link} title="Customers">
+              <Contact size={18} />
+              <span>Customers</span>
             </NavLink>
             <NavLink to="/columns" className={link} title="Column Guide">
               <BookOpenText size={18} />

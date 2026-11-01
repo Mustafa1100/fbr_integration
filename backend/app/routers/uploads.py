@@ -5,10 +5,10 @@ from sqlalchemy.orm import Query, Session
 
 from app.auth import get_current_user, require_password_already_set
 from app.database import get_db
-from app.models import Invoice, Upload, User
+from app.models import Customer, Invoice, Product, Upload, User
 from app.pagination import paginate
 from app.routers.settings import get_or_create_fbr_settings
-from app.services import csv_processor, invoice_layout, invoice_service
+from app.services import csv_processor, grid_upload, invoice_layout, invoice_service
 from app.services.invoice_service import (
     ENV_FILTER_ALIASES,
     VALID_ENVS,
@@ -115,6 +115,88 @@ def download_template(
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@router.get("/grid-template")
+def download_grid_template(
+    products: str = "",
+    customers: bool = False,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Excel template for the product-grid format: Date / Invoice No /
+    Buyer Name, then the chosen saved products (in the order given), and
+    optionally one row per saved customer."""
+    ids = list(dict.fromkeys(int(x) for x in products.split(",") if x.strip().isdigit()))
+    owned = {
+        p.id: p
+        for p in db.query(Product).filter(
+            Product.user_id == user.id, Product.is_deleted.is_(False), Product.id.in_(ids)
+        )
+    }
+    chosen = [owned[i] for i in ids if i in owned]
+    if not chosen:
+        raise HTTPException(400, "Choose at least one product for the template.")
+    names = []
+    if customers:
+        names = [
+            c.name
+            for c in db.query(Customer)
+            .filter(Customer.user_id == user.id, Customer.is_deleted.is_(False))
+            .order_by(Customer.name, Customer.id)
+        ]
+    return Response(
+        grid_upload.template_xlsx(chosen, names),
+        media_type=XLSX_TYPE,
+        headers={"Content-Disposition": "attachment; filename=invoice_template_products.xlsx"},
+    )
+
+
+@router.post("/check")
+async def check_upload(
+    file: UploadFile,
+    target: str = Form(""),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Check a chosen file before it is uploaded — nothing is saved or sent.
+    Only product-grid files are checked here; for anything else the answer
+    is {"format": "standard"} and the upload works exactly as before."""
+    name = (file.filename or "").lower()
+    raw = await file.read()
+    standard = {"format": "standard"}
+    if len(raw) > 5 * 1024 * 1024:
+        return standard
+    if name.endswith(".xlsx"):
+        sheet = grid_upload.sheet_from_excel(raw)
+    elif name.endswith(".csv"):
+        try:
+            sheet = grid_upload.sheet_from_csv(raw.decode("utf-8-sig"))
+        except UnicodeDecodeError:
+            return standard
+    else:
+        return standard
+    if not grid_upload.is_grid(sheet):
+        return standard
+    fbr = get_or_create_fbr_settings(db, user)
+    result = grid_upload.build(db, user, fbr, sheet, (target or fbr.fbr_env or "mock").lower())
+    if result.ok:
+        # The same row checks the upload itself runs (e.g. custom fields).
+        try:
+            csv_processor.grid_rows_validated(
+                result, invoice_layout.layout_for(fbr)["custom_fields"]
+            )
+        except csv_processor.CsvError as exc:
+            result.other.append(str(exc))
+    return {
+        "format": "grid",
+        "ok": result.ok,
+        "errors": result.errors_out(),
+        "summary": result.summary,
+    }
 
 
 @router.get("/scenario-catalog")
