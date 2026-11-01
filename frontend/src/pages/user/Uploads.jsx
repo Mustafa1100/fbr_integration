@@ -50,7 +50,6 @@ export default function Uploads() {
   const [error, setError] = useState('')
   const [lastResult, setLastResult] = useState(null)
   const [scenarios, setScenarios] = useState([])
-  const [scenarioPick, setScenarioPick] = useState('')
   const [fileName, setFileName] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const [fbrEnv, setFbrEnv] = useState(null)
@@ -246,38 +245,6 @@ export default function Uploads() {
               </p>
             </div>
           </div>
-
-          {!isProdTarget && scenarios.length > 0 && (
-            <div className="card" style={{ marginBottom: '1.5rem' }}>
-              <div className="row-actions" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
-                <FlaskConical size={17} style={{ flexShrink: 0, color: 'var(--muted)' }} />
-                <span className="muted" style={{ marginRight: '0.25rem' }}>
-                  Test with a real example: download a template pre-filled with FBR&apos;s own
-                  official example for one scenario —
-                </span>
-                <select
-                  value={scenarioPick}
-                  onChange={(e) => setScenarioPick(e.target.value)}
-                  style={{ maxWidth: 340 }}
-                >
-                  <option value="">Choose a scenario…</option>
-                  {scenarios.map((s) => (
-                    <option key={s.code} value={s.code}>
-                      {s.code} — {s.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  disabled={!scenarioPick}
-                  onClick={() => downloadTemplate(scenarioPick)}
-                >
-                  <Download size={14} /> Download
-                </button>
-              </div>
-            </div>
-          )}
 
           <form className="card" onSubmit={submit}>
             <div className="field">
