@@ -3,8 +3,8 @@ export const site = {
   name: 'Compliance Pakistan',
   domain: 'compliance.pk',
   tagline: 'One Platform. Every Compliance.',
-  // TODO: confirm the real inbox before launch — the contact form composes an email to this address.
-  email: 'hello@compliance.pk',
+  // The contact form composes an email to this address.
+  email: 'info@compliance.pk',
   location: 'Pakistan',
   // The FBR Digital Invoicing app. Set VITE_APP_URL to show a "Client login" button.
   appUrl: import.meta.env.VITE_APP_URL || '',

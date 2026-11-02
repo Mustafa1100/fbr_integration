@@ -3,11 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Compliance Pakistan — One Platform. Every Compliance.</title>
+    <!-- title, description, canonical and og:* are rewritten per page by scripts/prerender.js -->
+    <title>Compliance Pakistan | FBR Digital Invoicing &amp; Tax Compliance</title>
     <meta
       name="description"
-      content="Compliance Pakistan brings FBR digital invoicing, tax filings and corporate compliance into one platform, so your business stays compliant without the paperwork."
+      content="FBR digital invoicing integration, tax filings and corporate compliance for Pakistani businesses — in one platform. Submit invoices to FBR and get QR receipts."
     />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://compliance.pk/" />
     <meta name="theme-color" content="#0f4630" />
 
     <link rel="icon" type="image/png" href="/favicon-64.png" />
@@ -15,16 +18,66 @@
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Compliance Pakistan" />
-    <meta property="og:title" content="Compliance Pakistan — One Platform. Every Compliance." />
+    <meta property="og:locale" content="en_PK" />
+    <meta property="og:url" content="https://compliance.pk/" />
+    <meta property="og:title" content="Compliance Pakistan | FBR Digital Invoicing &amp; Tax Compliance" />
     <meta
       property="og:description"
-      content="FBR digital invoicing, tax filings and corporate compliance in one platform."
+      content="FBR digital invoicing integration, tax filings and corporate compliance for Pakistani businesses — in one platform. Submit invoices to FBR and get QR receipts."
     />
-    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:image" content="https://compliance.pk/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Business details in Google's structured-data format (schema.org) -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://compliance.pk/#organization",
+            "name": "Compliance Pakistan",
+            "url": "https://compliance.pk/",
+            "logo": "https://compliance.pk/icon-512.png",
+            "image": "https://compliance.pk/og-image.png",
+            "email": "info@compliance.pk",
+            "slogan": "One Platform. Every Compliance.",
+            "description": "FBR digital invoicing integration, tax filings and corporate compliance for Pakistani businesses.",
+            "areaServed": { "@type": "Country", "name": "Pakistan" },
+            "address": { "@type": "PostalAddress", "addressCountry": "PK" },
+            "contactPoint": {
+              "@type": "ContactPoint",
+              "contactType": "customer support",
+              "email": "info@compliance.pk",
+              "areaServed": "PK",
+              "availableLanguage": ["English", "Urdu"]
+            }
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://compliance.pk/#website",
+            "url": "https://compliance.pk/",
+            "name": "Compliance Pakistan",
+            "publisher": { "@id": "https://compliance.pk/#organization" },
+            "inLanguage": "en-PK"
+          },
+          {
+            "@type": "Service",
+            "name": "FBR Digital Invoicing Integration",
+            "serviceType": "Tax compliance software",
+            "url": "https://compliance.pk/services/fbr-digital-invoicing",
+            "provider": { "@id": "https://compliance.pk/#organization" },
+            "areaServed": { "@type": "Country", "name": "Pakistan" },
+            "description": "Submit sales invoices to FBR through the PRAL Digital Invoicing API by bulk CSV/Excel upload or single entry, with FBR invoice numbers and QR receipts."
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><!--app-html--></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

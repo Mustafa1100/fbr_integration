@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Navbar from './Navbar'
 import Footer from './Footer'
+import Seo from './Seo'
 
 function ScrollToTop() {
   const { pathname } = useLocation()
@@ -15,6 +16,7 @@ export default function Layout() {
   return (
     <>
       <ScrollToTop />
+      <Seo />
       <a href="#main" className="skip-link">
         Skip to content
       </a>

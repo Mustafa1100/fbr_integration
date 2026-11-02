@@ -4,30 +4,17 @@
   align-items: center;
   gap: 0.7rem;
 }
-.logo__mark {
-  height: 44px;
+.logo__img {
+  display: block;
+  height: 50px;
   width: auto;
   transition: transform 0.4s var(--ease);
 }
-.logo:hover .logo__mark {
-  transform: rotate(-4deg) scale(1.05);
+.logo:hover .logo__img {
+  transform: scale(1.03);
 }
-.logo__word {
-  font-family: var(--font-brand);
-  font-weight: 400;
-  font-size: 1.5rem;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  color: var(--g-800);
-}
-.logo__word b {
-  font-weight: 800;
-}
-.logo--light .logo__word {
-  color: #fff;
-}
-.logo--light .logo__word b {
-  color: var(--gold-300);
+.footer .logo__img {
+  height: 56px;
 }
 
 /* ── Navbar ───────────────────────────────────────────────────────── */
@@ -164,11 +151,8 @@
   :root {
     --nav-h: 68px;
   }
-  .logo__mark {
-    height: 38px;
-  }
-  .logo__word {
-    font-size: 1.3rem;
+  .logo__img {
+    height: 42px;
   }
 }
 

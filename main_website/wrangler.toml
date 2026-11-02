@@ -11,4 +11,6 @@ account_id = "e1c5ebe6f3c9d2b1f931adbc3f9a5736"
 
 [assets]
 directory = "dist"
-not_found_handling = "single-page-application"
+# Unknown URLs get dist/404.html with a real 404 status (better for Google than
+# serving the home page). Every real page is pre-rendered, so none rely on a fallback.
+not_found_handling = "404-page"

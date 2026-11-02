@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom'
-import mark from '../assets/mark.png'
-import markReverse from '../assets/mark-reverse.png'
+import logo from '../assets/logo.png'
+import logoLight from '../assets/logo-light.png'
 
-// variant="dark"  → for light backgrounds (green mark)
-// variant="light" → for dark backgrounds (reversed mark)
+// variant="dark"  → for light backgrounds (green wordmark)
+// variant="light" → for dark backgrounds (white wordmark)
 export default function Logo({ variant = 'dark', className = '' }) {
   return (
     <Link
@@ -11,10 +11,13 @@ export default function Logo({ variant = 'dark', className = '' }) {
       className={`logo logo--${variant}${className ? ` ${className}` : ''}`}
       aria-label="Compliance Pakistan — home"
     >
-      <img className="logo__mark" src={variant === 'light' ? markReverse : mark} alt="" />
-      <span className="logo__word">
-        Compliance<b>.pk</b>
-      </span>
+      <img
+        className="logo__img"
+        src={variant === 'light' ? logoLight : logo}
+        alt="Compliance Pakistan"
+        width="630"
+        height="180"
+      />
     </Link>
   )
 }

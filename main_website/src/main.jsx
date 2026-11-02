@@ -1,5 +1,5 @@
 import React from 'react'
-import { createRoot } from 'react-dom/client'
+import { createRoot, hydrateRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import '@fontsource-variable/inter'
 import '@fontsource-variable/fraunces/wght.css'
@@ -12,10 +12,16 @@ import './styles/layout.css'
 import './styles/sections.css'
 import './styles/pages.css'
 
-createRoot(document.getElementById('root')).render(
+const app = (
   <React.StrictMode>
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <App />
     </BrowserRouter>
-  </React.StrictMode>,
+  </React.StrictMode>
 )
+
+// Production pages arrive pre-rendered (scripts/prerender.js), so attach to the
+// existing HTML. In dev the root is empty, so render from scratch.
+const root = document.getElementById('root')
+if (root.hasChildNodes()) hydrateRoot(root, app)
+else createRoot(root).render(app)

@@ -1,6 +1,6 @@
 # Compliance Pakistan — marketing website
 
-The public website for **Compliance.pk** ("One Platform. Every Compliance."). A
+The public website for **Compliance Pakistan** ("One Platform. Every Compliance."). A
 standalone React + Vite app, separate from the FBR Digital Invoicing product in
 `../frontend`. Introduces the company and its flagship service — FBR Digital
 Invoicing — with the rest of the compliance roadmap (tax returns, withholding,
@@ -16,6 +16,15 @@ npm run dev      # http://localhost:5174
 
 `npm run build` outputs to `dist/`; `npm run preview` serves that build locally.
 
+## SEO
+
+The build pre-renders every page to static HTML (`scripts/prerender.js` using
+`src/entry-server.jsx`), so Google sees full content, plus per-page titles and
+descriptions from `src/data/seo.js`, a `sitemap.xml`, `public/robots.txt`, and
+schema.org business details in `index.html`. **Adding a page?** Add its route in
+`App.jsx` and an entry in `src/data/seo.js`, or it won't be pre-rendered or in the
+sitemap (and will 404 in production).
+
 ## Structure
 
 ```
@@ -26,8 +35,9 @@ src/
   data/         site.js (brand/contact/nav), services.js, faqs.js — edit copy here
   styles/       base.css (tokens/type/buttons), layout.css (nav/footer/hero),
                 sections.css (home-page sections), pages.css (inner-page blocks)
-  assets/       mark.png / mark-reverse.png — the shield logo, cut from
-                compliace_logo.jpeg with a transparent background (light/dark variants)
+  assets/       logo.png / logo-light.png — full logo (shield + wordmark) for light /
+                dark backgrounds; mark.png / mark-reverse.png — shield only. All cut
+                from ../logo.jpeg with a transparent background
 public/         favicons, apple-touch-icon, og-image.png
 ```
 
