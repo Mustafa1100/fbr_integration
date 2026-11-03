@@ -3824,3 +3824,88 @@ def test_customer_names_are_unique(user_headers):
     b = client.post("/api/customers", json={"name": "Rehman Bhai Karachi"}, headers=user_headers)
     assert b.status_code == 201
     client.delete(f"/api/customers/{b.json()['id']}", headers=user_headers)
+
+
+# ── Bulk customer import (Customers page) ──
+
+
+def test_customer_template_download(admin_headers):
+    import io as _io
+
+    import openpyxl as _openpyxl
+
+    h, _ = _make_account(admin_headers, "custtpl1@example.com")
+    r = client.get("/api/customers/template", headers=h)
+    assert r.status_code == 200
+    wb = _openpyxl.load_workbook(_io.BytesIO(r.content))
+    assert [c.value for c in wb["Customers"][1]] == ["Buyer Name", "NTN / CNIC", "Registration Type", "Province", "Address"]
+    assert "How to fill" in wb.sheetnames
+    # Pack pricing users also get STRN.
+    h2, _ = _make_account(admin_headers, "custtpl2@example.com", pack_pricing=True)
+    wb2 = _openpyxl.load_workbook(_io.BytesIO(client.get("/api/customers/template", headers=h2).content))
+    assert wb2["Customers"]["F1"].value == "STRN"
+    # The empty template is checked as "no customers", not crashed on.
+    r = client.post("/api/customers/import/check", files={"file": ("t.xlsx", client.get("/api/customers/template", headers=h).content, XLSX)}, headers=h).json()
+    assert not r["ok"] and r["errors"] == ["The file has no customers. Fill in at least one Buyer Name."]
+
+
+def test_customer_import_saves_all_rows(admin_headers):
+    h, _ = _make_account(admin_headers, "custimp1@example.com")
+    raw = _xlsx([
+        ["Buyer Name", "NTN / CNIC", "Registration Type", "Province", "Address"],
+        ["AKRAM HYD NAWABSHAH", "41201-4401558-9", "registered", "sindh", "Nawabshah"],
+        ["A-ONE", None, None, "KPK", None],
+        [None, None, None, None, None],  # blank rows are skipped
+        ["  Heera   Laal ", 788762, "Unregistered", "Islamabad", "  Main  Road "],
+    ])
+    files = {"file": ("list.xlsx", raw, XLSX)}
+    check = client.post("/api/customers/import/check", files=files, headers=h).json()
+    assert check["ok"], check
+    assert check["summary"] == {"customers": 3, "registered": 1, "unregistered": 2}
+    assert client.get("/api/customers", headers=h).json() == []  # the check saves nothing
+    r = client.post("/api/customers/import", files=files, headers=h).json()
+    assert r["created"] == 3
+    got = {c["name"]: c for c in client.get("/api/customers", headers=h).json()}
+    assert got["AKRAM HYD NAWABSHAH"]["ntn_cnic"] == "4120144015589"  # dashes removed
+    assert got["AKRAM HYD NAWABSHAH"]["registration_type"] == "Registered"
+    assert got["AKRAM HYD NAWABSHAH"]["province"] == "Sindh"
+    assert got["A-ONE"]["province"] == "Khyber Pakhtunkhwa" and got["A-ONE"]["registration_type"] == "Unregistered"
+    assert got["Heera Laal"]["province"] == "Capital Territory" and got["Heera Laal"]["address"] == "Main Road"
+    # CSV works too, and the same list again is refused (already saved).
+    csv_body = "Buyer Name,NTN / CNIC\nA-ONE,\nNew Buyer,\n"
+    r = client.post("/api/customers/import", files={"file": ("c.csv", csv_body, "text/csv")}, headers=h).json()
+    assert r["created"] == 0 and r["errors"] == ['Row 2: "A-ONE" is already saved in your Customers.']
+    assert len(client.get("/api/customers", headers=h).json()) == 3
+
+
+def test_customer_import_lists_every_problem_and_saves_nothing(admin_headers):
+    h, _ = _make_account(admin_headers, "custimp2@example.com")
+    client.post("/api/customers", json={"name": "Saved One", "ntn_cnic": "1234567", "registration_type": "Registered"}, headers=h)
+    raw = _xlsx([
+        ["Buyer Name", "NTN / CNIC", "Registration Type", "Province"],
+        ["Good Buyer", None, None, None],
+        [None, "999", "Registered", None],
+        ["Twice", None, None, None],
+        ["twice", None, None, None],
+        ["Num Clash", "1234567", "Registered", None],
+        ["Letters", "12AB", "Registered", None],
+        ["No Type", "7777777", None, None],
+        ["Bad Type", None, "Filer", None],
+        ["Bad Province", None, None, "Karachi"],
+    ])
+    r = client.post("/api/customers/import", files={"file": ("bad.xlsx", raw, XLSX)}, headers=h).json()
+    assert r["created"] == 0 and not r["ok"]
+    e = " | ".join(r["errors"])
+    assert "Row 3: Buyer Name is missing." in e
+    assert 'Rows 4 and 5: the buyer name "twice" is listed twice.' in e
+    assert "Row 6: NTN / CNIC 1234567 is already saved for Saved One." in e
+    assert 'Row 7: NTN / CNIC "12AB" must be numbers only.' in e
+    assert "Row 8: Registration Type is needed when an NTN / CNIC is given" in e
+    assert 'Row 9: Registration Type "Filer" must be Registered or Unregistered.' in e
+    assert 'Row 10: Province "Karachi" is not a province.' in e
+    assert "Good Buyer" not in e
+    assert [c["name"] for c in client.get("/api/customers", headers=h).json()] == ["Saved One"]
+    # Wrong headings / file type.
+    r = client.post("/api/customers/import/check", files={"file": ("x.csv", "foo,bar\n1,2\n", "text/csv")}, headers=h).json()
+    assert r["errors"] == ['The first row must have a "Buyer Name" heading. Download the template for the right format.']
+    assert client.post("/api/customers/import/check", files={"file": ("x.txt", "a", "text/plain")}, headers=h).status_code == 400

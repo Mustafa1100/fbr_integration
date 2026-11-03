@@ -1,6 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertCircle, CheckCircle2, Contact, Loader2, Pencil, Plus, Save, Trash2 } from 'lucide-react'
+import {
+  AlertCircle,
+  CheckCircle2,
+  Contact,
+  Download,
+  Loader2,
+  Pencil,
+  Plus,
+  Save,
+  Trash2,
+  UploadCloud,
+} from 'lucide-react'
 import { api } from '../../api'
+import ImportCustomersModal, { downloadCustomersTemplate } from '../../components/ImportCustomersModal'
 import Modal from '../../components/Modal'
 import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
@@ -225,6 +237,8 @@ export default function Customers() {
   const [packPricing, setPackPricing] = useState(false)
   const [editing, setEditing] = useState(null) // null | {} (new) | customer
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [importing, setImporting] = useState(false)
+  const [imported, setImported] = useState(0) // count from the last import, for the message
 
   async function refresh() {
     setLoading(true)
@@ -285,6 +299,16 @@ export default function Customers() {
           </p>
         </div>
         <div className="page-actions">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => downloadCustomersTemplate().catch((e) => setError(e.message))}
+          >
+            <Download size={16} /> Download template
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={() => setImporting(true)}>
+            <UploadCloud size={16} /> Import customers
+          </button>
           <button type="button" className="btn btn-primary" onClick={() => setEditing({})}>
             <Plus size={16} /> Add customer
           </button>
@@ -296,6 +320,27 @@ export default function Customers() {
           <AlertCircle size={17} />
           <span>{error}</span>
         </div>
+      )}
+
+      {imported > 0 && (
+        <div className="alert ok">
+          <CheckCircle2 size={17} />
+          <span>
+            {imported.toLocaleString()} customer{imported === 1 ? '' : 's'} added.
+          </span>
+        </div>
+      )}
+
+      {importing && (
+        <ImportCustomersModal
+          onClose={() => setImporting(false)}
+          onImported={(n) => {
+            setImporting(false)
+            setImported(n)
+            if (page === 1) refresh()
+            else setPage(1)
+          }}
+        />
       )}
 
       {loading && <TableLoader label="customers" />}
