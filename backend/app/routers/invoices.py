@@ -3,7 +3,7 @@ import io
 import json
 import re
 from typing import Any
-from datetime import date, datetime, timezone
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import PlainTextResponse
@@ -57,8 +57,6 @@ def summary_out(inv: Invoice) -> dict:
         "total_discount": round(inv.total_discount, 2),
         "grand_total": round(inv.grand_total, 2),
         "upload_id": inv.upload_id,
-        "is_paid": inv.is_paid,
-        "paid_at": inv.paid_at.isoformat() if inv.paid_at else None,
         # §236 advance income tax — a receipt figure held on the invoice.
         "advance_tax": round(inv.advance_tax, 2),
         "advance_tax_set": inv.advance_tax_set,
@@ -504,33 +502,6 @@ def promote_invoice(
         if upload and not upload.is_deleted:
             invoice_service.sync_upload_env(db, upload)
     return _submit_result(inv, response)
-
-
-class MarkPaidRequest(BaseModel):
-    is_paid: bool
-
-
-@router.patch("/{invoice_id}/paid")
-def mark_invoice_paid(
-    invoice_id: int,
-    body: MarkPaidRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Track whether the buyer has actually paid — independent of FBR
-    submission status. Only meaningful once an invoice is a real,
-    FBR-registered record; a draft/failed or test invoice was never issued."""
-    inv = _get_owned(db, user, invoice_id)
-    if inv.status != "submitted":
-        raise HTTPException(400, "Only a submitted invoice can be marked as paid")
-    if inv.fbr_env != "production":
-        raise HTTPException(
-            400, "This is a test invoice — only a live FBR invoice can be marked as paid."
-        )
-    inv.is_paid = body.is_paid
-    inv.paid_at = datetime.now(timezone.utc) if body.is_paid else None
-    db.commit()
-    return summary_out(inv)
 
 
 class AdvanceTaxRequest(BaseModel):

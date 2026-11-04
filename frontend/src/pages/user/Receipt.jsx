@@ -8,7 +8,7 @@ export default function Receipt() {
       apiUrl={`/api/invoices/${id}`}
       backTo="/invoices"
       backLabel="Back to invoices"
-      allowMarkPaid
+      canEdit
     />
   )
 }

@@ -1893,49 +1893,20 @@ def _one_invoice(headers, csv_text, target):
     return client.get(f"/api/invoices?upload_id={up['id']}", headers=headers).json()[0]
 
 
-def test_mark_invoice_paid_requires_submitted_live_invoice(admin_headers):
+def test_mark_paid_feature_is_removed(admin_headers):
     headers, _ = _make_account(
-        admin_headers, "paidguard@example.com", can_submit_production=True
+        admin_headers, "paidgone@example.com", can_submit_production=True
     )
-
-    # A live (production) submitted invoice: mark paid, toggle back.
     live = _one_invoice(headers, _ENV_CSV, "production")
-    assert live["fbr_env"] == "production" and live["is_paid"] is False
-    assert (
-        client.patch(
-            f"/api/invoices/{live['id']}/paid", json={"is_paid": True}, headers=headers
-        ).json()["is_paid"]
-        is True
-    )
-    assert (
-        client.patch(
-            f"/api/invoices/{live['id']}/paid", json={"is_paid": False}, headers=headers
-        ).json()["is_paid"]
-        is False
-    )
-
-    # A test (sandbox) invoice — submitted, but not a real record → 400.
-    test_inv = _one_invoice(headers, _ENV_CSV, "sandbox")
-    assert test_inv["fbr_env"] == "sandbox" and test_inv["status"] == "submitted"
-    assert (
-        client.patch(
-            f"/api/invoices/{test_inv['id']}/paid", json={"is_paid": True}, headers=headers
-        ).status_code
-        == 400
-    )
-
-    # A failed invoice was never issued → 400.
-    bad_csv = _ENV_CSV.replace(
-        "\"Numbers, pieces, units\",1,1000", "\"Numbers, pieces, units\",0,1000"
-    )
-    bad = _one_invoice(headers, bad_csv, "production")
-    assert bad["status"] == "failed"
-    assert (
-        client.patch(
-            f"/api/invoices/{bad['id']}/paid", json={"is_paid": True}, headers=headers
-        ).status_code
-        == 400
-    )
+    assert live["status"] == "submitted"
+    # No paid fields on invoices, no endpoint, no "Paid tax" figure.
+    assert "is_paid" not in live and "paid_at" not in live
+    detail = client.get(f"/api/invoices/{live['id']}", headers=headers).json()
+    assert "is_paid" not in detail
+    r = client.patch(f"/api/invoices/{live['id']}/paid", json={"is_paid": True}, headers=headers)
+    assert r.status_code in (404, 405)
+    assert "paid_tax" not in client.get("/api/stats", headers=headers).json()
+    assert "paid_tax" not in client.get("/api/admin/stats", headers=admin_headers).json()
 
 
 def test_user_can_delete_test_invoice_only(admin_headers):
@@ -2463,21 +2434,6 @@ def test_receipts_endpoint_returns_every_submitted_match_for_printing(admin_head
     ).json()["total"] == 0
     # ...and it needs a login.
     assert client.get("/api/invoices/receipts").status_code in (401, 403)
-
-
-def test_paid_tax_reflected_in_stats(admin_headers):
-    headers, _ = _make_account(
-        admin_headers, "paidstats@example.com", can_submit_production=True
-    )
-    inv = _one_invoice(headers, _ENV_CSV, "production")
-    client.patch(f"/api/invoices/{inv['id']}/paid", json={"is_paid": True}, headers=headers)
-
-    stats = client.get("/api/stats", headers=headers).json()
-    assert stats["paid_tax"] == inv["total_tax"]
-
-    admin_stats = client.get("/api/admin/stats", headers=admin_headers).json()
-    assert admin_stats["paid_tax"] >= inv["total_tax"]
-    assert admin_stats["total_tax_collected"] >= admin_stats["paid_tax"]
 
 
 def test_admin_user_growth_chart(admin_headers):

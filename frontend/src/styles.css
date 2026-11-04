@@ -283,7 +283,20 @@ code { background: var(--slate-50); border: 1px solid var(--border); border-radi
 .tint-amber { background: var(--amber-50); color: var(--amber-600); }
 .tint-red { background: var(--red-50); color: var(--red-600); }
 .tint-slate { background: var(--slate-50); color: var(--slate-600); }
-.stat-value { font-size: 1.42rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+/* The card measures its own width (container), so a long amount shrinks to
+   fit: about 0.62em per character in the space left beside the icon
+   (icon 44px + gap 14px, ~62px). Short values stay at 1.42rem. */
+.stat-card { container-type: inline-size; }
+.stat-card > div:last-child { min-width: 0; }
+.stat-value {
+  font-size: clamp(0.9rem, calc((100cqi - 62px) / (var(--len, 6) * 0.62)), 1.42rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .stat-label { font-size: 0.78rem; color: var(--muted); margin-top: 3px; }
 
 /* ── Pagination ────────────────────────────────────────────────────── */
