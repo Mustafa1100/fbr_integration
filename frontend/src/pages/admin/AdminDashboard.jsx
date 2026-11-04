@@ -1,3 +1,4 @@
+import StatValue from '../../components/StatValue'
 import { useEffect, useState } from 'react'
 import {
   LayoutDashboard,
@@ -12,7 +13,6 @@ import {
   PieChart,
   Loader2,
   Landmark,
-  Wallet,
   UserPlus,
 } from 'lucide-react'
 import { api } from '../../api'
@@ -75,7 +75,7 @@ export default function AdminDashboard() {
               <Users size={20} />
             </div>
             <div>
-              <div className="stat-value">{stats.total_users}</div>
+              <StatValue value={stats.total_users} />
               <div className="stat-label">Users ({stats.active_users} active)</div>
             </div>
           </div>
@@ -84,7 +84,7 @@ export default function AdminDashboard() {
               <ShieldCheck size={20} />
             </div>
             <div>
-              <div className="stat-value">{stats.total_admins}</div>
+              <StatValue value={stats.total_admins} />
               <div className="stat-label">Admins ({stats.total_regular_users} regular users)</div>
             </div>
           </div>
@@ -93,7 +93,7 @@ export default function AdminDashboard() {
               <UploadCloud size={20} />
             </div>
             <div>
-              <div className="stat-value">{stats.total_uploads}</div>
+              <StatValue value={stats.total_uploads} />
               <div className="stat-label">CSV/Excel uploads</div>
             </div>
           </div>
@@ -102,7 +102,7 @@ export default function AdminDashboard() {
               <ReceiptText size={20} />
             </div>
             <div>
-              <div className="stat-value">{stats.total_invoices}</div>
+              <StatValue value={stats.total_invoices} />
               <div className="stat-label">Invoices</div>
             </div>
           </div>
@@ -111,7 +111,7 @@ export default function AdminDashboard() {
               <CheckCircle2 size={20} />
             </div>
             <div>
-              <div className="stat-value">{stats.submitted_invoices}</div>
+              <StatValue value={stats.submitted_invoices} />
               <div className="stat-label">Submitted to FBR</div>
             </div>
           </div>
@@ -120,7 +120,7 @@ export default function AdminDashboard() {
               <XCircle size={20} />
             </div>
             <div>
-              <div className="stat-value">{stats.failed_invoices}</div>
+              <StatValue value={stats.failed_invoices} />
               <div className="stat-label">Failed</div>
             </div>
           </div>
@@ -129,17 +129,8 @@ export default function AdminDashboard() {
               <Landmark size={20} />
             </div>
             <div>
-              <div className="stat-value">{stats.total_tax_collected.toLocaleString()}</div>
+              <StatValue value={stats.total_tax_collected.toLocaleString()} />
               <div className="stat-label">Total tax</div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon tint-green">
-              <Wallet size={20} />
-            </div>
-            <div>
-              <div className="stat-value">{stats.paid_tax.toLocaleString()}</div>
-              <div className="stat-label">Paid tax</div>
             </div>
           </div>
         </div>

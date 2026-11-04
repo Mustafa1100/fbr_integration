@@ -159,8 +159,8 @@ class Invoice(Base):
     fbr_dated: Mapped[str] = mapped_column(String(40), default="")
     fbr_response: Mapped[str] = mapped_column(Text, default="")
 
-    # Whether the buyer has actually paid this invoice — separate from FBR
-    # submission status, which only reflects tax-authority registration.
+    # No longer used (the "Mark paid" feature was removed). Kept so the
+    # existing column and its data stay as they are in the database.
     is_paid: Mapped[bool] = mapped_column(Boolean, default=False)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

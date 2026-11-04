@@ -58,6 +58,5 @@ def my_stats(
         "draft_invoices": invoices_q.filter(Invoice.status == "draft").count(),
         "total_sales_value": round(sum(i.grand_total for i in submitted), 2),
         "total_tax_collected": round(sum(i.total_tax for i in submitted), 2),
-        "paid_tax": round(sum(i.total_tax for i in submitted if i.is_paid), 2),
         "invoices_by_day": invoices_by_day(db, *day_filters),
     }

@@ -92,7 +92,6 @@ def stats(db: Session = Depends(get_db)):
         "failed_invoices": invoices_q.filter(Invoice.status == "failed").count(),
         "draft_invoices": invoices_q.filter(Invoice.status == "draft").count(),
         "total_tax_collected": round(sum(i.total_tax for i in submitted), 2),
-        "paid_tax": round(sum(i.total_tax for i in submitted if i.is_paid), 2),
         "invoices_per_user": [
             {"email": email, "count": count}
             for email, count in db.query(User.email, func.count(Invoice.id))
