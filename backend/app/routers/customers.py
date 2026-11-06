@@ -14,8 +14,15 @@ from app.pagination import DEFAULT_PAGE_SIZE, paginate
 from app.routers.settings import get_or_create_fbr_settings
 from app.services import customer_import, grid_upload
 from app.services.grid_upload import name_key
+from app.services.plans import require_active_plan
 
-router = APIRouter(prefix="/api/customers", tags=["customers"])
+
+router = APIRouter(
+    prefix="/api/customers",
+    tags=["customers"],
+    # An expired plan blocks everything here (see services/plans.py).
+    dependencies=[Depends(require_active_plan)],
+)
 
 REGISTRATION_TYPES = ("Registered", "Unregistered")
 

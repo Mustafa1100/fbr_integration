@@ -29,6 +29,12 @@ class User(Base):
     # even though JWTs are otherwise stateless and don't expire early.
     token_version: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    # Subscription plan (business users only). Empty = no plan set, which
+    # leaves the account unrestricted. The end date is never stored: it is
+    # always plan_start + the months/days of every PlanEntry.
+    plan_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Admin-only reference text (agreed fees etc.). Never sent to the user.
+    admin_note: Mapped[str] = mapped_column(Text, default="")
 
     fbr_settings: Mapped["FbrSettings | None"] = relationship(
         back_populates="user", uselist=False
@@ -333,3 +339,36 @@ class InvoiceItem(Base):
             + self.fed_payable
             - self.discount
         )
+
+
+class PlanEntry(Base):
+    """One link in a user's plan chain: the initial plan, a paid renewal
+    (months) or a free extension (days). Amounts are admin-only."""
+
+    __tablename__ = "plan_entries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    # initial | renewal | extension
+    kind: Mapped[str] = mapped_column(String(12))
+    months: Mapped[int] = mapped_column(Integer, default=0)
+    days: Mapped[int] = mapped_column(Integer, default=0)
+    amount: Mapped[float] = mapped_column(Float, default=0.0)
+    received_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class PlanLog(Base):
+    """Admin-only record of every change to a user's plan or admin note."""
+
+    __tablename__ = "plan_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    admin_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    action: Mapped[str] = mapped_column(String(40))
+    detail: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

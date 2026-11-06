@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Users as UsersIcon,
   ShieldCheck,
@@ -9,19 +9,29 @@ import {
   UserX,
   Trash2,
   AlertCircle,
-  Settings2,
   KeyRound,
   Search,
-  Copy,
-  Check,
+  StickyNote,
+  ChevronRight,
 } from 'lucide-react'
 import { api } from '../api'
 import usePageTitle from '../hooks/usePageTitle'
 import Modal from './Modal'
 import PaginationBar from './PaginationBar'
 import TableLoader from './TableLoader'
+import { PlanBadge } from './PlanPanel'
+import TempPasswordModal from './TempPasswordModal'
+import { addMonths, daysBetween, fmtDate, planText, todayPk } from '../planDates'
 
-const emptyForm = { email: '', full_name: '' }
+const emptyForm = () => ({
+  email: '',
+  full_name: '',
+  start_date: todayPk(),
+  plan_months: '',
+  initial_fee: '',
+  admin_note: '',
+})
+const PLAN_FILTERS = ['all', 'active', 'expiring', 'expired', 'none']
 const DEFAULT_PAGE_SIZE = 10
 
 // Shared page shell for the two separate admin-only sidebar tabs — Users
@@ -37,6 +47,12 @@ export default function AdminAccountsPage({ role }) {
   const [qInput, setQInput] = useState('')
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('all') // all | active | inactive
+  const [searchParams] = useSearchParams()
+  const [planFilter, setPlanFilter] = useState(() => {
+    const p = searchParams.get('plan')
+    return PLAN_FILTERS.includes(p) ? p : 'all'
+  })
+  const navigate = useNavigate()
   const [invoicesByEmail, setInvoicesByEmail] = useState({})
   const [form, setForm] = useState(emptyForm)
   const [showModal, setShowModal] = useState(false)
@@ -44,7 +60,6 @@ export default function AdminAccountsPage({ role }) {
   const [formError, setFormError] = useState('')
   const [error, setError] = useState('')
   const [createdAccount, setCreatedAccount] = useState(null) // { email, temp_password }
-  const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)
 
   // Debounce the search box so it doesn't fire a request per keystroke.
@@ -61,6 +76,7 @@ export default function AdminAccountsPage({ role }) {
     const params = new URLSearchParams({ role, page: String(page), page_size: String(pageSize) })
     if (q.trim()) params.set('q', q.trim())
     if (statusFilter !== 'all') params.set('is_active', statusFilter === 'active' ? 'true' : 'false')
+    if (!isAdmin && planFilter !== 'all') params.set('plan', planFilter)
     const resp = await api.getRaw(`/api/admin/users?${params}`)
     const items = await resp.json()
     setAccounts(items)
@@ -75,10 +91,10 @@ export default function AdminAccountsPage({ role }) {
   useEffect(() => {
     refresh().catch((e) => setError(e.message))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, page, pageSize, q, statusFilter])
+  }, [role, page, pageSize, q, statusFilter, planFilter])
 
   function openModal() {
-    setForm(emptyForm)
+    setForm(emptyForm())
     setFormError('')
     setShowModal(true)
   }
@@ -88,7 +104,18 @@ export default function AdminAccountsPage({ role }) {
     setFormError('')
     setCreating(true)
     try {
-      const created = await api.post('/api/admin/users', { ...form, role })
+      const body = isAdmin
+        ? { email: form.email, full_name: form.full_name, role }
+        : {
+            email: form.email,
+            full_name: form.full_name,
+            role,
+            start_date: form.start_date,
+            plan_months: Number(form.plan_months),
+            initial_fee: Number(form.initial_fee) || 0,
+            admin_note: form.admin_note,
+          }
+      const created = await api.post('/api/admin/users', body)
       setShowModal(false)
       setCreatedAccount({ email: created.email, temp_password: created.temp_password, mode: 'created' })
       setPage(1)
@@ -98,15 +125,6 @@ export default function AdminAccountsPage({ role }) {
     } finally {
       setCreating(false)
     }
-  }
-
-  function copyTempPassword() {
-    navigator.clipboard.writeText(createdAccount.temp_password).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    })
-    // If the browser denies clipboard access, the code is still fully
-    // visible and selectable in the box above — nothing else to fall back to.
   }
 
   async function toggleActive(user) {
@@ -148,7 +166,10 @@ export default function AdminAccountsPage({ role }) {
   }
 
   const Icon = isAdmin ? ShieldCheck : UsersIcon
-  const filtersActive = q.trim() !== '' || statusFilter !== 'all'
+  const filtersActive = q.trim() !== '' || statusFilter !== 'all' || planFilter !== 'all'
+  const months = Math.floor(Number(form.plan_months) || 0)
+  const newPlanEnd = !isAdmin && form.start_date && months > 0 ? addMonths(form.start_date, months) : null
+  const newPlanLeft = newPlanEnd ? daysBetween(todayPk(), newPlanEnd) : null
 
   return (
     <>
@@ -200,6 +221,22 @@ export default function AdminAccountsPage({ role }) {
             <option value="active">Active only</option>
             <option value="inactive">Deactivated only</option>
           </select>
+          {!isAdmin && (
+            <select
+              value={planFilter}
+              onChange={(e) => {
+                setPlanFilter(e.target.value)
+                setPage(1)
+              }}
+              style={{ maxWidth: 190 }}
+            >
+              <option value="all">All plans</option>
+              <option value="active">Plan active</option>
+              <option value="expiring">Ending in 7 days</option>
+              <option value="expired">Plan expired</option>
+              <option value="none">No plan set</option>
+            </select>
+          )}
         </div>
       </div>
 
@@ -231,15 +268,26 @@ export default function AdminAccountsPage({ role }) {
                   <th>Email</th>
                   <th>Status</th>
                   <th>Created</th>
+                  {!isAdmin && <th>Plan</th>}
                   {!isAdmin && <th>Invoices</th>}
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 {accounts.map((u) => (
-                  <tr key={u.id}>
+                  <tr
+                    key={u.id}
+                    className={isAdmin ? undefined : 'row-link'}
+                    onClick={isAdmin ? undefined : () => navigate(`/admin/users/${u.id}`)}
+                  >
                     <td>
-                      <span className="strong">{u.full_name}</span>
+                      {isAdmin ? (
+                        <span className="strong">{u.full_name}</span>
+                      ) : (
+                        <Link className="strong" to={`/admin/users/${u.id}`} onClick={(e) => e.stopPropagation()}>
+                          {u.full_name}
+                        </Link>
+                      )}
                     </td>
                     <td>{u.email}</td>
                     <td>
@@ -255,14 +303,34 @@ export default function AdminAccountsPage({ role }) {
                       </div>
                     </td>
                     <td>{new Date(u.created_at).toLocaleDateString()}</td>
+                    {!isAdmin && (
+                      <td>
+                        <div className="plan-cell">
+                          <div className="row-actions">
+                            <PlanBadge plan={u.plan} />
+                            {u.plan?.extended && <span className="badge info">extended</span>}
+                            {u.admin_note && (
+                              <span className="muted" title={u.admin_note} style={{ cursor: 'help' }}>
+                                <StickyNote size={14} />
+                              </span>
+                            )}
+                          </div>
+                          <span className="muted small">{planText(u.plan)}</span>
+                        </div>
+                      </td>
+                    )}
                     {!isAdmin && <td>{invoicesByEmail[u.email] ?? 0}</td>}
                     <td>
+                      {!isAdmin ? (
+                        <Link
+                          className="btn btn-secondary btn-sm"
+                          to={`/admin/users/${u.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Open <ChevronRight size={14} />
+                        </Link>
+                      ) : (
                       <div className="row-actions">
-                        {!isAdmin && (
-                          <Link className="btn btn-secondary btn-sm" to={`/admin/users/${u.id}/fbr-settings`}>
-                            <Settings2 size={14} /> FBR
-                          </Link>
-                        )}
                         <button className="btn btn-secondary btn-sm" onClick={() => resetPassword(u)}>
                           <KeyRound size={14} /> Reset password
                         </button>
@@ -281,6 +349,7 @@ export default function AdminAccountsPage({ role }) {
                           <Trash2 size={14} /> Delete
                         </button>
                       </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -338,6 +407,73 @@ export default function AdminAccountsPage({ role }) {
                 required
               />
             </div>
+            {!isAdmin && (
+              <div className="create-plan">
+                <h4>Plan</h4>
+                <div className="plan-form-grid">
+                  <div className="field">
+                    <label>Account start date</label>
+                    <input
+                      type="date"
+                      value={form.start_date}
+                      max={todayPk()}
+                      onChange={(e) => setForm({ ...form, start_date: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Plan length (months)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="120"
+                      value={form.plan_months}
+                      onChange={(e) => setForm({ ...form, plan_months: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Initial fee (PKR)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={form.initial_fee}
+                      onChange={(e) => setForm({ ...form, initial_fee: e.target.value })}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+                {newPlanEnd &&
+                  (newPlanLeft <= 0 ? (
+                    <div className="alert warn">
+                      <AlertCircle size={17} />
+                      <span>
+                        With these dates the plan ended on <strong>{fmtDate(newPlanEnd)}</strong>. This user
+                        will be blocked as soon as they sign in. You can renew or extend it from the Plan
+                        button afterwards.
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="muted small" style={{ margin: '0 0 12px' }}>
+                      Plan ends on <strong>{fmtDate(newPlanEnd)}</strong> ({newPlanLeft} days from today).
+                    </p>
+                  ))}
+                <div className="field">
+                  <label>
+                    Admin note <span className="hint">(only admins see this)</span>
+                  </label>
+                  <textarea
+                    className="create-note"
+                    rows={2}
+                    maxLength={2000}
+                    value={form.admin_note}
+                    onChange={(e) => setForm({ ...form, admin_note: e.target.value })}
+                    placeholder="Write a note…"
+                  />
+                </div>
+              </div>
+            )}
             <p className="muted" style={{ margin: '0 0 14px', fontSize: '0.8rem' }}>
               <KeyRound size={13} style={{ verticalAlign: -2, marginRight: 4 }} />
               A 6-character temporary password will be generated automatically — you&apos;ll see it
@@ -352,62 +488,11 @@ export default function AdminAccountsPage({ role }) {
       )}
 
       {createdAccount && (
-        <Modal
-          title={createdAccount.mode === 'reset' ? 'Password reset' : `${isAdmin ? 'Admin' : 'User'} created`}
+        <TempPasswordModal
+          account={createdAccount}
+          label={isAdmin ? 'Admin' : 'User'}
           onClose={() => setCreatedAccount(null)}
-          width={420}
-        >
-          <p className="muted" style={{ margin: '0 0 16px' }}>
-            {createdAccount.mode === 'reset' ? (
-              <>
-                New temporary password for <strong>{createdAccount.email}</strong> — their old
-                session is already signed out, and they'll be required to set their own password
-                on next sign-in.
-              </>
-            ) : (
-              <>
-                Share this temporary password with <strong>{createdAccount.email}</strong> —
-                they'll be required to set their own on first sign-in.
-              </>
-            )}{' '}
-            It won&apos;t be shown again.
-          </p>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 12,
-              padding: '14px 18px',
-              borderRadius: 10,
-              background: 'var(--slate-50)',
-              border: '1px solid var(--border-strong)',
-              marginBottom: 18,
-            }}
-          >
-            <span className="mono" style={{ fontSize: '1.4rem', fontWeight: 700, letterSpacing: '0.12em' }}>
-              {createdAccount.temp_password}
-            </span>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={copyTempPassword}>
-              {copied ? (
-                <>
-                  <Check size={14} /> Copied
-                </>
-              ) : (
-                <>
-                  <Copy size={14} /> Copy
-                </>
-              )}
-            </button>
-          </div>
-          <button
-            className="btn btn-primary"
-            style={{ width: '100%' }}
-            onClick={() => setCreatedAccount(null)}
-          >
-            Done
-          </button>
-        </Modal>
+        />
       )}
     </>
   )

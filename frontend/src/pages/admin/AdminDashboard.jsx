@@ -1,5 +1,6 @@
 import StatValue from '../../components/StatValue'
 import { useEffect, useState } from 'react'
+import { AdvancedStatsModal, AttentionLists } from '../../components/AdminAttention'
 import {
   LayoutDashboard,
   Users,
@@ -12,8 +13,8 @@ import {
   TrendingUp,
   PieChart,
   Loader2,
-  Landmark,
   UserPlus,
+  BarChart3,
 } from 'lucide-react'
 import { api } from '../../api'
 import { TrendChart, DonutChart, BarChart } from '../../components/Charts'
@@ -32,6 +33,7 @@ export default function AdminDashboard() {
   const [error, setError] = useState('')
   const [growth, setGrowth] = useState(null)
   const [granularity, setGranularity] = useState('day')
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   useEffect(() => {
     api.get('/api/admin/stats').then(setStats).catch((e) => setError(e.message))
@@ -52,6 +54,11 @@ export default function AdminDashboard() {
             <LayoutDashboard size={22} /> Admin Dashboard
           </h1>
           <p className="page-sub">Overview of users and FBR invoicing activity.</p>
+        </div>
+        <div className="page-actions">
+          <button className="btn btn-secondary" onClick={() => setShowAdvanced(true)}>
+            <BarChart3 size={16} /> Advanced stats
+          </button>
         </div>
       </div>
 
@@ -124,17 +131,11 @@ export default function AdminDashboard() {
               <div className="stat-label">Failed</div>
             </div>
           </div>
-          <div className="stat-card">
-            <div className="stat-icon tint-blue">
-              <Landmark size={20} />
-            </div>
-            <div>
-              <StatValue value={stats.total_tax_collected.toLocaleString()} />
-              <div className="stat-label">Total tax</div>
-            </div>
-          </div>
         </div>
       )}
+
+      <h2 className="section-title">Needs attention</h2>
+      <AttentionLists />
 
       {stats && (
         <div className="chart-grid">
@@ -191,6 +192,7 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
+      {showAdvanced && <AdvancedStatsModal onClose={() => setShowAdvanced(false)} />}
     </>
   )
 }

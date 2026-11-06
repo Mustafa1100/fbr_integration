@@ -9,8 +9,15 @@ from app.auth import get_current_user, require_password_already_set
 from app.database import get_db
 from app.models import FbrSettings, User
 from app.services import invoice_layout
+from app.services.plans import require_active_plan
 
-router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+router = APIRouter(
+    prefix="/api/settings",
+    tags=["settings"],
+    # An expired plan blocks everything here (see services/plans.py).
+    dependencies=[Depends(require_active_plan)],
+)
 
 MAX_STRNS = 50
 

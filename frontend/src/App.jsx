@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { getStoredUser } from './api'
 import Layout from './components/Layout'
 import Login from './pages/Login'
@@ -9,7 +9,7 @@ import AdminColumnGuide from './pages/admin/ColumnGuide'
 import ScenarioGuide from './pages/admin/ScenarioGuide'
 import AdminUsers from './pages/admin/Users'
 import ServerInfo from './pages/admin/ServerInfo'
-import UserFbrSettings from './pages/admin/UserFbrSettings'
+import UserProfile from './pages/admin/UserProfile'
 import UserUploads from './pages/admin/UserUploads'
 import UserInvoices from './pages/admin/UserInvoices'
 import UserInvoiceDetail from './pages/admin/UserInvoiceDetail'
@@ -37,6 +37,12 @@ function RequireAuth({ role, children }) {
     return <Navigate to={homeFor(user)} replace />
   }
   return children
+}
+
+// The FBR settings page now lives in a tab of the user profile.
+function FbrSettingsRedirect() {
+  const { userId } = useParams()
+  return <Navigate to={`/admin/users/${userId}?tab=fbr`} replace />
 }
 
 function RequirePendingPasswordChange({ children }) {
@@ -96,10 +102,18 @@ export default function App() {
           }
         />
         <Route
+          path="/admin/users/:userId"
+          element={
+            <RequireAuth role="admin">
+              <UserProfile />
+            </RequireAuth>
+          }
+        />
+        <Route
           path="/admin/users/:userId/fbr-settings"
           element={
             <RequireAuth role="admin">
-              <UserFbrSettings />
+              <FbrSettingsRedirect />
             </RequireAuth>
           }
         />

@@ -6,14 +6,14 @@ import {
   ReceiptText,
   CheckCircle2,
   XCircle,
-  Banknote,
-  Landmark,
   AlertCircle,
   TrendingUp,
   PieChart,
   Loader2,
+  CalendarClock,
 } from 'lucide-react'
-import { api, getStoredUser } from '../../api'
+import { api, getStoredUser, PLAN_EVENT } from '../../api'
+import { fmtDate, plural } from '../../planDates'
 import { TrendChart, DonutChart } from '../../components/Charts'
 import usePageTitle from '../../hooks/usePageTitle'
 
@@ -29,6 +29,15 @@ export default function Dashboard() {
   const [error, setError] = useState('')
   const [env, setEnv] = useState('production')
   const user = getStoredUser()
+  const [me, setMe] = useState(null)
+
+  useEffect(() => {
+    api.get('/api/auth/me').then(setMe).catch(() => {})
+    // Keep the box in step when a renewal / expiry is picked up elsewhere.
+    const onPlan = (e) => setMe((m) => (m ? { ...m, plan: e.detail } : m))
+    window.addEventListener(PLAN_EVENT, onPlan)
+    return () => window.removeEventListener(PLAN_EVENT, onPlan)
+  }, [])
 
   useEffect(() => {
     setStats(null)
@@ -115,9 +124,10 @@ export default function Dashboard() {
               <div className="stat-label">Failed</div>
             </div>
           </div>
+          {me && <PlanInfo plan={me.plan} memberSince={me.member_since} />}
           <div className="stat-card">
             <div className="stat-icon tint-blue">
-              <Banknote size={20} />
+              <span className="stat-icon-text">Rs</span>
             </div>
             <div>
               <StatValue value={stats.total_sales_value.toLocaleString()} />
@@ -126,7 +136,7 @@ export default function Dashboard() {
           </div>
           <div className="stat-card">
             <div className="stat-icon tint-blue">
-              <Landmark size={20} />
+              <span className="stat-icon-text">Rs</span>
             </div>
             <div>
               <StatValue value={stats.total_tax_collected.toLocaleString()} />
@@ -162,5 +172,41 @@ export default function Dashboard() {
         </div>
       )}
     </>
+  )
+}
+
+// "Your plan" box: when the account was created and when the plan ends.
+// Dates only — fees and the admin's notes are never sent to the user.
+function PlanInfo({ plan, memberSince }) {
+  const status = plan?.status || 'none'
+  const hasPlan = status !== 'none' && plan.ends_on
+  const label = { active: 'active', expiring: 'ends soon', expired: 'expired' }[status]
+  const badge = { active: 'submitted', expiring: 'warn', expired: 'failed' }[status]
+  return (
+    <div className={`plan-info status-${status}`}>
+      <div className="plan-info-head">
+        <span>
+          <CalendarClock size={15} /> Your plan
+        </span>
+        {hasPlan && <span className={`badge ${badge}`}>{label}</span>}
+      </div>
+      <dl>
+        <dt>Member since</dt>
+        <dd>{fmtDate(memberSince)}</dd>
+        {hasPlan && (
+          <>
+            <dt>{status === 'expired' ? 'Expired on' : 'Plan ends'}</dt>
+            <dd>{fmtDate(plan.ends_on)}</dd>
+          </>
+        )}
+      </dl>
+      {hasPlan && (
+        <div className="plan-info-foot">
+          {status === 'expired'
+            ? 'Contact your administrator to renew.'
+            : `${plural(plan.days_left, 'day')} left`}
+        </div>
+      )}
+    </div>
   )
 }

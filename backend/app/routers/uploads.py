@@ -14,8 +14,15 @@ from app.services.invoice_service import (
     VALID_ENVS,
     resolve_env_filter,
 )
+from app.services.plans import require_active_plan
 
-router = APIRouter(prefix="/api/uploads", tags=["uploads"])
+
+router = APIRouter(
+    prefix="/api/uploads",
+    tags=["uploads"],
+    # An expired plan blocks everything here (see services/plans.py).
+    dependencies=[Depends(require_active_plan)],
+)
 
 # "processing" = created but not fully submitted yet (a paced batch in flight,
 # stopped, or interrupted) — see defer_submit on POST /api/uploads.
