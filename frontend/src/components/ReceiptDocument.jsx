@@ -9,6 +9,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import mark from '../assets/mark.png'
 import { adjustmentAmounts, adjustmentLabel } from '../receiptAdjustments'
+import { isCottonGinner } from '../cottonWithholding'
 
 // Used only if an invoice arrives without a layout — the pre-layout receipt.
 const FALLBACK_LAYOUT = {
@@ -281,17 +282,22 @@ export default function ReceiptDocument({ inv, strnChoice = '' }) {
       .map((a) => ({ key: a.key, label: adjustmentLabel(a) }))
     return [...orphans, t]
   })
-  // Tax withheld by the buyer (e.g. cotton lint): the buyer pays it to FBR,
-  // so the seller is owed the total less that tax. Nothing shows without it.
+  // Cotton lint ("Cotton ginners"): the buyer withholds the sales tax and pays
+  // it to FBR, so the seller is owed the total less that tax. On these
+  // invoices only, the inclusive total is replaced by the withheld tax and
+  // the net amount. Every other receipt is unchanged.
   const stWithheld = sumOf('st_withheld')
-  if (stWithheld > 0) {
+  const showWithheld = stWithheld > 0 && items.some((it) => isCottonGinner(it.sale_type))
+  if (showWithheld) {
     totalValues.st_withheld = money(stWithheld)
     totalValues.payable_to_seller = money(
       beforeAdjustments + adjustments.reduce((sum, a) => sum + a.signed, 0) - stWithheld
     )
+    const inclIndex = totalRows.findIndex((t) => t.key === 'total_incl')
+    if (inclIndex !== -1) totalRows.splice(inclIndex, 1)
     totalRows.push(
-      { key: 'st_withheld', label: 'Sales Tax Withheld by Buyer' },
-      { key: 'payable_to_seller', label: 'Amount Payable to Seller' }
+      { key: 'st_withheld', label: 'Sales Tax Withheld' },
+      { key: 'payable_to_seller', label: 'Net Payable Amount' }
     )
   }
 
@@ -411,7 +417,7 @@ export default function ReceiptDocument({ inv, strnChoice = '' }) {
             <div
               key={t.key}
               className={`trow${
-                t.key === (stWithheld > 0 ? 'payable_to_seller' : 'total_incl') ? ' grand' : ''
+                t.key === (showWithheld ? 'payable_to_seller' : 'total_incl') ? ' grand' : ''
               }`}
             >
               <span>{t.label}</span>
