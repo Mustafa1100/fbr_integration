@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ReceiptText, QrCode, AlertCircle, Search } from 'lucide-react'
+import { ReceiptText, QrCode, AlertCircle, Search, Trash2 } from 'lucide-react'
 import { api } from '../../api'
 import UserPicker from '../../components/UserPicker'
+import Modal from '../../components/Modal'
 import PaginationBar from '../../components/PaginationBar'
 import SearchHelp from '../../components/SearchHelp'
 import TableLoader from '../../components/TableLoader'
@@ -24,6 +25,10 @@ export default function UserInvoices() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [error, setError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
+  const [toDelete, setToDelete] = useState(null) // invoice waiting for confirmation
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -63,7 +68,24 @@ export default function UserInvoices() {
         setTotal(Number(resp.headers.get('x-total-count') || 0))
       })
       .catch((e) => setError(e.message))
-  }, [userId, uploadId, page, pageSize, q, statusFilter, envFilter, dateFrom, dateTo])
+  }, [userId, uploadId, page, pageSize, q, statusFilter, envFilter, dateFrom, dateTo, reloadKey])
+
+  async function deleteInvoice() {
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await api.delete(`/api/admin/users/${userId}/invoices/${toDelete.id}`)
+      // Step back a page when the last row on this page was removed.
+      if (page > 1 && invoices.length === 1) setPage(page - 1)
+      else setReloadKey((k) => k + 1)
+      setToDelete(null)
+    } catch (e) {
+      // Shown inside the pop-up, which stays open.
+      setDeleteError(e.message)
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   function pickUser(id) {
     setSearchParams(id ? { user: id } : {})
@@ -227,6 +249,7 @@ export default function UserInvoices() {
                       <th>Total</th>
                       <th>Status</th>
                       <th></th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -260,6 +283,19 @@ export default function UserInvoices() {
                             <QrCode size={14} /> Receipt
                           </Link>
                         </td>
+                        <td>
+                          <button
+                            className="icon-btn danger"
+                            data-tip="Delete invoice"
+                            aria-label="Delete invoice"
+                            onClick={() => {
+                              setDeleteError('')
+                              setToDelete(inv)
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -279,6 +315,34 @@ export default function UserInvoices() {
             </>
           )}
         </>
+      )}
+      {toDelete && (
+        <Modal title="Delete invoice?" onClose={() => !deleting && setToDelete(null)} width={420}>
+          <p className="muted" style={{ margin: '0 0 12px' }}>
+            Invoice <strong>{toDelete.pos_invoice_no}</strong> ({toDelete.buyer_name}) will be hidden
+            from this user&apos;s invoice history. The data is kept.
+          </p>
+          {deleteError && (
+            <div className="alert error">
+              <AlertCircle size={17} />
+              <span>{deleteError}</span>
+            </div>
+          )}
+          {toDelete.status === 'submitted' && toDelete.fbr_env === 'production' && (
+            <div className="alert warn">
+              <AlertCircle size={17} />
+              <span>This invoice was accepted by FBR. Deleting it here does not cancel it with FBR.</span>
+            </div>
+          )}
+          <div className="row-actions" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
+            <button className="btn btn-secondary" onClick={() => setToDelete(null)} disabled={deleting}>
+              Cancel
+            </button>
+            <button className="btn btn-danger" onClick={deleteInvoice} disabled={deleting}>
+              <Trash2 size={16} /> {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          </div>
+        </Modal>
       )}
     </>
   )

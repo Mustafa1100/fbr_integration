@@ -12,8 +12,15 @@ from app.fbr.scenarios import (
 )
 from app.models import User
 from app.routers.settings import get_or_create_fbr_settings
+from app.services.plans import require_active_plan
 
-router = APIRouter(prefix="/api/reference", tags=["reference"])
+
+router = APIRouter(
+    prefix="/api/reference",
+    tags=["reference"],
+    # An expired plan blocks everything here (see services/plans.py).
+    dependencies=[Depends(require_active_plan)],
+)
 
 
 @router.get("/provinces")

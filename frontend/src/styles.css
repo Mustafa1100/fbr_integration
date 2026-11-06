@@ -1280,3 +1280,182 @@ tr.row-selected td { background: var(--brand-50); }
 .file-check h4 { margin: 10px 0 4px; font-size: 0.88rem; }
 .file-check ul { margin: 0; padding-left: 18px; }
 .file-check li { margin: 3px 0; }
+
+/* ---- Subscription plans ---- */
+.nav-lock { margin-left: auto; opacity: 0.7; }
+.sidebar.collapsed .nav-lock { display: none; }
+.plan-banner { margin-bottom: 18px; }
+.plan-locked { position: relative; min-height: calc(100vh - 170px); }
+.plan-locked-bg { filter: blur(5px); opacity: 0.85; pointer-events: none; user-select: none; }
+.plan-locked-bg .pl-title { width: 220px; height: 26px; border-radius: 8px; background: var(--border-strong); margin-bottom: 10px; }
+.plan-locked-bg .pl-sub { width: 340px; max-width: 80%; height: 14px; border-radius: 6px; background: var(--border); margin-bottom: 24px; }
+.plan-locked-bg .pl-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 8px 18px; }
+.plan-locked-bg .pl-row { display: flex; gap: 6%; padding: 16px 0; border-bottom: 1px solid var(--border); }
+.plan-locked-bg .pl-row:last-child { border-bottom: none; }
+.plan-locked-bg .pl-row span { height: 12px; border-radius: 6px; background: var(--border-strong); }
+.plan-locked-wrap {
+  position: absolute; inset: 0; display: flex; align-items: flex-start; justify-content: center;
+  padding: 90px 16px 24px;
+  /* Soft glow only behind the text; the rest of the blurred page shows. */
+  background: radial-gradient(ellipse 420px 260px at 50% 190px, rgba(244, 246, 249, 0.96), rgba(244, 246, 249, 0.6) 60%, rgba(244, 246, 249, 0) 100%);
+}
+.plan-locked-content { max-width: 420px; text-align: center; }
+.plan-locked-icon {
+  width: 56px; height: 56px; border-radius: 50%; margin: 0 auto 18px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--red-50); color: var(--red-600);
+}
+.plan-locked-content h2 { margin: 0 0 8px; font-size: 1.25rem; letter-spacing: -0.01em; }
+.plan-locked-back { display: inline-block; margin-top: 14px; font-size: 0.85rem; color: var(--muted); }
+.plan-locked-back:hover { color: var(--brand-600); }
+.plan-locked-content p { margin: 0 0 22px; color: var(--muted); font-size: 0.92rem; line-height: 1.6; }
+.small { font-size: 0.8rem; }
+.nowrap { white-space: nowrap; }
+.plan-summary {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 16px; border-radius: 12px; border: 1px solid var(--border); background: var(--slate-50);
+  margin-bottom: 14px;
+}
+.plan-summary.status-expired { background: var(--red-50); border-color: #f3c0bb; }
+.plan-summary.status-expiring { background: var(--amber-50); border-color: #f5d79e; }
+.plan-summary.status-active { background: var(--brand-50); border-color: #b5e2ce; }
+.plan-summary-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.plan-note { margin-bottom: 14px; }
+.plan-note label { display: flex; align-items: center; gap: 6px; }
+.plan-note textarea, .create-note {
+  width: 100%; padding: 9px 12px; border: 1px solid var(--border-strong); border-radius: 10px;
+  font: inherit; font-size: 0.88rem; color: var(--text); background: var(--surface); resize: vertical;
+  margin-bottom: 8px;
+}
+.plan-note textarea:focus, .create-note:focus { outline: none; border-color: var(--brand-500); box-shadow: 0 0 0 3px rgba(43, 111, 79, 0.15); }
+.plan-table { margin-bottom: 14px; overflow-x: auto; }
+.plan-note-cell { max-width: 220px; white-space: pre-wrap; word-break: break-word; }
+.plan-log { font-size: 0.85rem; }
+.plan-log summary { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text-2); }
+.plan-log ul { list-style: none; margin: 10px 0 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.plan-log li { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.plan-log li:last-child { border-bottom: none; }
+.plan-form h3 { margin: 6px 0 6px; font-size: 1.05rem; }
+.plan-back { display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; }
+.plan-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0 12px; margin-top: 10px; }
+.plan-preview { padding: 10px 12px; border-radius: 10px; font-size: 0.88rem; border: 1px solid var(--border); background: var(--slate-50); }
+.plan-preview.good { background: var(--brand-50); border-color: #b5e2ce; color: #085c3d; }
+.plan-preview.bad { background: var(--red-50); border-color: #f3c0bb; color: #8f1d14; }
+.plan-cell { display: flex; flex-direction: column; gap: 3px; }
+.plan-cell .row-actions { gap: 6px; }
+.create-plan { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 12px; }
+.create-plan h4 { margin: 0 0 10px; font-size: 0.9rem; }
+.stat-link, .stat-link:hover { color: inherit; text-decoration: none; }
+/* ---- Admin user profile ---- */
+.back-link { display: inline-flex; align-items: center; gap: 5px; font-size: 0.85rem; font-weight: 600; color: var(--text-2); margin-bottom: 10px; }
+.back-link:hover { color: var(--brand-600); text-decoration: none; }
+.profile-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 6px; color: var(--text-2); font-size: 0.88rem; }
+.profile-meta > span:not(.badge) { display: inline-flex; align-items: center; gap: 6px; }
+.profile-meta > span:first-child { gap: 6px; }
+.profile-stats { grid-template-columns: repeat(auto-fill, minmax(200px, 240px)); margin-bottom: 1.5rem; }
+/* Small square icon button with a tooltip (data-tip). */
+.icon-btn {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-2);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.icon-btn:hover { background: var(--slate-50); color: var(--text); border-color: var(--border-strong); }
+.icon-btn.done { color: var(--brand-600); border-color: #b5e2ce; background: var(--brand-50); }
+.icon-btn.lg { width: 40px; height: 40px; border-radius: 10px; }
+.icon-btn.danger { color: var(--red-600); border-color: #f3c0bb; }
+.icon-btn.danger:hover { background: var(--red-50); }
+.icon-btn[data-tip]::after {
+  content: attr(data-tip); position: absolute; top: calc(100% + 7px); left: 50%; transform: translateX(-50%);
+  white-space: nowrap; background: #101828; color: #fff; font-size: 0.74rem; font-weight: 500;
+  padding: 5px 8px; border-radius: 6px; pointer-events: none; opacity: 0; transition: opacity 0.12s; z-index: 20;
+}
+.icon-btn[data-tip]:hover::after, .icon-btn[data-tip]:focus-visible::after { opacity: 1; }
+.page-actions .icon-btn[data-tip]::after { left: auto; right: 0; transform: none; }
+/* The grey line is drawn inside the row, so nothing overflows and no
+   scroll bar shows (phones can still swipe the tabs sideways). */
+.profile-tabs {
+  display: flex; gap: 4px; margin-bottom: 1.25rem; box-shadow: inset 0 -1px 0 var(--border);
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+}
+.profile-tabs::-webkit-scrollbar { display: none; }
+.profile-tab {
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px;
+  background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer;
+  font: inherit; font-size: 0.9rem; font-weight: 600; color: var(--muted); white-space: nowrap;
+}
+.profile-tab:hover { color: var(--text); }
+.profile-tab.active { color: var(--brand-600); border-bottom-color: var(--brand-600); }
+tr.row-link { cursor: pointer; }
+tr.row-link:hover td { background: var(--slate-50); }
+/* "Your plan" box: last cell of the dashboard stats grid, pinned to the
+   right-hand column. Green = active, yellow = ends soon, red = expired. */
+.plan-info {
+  grid-column-end: -1;
+  grid-row: span 2;
+  min-width: 0;
+  padding: 16px 18px; border-radius: var(--radius, 14px); font-size: 0.82rem;
+  background: var(--brand-50); border: 1px solid #b5e2ce; color: #0b3d28;
+  display: flex; flex-direction: column; justify-content: center; gap: 10px;
+}
+.plan-info.status-expiring { background: var(--amber-50); border-color: #f5d79e; color: #7a4b00; }
+.plan-info.status-expired { background: var(--red-50); border-color: #f3c0bb; color: #8f1d14; }
+.plan-info-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 8px; font-weight: 600; font-size: 0.85rem; }
+.plan-info-head > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
+/* Label on its own line, date underneath, so it never runs out of the card. */
+.plan-info dl { display: grid; grid-template-columns: minmax(0, 1fr); margin: 0; }
+.plan-info dt { opacity: 0.75; font-size: 0.76rem; }
+.plan-info dd { margin: 0 0 6px; font-weight: 600; font-size: 0.86rem; overflow-wrap: anywhere; }
+.plan-info dd:last-child { margin-bottom: 0; }
+.plan-info-foot { font-weight: 500; font-size: 0.8rem; }
+/* Currency mark used in place of an icon (e.g. "Rs" on money cards). */
+.stat-icon-text { font-size: 0.95rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
+/* No up/down arrows on number fields (Chrome/Edge/Safari and Firefox). */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
+/* On/off settings shown as rows with a toggle switch. */
+.setting-list {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0 24px;
+  margin: 0 0 18px;
+}
+.setting-toggle {
+  display: flex; flex-direction: row-reverse; align-items: center; justify-content: flex-end; gap: 12px;
+  padding: 10px 0; cursor: pointer; margin: 0;
+  font-weight: 400;
+}
+.setting-toggle-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.setting-toggle-title { font-weight: 600; font-size: 0.9rem; color: var(--text); }
+.setting-toggle .muted { font-size: 0.82rem; line-height: 1.45; max-width: 640px; }
+.switch { position: relative; flex: none; display: inline-flex; }
+.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.switch-track {
+  position: relative; width: 42px; height: 24px; border-radius: 999px;
+  background: var(--border-strong); transition: background 0.18s;
+}
+.switch-track::after {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(16, 24, 40, 0.25); transition: transform 0.18s;
+}
+.switch input:checked + .switch-track { background: var(--brand-600); }
+.switch input:checked + .switch-track::after { transform: translateX(18px); }
+.switch input:focus-visible + .switch-track { outline: 2px solid var(--brand-600); outline-offset: 2px; }
+/* Tabs inside a card (e.g. FBR settings sections). */
+.sub-tabs { margin: -6px 0 1.25rem; }
+.sub-tabs .profile-tab { font-size: 0.86rem; padding: 8px 12px; }
+/* Admin dashboard: "Needs attention" lists */
+.attention-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 1.5rem; }
+.attention-card { display: flex; flex-direction: column; padding: 16px 18px; }
+.attention-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.attention-head h3 { margin: 0; font-size: 0.92rem; flex: 1; }
+.attention-icon { width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.attention-count { font-weight: 700; font-size: 0.9rem; color: var(--text-2); }
+.attention-list { list-style: none; margin: 0; padding: 0; }
+.attention-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--border); }
+.attention-user { display: flex; flex-direction: column; min-width: 0; color: inherit; }
+.attention-user:hover { text-decoration: none; }
+.attention-user:hover .attention-name { color: var(--brand-600); }
+.attention-name { font-weight: 600; font-size: 0.88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attention-list .badge { flex: none; }
+.attention-empty { margin: 6px 0 0; }
+.attention-more { margin: 8px 0 0; font-size: 0.82rem; font-weight: 600; }

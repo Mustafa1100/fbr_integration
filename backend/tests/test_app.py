@@ -3865,3 +3865,342 @@ def test_customer_import_lists_every_problem_and_saves_nothing(admin_headers):
     r = client.post("/api/customers/import/check", files={"file": ("x.csv", "foo,bar\n1,2\n", "text/csv")}, headers=h).json()
     assert r["errors"] == ['The first row must have a "Buyer Name" heading. Download the template for the right format.']
     assert client.post("/api/customers/import/check", files={"file": ("x.txt", "a", "text/plain")}, headers=h).status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Subscription plans
+# ---------------------------------------------------------------------------
+
+
+def _activate(email, temp):
+    login = client.post("/api/auth/login", json={"email": email, "password": temp})
+    th = {"Authorization": f"Bearer {login.json()['token']}"}
+    done = client.post(
+        "/api/auth/set-password",
+        json={"new_password": SHOP_REAL_PASSWORD, "confirm_password": SHOP_REAL_PASSWORD},
+        headers=th,
+    )
+    assert done.status_code == 200, done.text
+    return {"Authorization": f"Bearer {done.json()['token']}"}, done.json()
+
+
+def test_plan_dates_chain_and_month_ends():
+    from app.models import PlanEntry, User
+    from app.services.plans import add_months, chain, status_of
+
+    assert add_months(date(2027, 1, 31), 1) == date(2027, 2, 28)
+    assert add_months(date(2028, 1, 31), 1) == date(2028, 2, 29)
+    assert add_months(date(2026, 11, 30), 3) == date(2027, 2, 28)
+    # Counted from the start, so the 31st comes back after a short month.
+    start = date(2027, 1, 31)
+    two = [PlanEntry(kind="initial", months=1), PlanEntry(kind="renewal", months=1)]
+    assert chain(start, two)[-1][2] == date(2027, 3, 31)
+
+    # The user's example: due 15 Nov, 15-day extension -> 30 Nov, then a
+    # 1-month renewal carries on from there -> 30 Dec.
+    start = date(2026, 10, 15)
+    entries = [
+        PlanEntry(kind="initial", months=1, days=0),
+        PlanEntry(kind="extension", months=0, days=15),
+        PlanEntry(kind="renewal", months=1, days=0),
+    ]
+    periods = [(f, t) for _, f, t in chain(start, entries)]
+    assert periods == [
+        (date(2026, 10, 15), date(2026, 11, 15)),
+        (date(2026, 11, 15), date(2026, 11, 30)),
+        (date(2026, 11, 30), date(2026, 12, 30)),
+    ]
+
+    u = User(role="user", plan_start=start)
+    assert status_of(u, entries, date(2026, 12, 23))["status"] == "expiring"
+    assert status_of(u, entries, date(2026, 12, 1))["status"] == "active"
+    # Blocked from the end date itself.
+    assert status_of(u, entries, date(2026, 12, 30))["status"] == "expired"
+    assert status_of(u, [], date(2026, 12, 30))["status"] == "none"
+    assert status_of(User(role="admin", plan_start=start), entries)["status"] == "none"
+
+
+def test_plan_full_lifecycle(admin_headers):
+    from app.services.plans import add_months, today_pk
+
+    today = today_pk()
+    start = add_months(today, -3)
+    resp = client.post(
+        "/api/admin/users",
+        json={
+            "email": "planned@example.com",
+            "full_name": "Planned Shop",
+            "start_date": start.isoformat(),
+            "plan_months": 1,
+            "initial_fee": 25000,
+            "admin_note": "45000 yearly, next year 20000",
+        },
+        headers=admin_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    created = resp.json()
+    uid = created["id"]
+    assert created["created_at"].startswith(start.isoformat())
+    assert created["plan"]["status"] == "expired"
+    assert created["plan"]["ends_on"] == add_months(start, 1).isoformat()
+
+    # Sign-in still works; only the dashboard is usable.
+    headers, session = _activate("planned@example.com", created["temp_password"])
+    assert session["plan"]["status"] == "expired"
+    me = client.get("/api/auth/me", headers=headers)
+    assert me.json()["plan"]["status"] == "expired"
+    assert me.json()["member_since"].startswith(start.isoformat())
+    # The user never sees amounts or the admin note.
+    for text in (json.dumps(session), me.text):
+        assert "25000" not in text and "45000" not in text and "amount" not in text
+    assert client.get("/api/stats", headers=headers).status_code == 200
+    for path in (
+        "/api/invoices",
+        "/api/uploads",
+        "/api/products",
+        "/api/customers",
+        "/api/settings/fbr",
+        "/api/reference/provinces",
+    ):
+        r = client.get(path, headers=headers)
+        assert r.status_code == 403, path
+        assert r.headers.get("x-plan-expired") == "1", path
+        assert "plan expired" in r.json()["detail"]
+    blocked = client.post(
+        "/api/products",
+        json={},
+        headers=headers,
+    )
+    assert blocked.status_code == 403
+    # Users can't reach the plan endpoints either.
+    assert client.get(f"/api/admin/users/{uid}/plan", headers=headers).status_code == 403
+
+    # Late renewals carry on from the old end date, not from today.
+    plan = client.get(f"/api/admin/users/{uid}/plan", headers=admin_headers).json()
+    assert plan["total_received"] == 25000
+    assert plan["admin_note"] == "45000 yearly, next year 20000"
+    r = client.post(
+        f"/api/admin/users/{uid}/plan/entries",
+        json={"kind": "renewal", "months": 1, "amount": 1500},
+        headers=admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["ends_on"] == add_months(start, 2).isoformat()
+    assert r.json()["status"] == "expired"
+    r = client.post(
+        f"/api/admin/users/{uid}/plan/entries",
+        json={"kind": "renewal", "months": 1, "amount": 1500},
+        headers=admin_headers,
+    )
+    assert r.json()["ends_on"] == add_months(start, 3).isoformat()
+    assert r.json()["status"] == "expired"  # ends today = blocked today
+
+    # A 15-day extension unblocks the user straight away.
+    r = client.post(
+        f"/api/admin/users/{uid}/plan/entries",
+        json={"kind": "extension", "days": 15, "note": "waiting for cheque"},
+        headers=admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    plan = r.json()
+    ext = plan["entries"][-1]
+    assert ext["kind"] == "extension" and ext["amount"] == 0
+    assert ext["from"] == add_months(start, 3).isoformat()
+    assert plan["ends_on"] == (add_months(start, 3) + timedelta(days=15)).isoformat()
+    assert plan["status"] == "active"
+    assert plan["total_received"] == 28000
+    assert client.get("/api/invoices", headers=headers).status_code == 200
+    assert client.get("/api/auth/me", headers=headers).json()["plan"]["status"] == "active"
+
+    # Edit: extension down to 3 days -> "ends soon" but still usable.
+    r = client.patch(
+        f"/api/admin/users/{uid}/plan/entries/{ext['id']}",
+        json={"days": 3},
+        headers=admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "expiring"
+    assert client.get("/api/invoices", headers=headers).status_code == 200
+
+    # The users list shows it and can filter on it.
+    listed = client.get("/api/admin/users?role=user&plan=expiring", headers=admin_headers)
+    assert uid in [u["id"] for u in listed.json()]
+    assert listed.headers["x-total-count"] == str(len(listed.json()))
+    assert uid not in [
+        u["id"] for u in client.get("/api/admin/users?plan=expired", headers=admin_headers).json()
+    ]
+    stats = client.get("/api/admin/stats", headers=admin_headers).json()
+    assert stats["plans_expiring"] >= 1
+
+    # Delete the extension -> blocked again.
+    r = client.delete(f"/api/admin/users/{uid}/plan/entries/{ext['id']}", headers=admin_headers)
+    assert r.status_code == 200
+    assert r.json()["status"] == "expired"
+    assert client.get("/api/invoices", headers=headers).status_code == 403
+
+    # Moving the start date moves the whole chain.
+    r = client.patch(
+        f"/api/admin/users/{uid}/plan",
+        json={"start_date": add_months(today, -1).isoformat(), "admin_note": "changed"},
+        headers=admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["ends_on"] == add_months(today, 2).isoformat()
+    assert r.json()["status"] == "active"
+    assert r.json()["admin_note"] == "changed"
+
+    # Everything is in the history.
+    actions = [l["action"] for l in r.json()["log"]]
+    for a in ("plan_set", "renewal", "extension", "entry_edited", "entry_deleted",
+              "start_changed", "note_changed"):
+        assert a in actions, a
+
+    # Deleting every entry puts the account back to "no plan".
+    for e in r.json()["entries"]:
+        last = client.delete(f"/api/admin/users/{uid}/plan/entries/{e['id']}", headers=admin_headers)
+    assert last.json()["status"] == "none" and last.json()["plan_start"] is None
+
+
+def test_plan_rules_are_checked(admin_headers):
+    from app.services.plans import today_pk
+
+    headers, uid = _make_account(admin_headers, "planrules@example.com")
+    # An existing account without a plan works exactly as before.
+    assert client.get("/api/auth/me", headers=headers).json()["plan"]["status"] == "none"
+    assert client.get("/api/invoices", headers=headers).status_code == 200
+
+    base = f"/api/admin/users/{uid}/plan"
+    future = (today_pk() + timedelta(days=1)).isoformat()
+    assert client.post(base, json={"start_date": future, "months": 1}, headers=admin_headers).status_code == 400
+    assert client.post(base, json={"start_date": "2026-01-01", "months": 0}, headers=admin_headers).status_code == 400
+    assert (
+        client.post(f"{base}/entries", json={"kind": "renewal", "months": 1}, headers=admin_headers).status_code
+        == 400
+    )  # no plan yet
+    ok = client.post(base, json={"start_date": today_pk().isoformat(), "months": 12, "amount": 45000},
+                     headers=admin_headers)
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["status"] == "active"
+    assert client.post(base, json={"start_date": "2026-01-01", "months": 1}, headers=admin_headers).status_code == 409
+    bad = [
+        {"kind": "extension", "days": 5, "amount": 100},
+        {"kind": "extension", "days": 0},
+        {"kind": "renewal", "months": 0, "amount": 100},
+        {"kind": "renewal", "months": 1, "amount": -5},
+        {"kind": "renewal", "months": 1, "days": 3},
+        {"kind": "initial", "months": 1},
+    ]
+    for body in bad:
+        assert client.post(f"{base}/entries", json=body, headers=admin_headers).status_code == 400, body
+
+    # Admin accounts never get a plan.
+    admins = client.get("/api/admin/users?role=admin", headers=admin_headers).json()
+    assert all(a["plan"]["status"] == "none" for a in admins)
+    assert client.get(f"/api/admin/users/{admins[0]['id']}/plan", headers=admin_headers).status_code == 400
+
+    # Creating a user with a future start date is refused.
+    r = client.post(
+        "/api/admin/users",
+        json={"email": "future@example.com", "full_name": "F", "start_date": future, "plan_months": 1},
+        headers=admin_headers,
+    )
+    assert r.status_code == 400
+
+
+def test_admin_user_profile_endpoint(admin_headers):
+    headers, uid = _make_account(admin_headers, "profile@example.com")
+    r = client.get(f"/api/admin/users/{uid}", headers=admin_headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["email"] == "profile@example.com"
+    assert body["plan"]["status"] == "none"
+    assert body["invoice_count"] == 0 and body["upload_count"] == 0
+    assert client.get("/api/admin/users/999999", headers=admin_headers).status_code == 404
+    # Business users can't read it.
+    assert client.get(f"/api/admin/users/{uid}", headers=headers).status_code == 403
+
+
+def test_admin_can_delete_a_single_invoice(admin_headers):
+    headers, uid = _make_account(admin_headers, "admindel@example.com")
+    up = client.post(
+        "/api/uploads",
+        files={"file": ("a.csv", CSV_OK.encode(), "text/csv")},
+        headers=headers,
+    )
+    assert up.status_code in (200, 201), up.text
+    invs = client.get(f"/api/admin/users/{uid}/invoices", headers=admin_headers).json()
+    assert len(invs) == 2
+    target = invs[0]["id"]
+    # Business users can't use the admin route.
+    assert client.delete(f"/api/admin/users/{uid}/invoices/{target}", headers=headers).status_code == 403
+    r = client.delete(f"/api/admin/users/{uid}/invoices/{target}", headers=admin_headers)
+    assert r.status_code == 200, r.text
+    left = client.get(f"/api/admin/users/{uid}/invoices", headers=admin_headers).json()
+    assert [i["id"] for i in left] == [invs[1]["id"]]
+    assert target not in [i["id"] for i in client.get("/api/invoices", headers=headers).json()]
+    # Already deleted / wrong user -> 404.
+    assert client.delete(f"/api/admin/users/{uid}/invoices/{target}", headers=admin_headers).status_code == 404
+    assert client.delete(f"/api/admin/users/{uid}/invoices/999999", headers=admin_headers).status_code == 404
+
+
+def test_admin_advanced_stats_and_attention_lists(admin_headers):
+    from app.services.plans import add_months, today_pk
+
+    stats = client.get("/api/admin/stats", headers=admin_headers).json()
+    assert "total_tax_collected" not in stats  # moved to /stats/advanced
+
+    adv = client.get("/api/admin/stats/advanced", headers=admin_headers)
+    assert adv.status_code == 200, adv.text
+    by_env = adv.json()["by_env"]
+    # Matches adding up every submitted invoice the slow way.
+    users = client.get("/api/admin/users?role=user", headers=admin_headers).json()
+    expected = {}
+    for u in users:
+        for inv in client.get(f"/api/admin/users/{u['id']}/invoices", headers=admin_headers).json():
+            if inv["status"] != "submitted":
+                continue
+            e = expected.setdefault(inv["fbr_env"], {"invoices": 0, "tax": 0.0, "grand_total": 0.0})
+            e["invoices"] += 1
+            e["tax"] += inv["total_tax"]
+            e["grand_total"] += inv["grand_total"]
+    assert set(by_env) == set(expected)
+    for env, e in expected.items():
+        assert by_env[env]["invoices"] == e["invoices"]
+        assert abs(by_env[env]["tax"] - e["tax"]) < 0.05
+        assert abs(by_env[env]["grand_total"] - e["grand_total"]) < 0.05
+
+    # One user ending soon, one expired, one quiet.
+    today = today_pk()
+    for email, start, months in (
+        ("attn-soon@example.com", add_months(today, -1), 1),
+        ("attn-gone@example.com", add_months(today, -3), 1),
+    ):
+        r = client.post(
+            "/api/admin/users",
+            json={"email": email, "full_name": email, "start_date": start.isoformat(), "plan_months": months},
+            headers=admin_headers,
+        )
+        assert r.status_code == 201, r.text
+    soon_id = client.get("/api/admin/users?q=attn-soon", headers=admin_headers).json()[0]["id"]
+    # Ends today + 3 days.
+    client.post(
+        f"/api/admin/users/{soon_id}/plan/entries",
+        json={"kind": "extension", "days": 3},
+        headers=admin_headers,
+    )
+    att = client.get("/api/admin/stats/attention", headers=admin_headers)
+    assert att.status_code == 200, att.text
+    body = att.json()
+    soon = [u for u in body["expiring"]["users"] if u["email"] == "attn-soon@example.com"]
+    assert soon and soon[0]["days_left"] == 3
+    assert "attn-gone@example.com" in [u["email"] for u in body["expired"]["users"]]
+    idle_emails = [u["email"] for u in body["idle"]["users"]]
+    # Never invoiced -> idle; expired accounts are left out of the idle list.
+    assert body["idle"]["total"] >= 1
+    assert "attn-gone@example.com" not in idle_emails
+    for u in body["idle"]["users"] + body["expired"]["users"]:
+        assert "amount" not in u and "admin_note" not in u
+    # Admin only.
+    headers, _ = _make_account(admin_headers, "attn-user@example.com")
+    assert client.get("/api/admin/stats/attention", headers=headers).status_code == 403
+    assert client.get("/api/admin/stats/advanced", headers=headers).status_code == 403

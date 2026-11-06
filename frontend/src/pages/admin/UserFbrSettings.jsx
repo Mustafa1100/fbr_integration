@@ -1,10 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
   Settings2,
-  Globe,
-  Building2,
-  KeyRound,
   Save,
   Loader2,
   AlertCircle,
@@ -17,17 +14,29 @@ import {
 import { api } from '../../api'
 import usePageTitle from '../../hooks/usePageTitle'
 
-export default function UserFbrSettings() {
-  const { userId } = useParams()
+// Sub-tabs of the form; one Save button saves both.
+const SECTIONS = [
+  ['env', 'Environment & credentials'],
+  ['seller', 'Seller profile'],
+]
+
+// Also shown inside the "FBR settings" tab of the admin user profile
+// (embedded: no page header of its own).
+export default function UserFbrSettings({ embedded = false, userId: userIdProp }) {
+  const params = useParams()
+  const userId = userIdProp ?? params.userId
   const navigate = useNavigate()
   const [targetUser, setTargetUser] = useState(null)
-  usePageTitle(`FBR Settings — ${targetUser?.full_name || `User #${userId}`}`)
+  usePageTitle(
+    embedded ? targetUser?.full_name || 'User' : `FBR Settings — ${targetUser?.full_name || `User #${userId}`}`
+  )
   const [form, setForm] = useState(null)
   const [provinces, setProvinces] = useState([])
   const [scenarios, setScenarios] = useState([])
   const [tokens, setTokens] = useState({ sandbox: [false, null], production: [false, null] })
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [section, setSection] = useState('env')
 
   function loadSettings(s) {
     setTokens({
@@ -116,6 +125,7 @@ export default function UserFbrSettings() {
 
   return (
     <>
+      {!embedded && (
       <div className="page-header">
         <div>
           <h1 className="page-title">
@@ -132,6 +142,7 @@ export default function UserFbrSettings() {
           </button>
         </div>
       </div>
+      )}
 
       {error && (
         <div className="alert error">
@@ -147,62 +158,53 @@ export default function UserFbrSettings() {
       )}
 
       <form className="card" onSubmit={save}>
-        <h2 className="section-title">
-          <Globe size={17} /> Environment &amp; credentials
-        </h2>
+        <div className="profile-tabs sub-tabs" role="tablist">
+          {SECTIONS.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={section === key}
+              className={`profile-tab${section === key ? ' active' : ''}`}
+              onClick={() => setSection(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {section === 'env' && (
+        <>
+        <div className="setting-list">
+          <SettingToggle
+            title="Allowed to submit to FBR production"
+            checked={!!form.can_submit_production}
+            onChange={(v) => setForm({ ...form, can_submit_production: v })}
+          />
+          <SettingToggle
+            title="Pack pricing (e.g. Maund, Bag, Carton)"
+            checked={!!form.pack_pricing}
+            onChange={(v) => setForm({ ...form, pack_pricing: v })}
+          />
+        </div>
         <div className="form-grid">
-          <div className="field">
+          <div className="field" style={{ gridColumn: '1 / -1', maxWidth: 520 }}>
             <label>Default environment</label>
             <select value={form.fbr_env} onChange={set('fbr_env')}>
               <option value="mock">Mock (no token needed — simulated responses)</option>
               <option value="sandbox">Sandbox (PRAL scenario testing)</option>
               <option value="production">Production (live invoicing)</option>
             </select>
-            <p className="muted" style={{ margin: '4px 0 0' }}>
-              The pre-selected target on the Generate Invoices page.
-            </p>
-          </div>
-          <div className="field">
-            <label className="row-actions" style={{ gap: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={!!form.can_submit_production}
-                onChange={(e) => setForm({ ...form, can_submit_production: e.target.checked })}
-              />
-              <span>Allowed to submit to FBR production</span>
-            </label>
-            <p className="muted" style={{ margin: '4px 0 0' }}>
-              Lets this user upload directly to production and promote sandbox-tested invoices.
-            </p>
-          </div>
-          <div className="field">
-            <label className="row-actions" style={{ gap: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={!!form.pack_pricing}
-                onChange={(e) => setForm({ ...form, pack_pricing: e.target.checked })}
-              />
-              <span>Pack pricing (e.g. Maund, Bag, Carton)</span>
-            </label>
-            <p className="muted" style={{ margin: '4px 0 0' }}>
-              Products priced per pack of any kind — e.g. Rs 1,175 per Maund of 37.324 KG, or per
-              40 KG Bag — entered in packs or in the product&apos;s unit on a single invoice. Off for
-              everyone else; file uploads are not affected.
-            </p>
           </div>
           {tokenField('sandbox')}
           {tokenField('production')}
         </div>
-        <p className="muted">
-          <KeyRound size={14} /> From IRIS → Digital Invoicing. Sandbox and production tokens are
-          different, and PRAL must whitelist the server IP — see{' '}
-          <Link to="/admin/server-info">Server / IP Info</Link> for the current whitelisted IPs.
-        </p>
+        </>
+        )}
 
-        <h2 className="section-title">
-          <Building2 size={17} /> Seller profile
-        </h2>
-        <p className="muted">These details appear on every invoice this user submits.</p>
+        {section === 'seller' && (
+        <>
+        <p className="muted" style={{ marginTop: 0 }}>These details appear on every invoice this user submits.</p>
         <div className="form-grid">
           <div className="field">
             <label>CNIC</label>
@@ -264,12 +266,6 @@ export default function UserFbrSettings() {
         <h2 className="section-title">
           <Hash size={17} /> STRNs
         </h2>
-        <p className="muted">
-          Sales Tax Registration Numbers for this seller — shown on the printed receipt,
-          not sent to FBR. With one STRN it prints automatically under the CNIC; with
-          several, the user picks which to show from a dropdown on the invoice view (the
-          list shows the business name only).
-        </p>
         {strns.length === 0 && (
           <p className="muted" style={{ marginTop: 0 }}>No STRNs added.</p>
         )}
@@ -308,6 +304,8 @@ export default function UserFbrSettings() {
         <button type="button" className="btn btn-secondary btn-sm" onClick={addStrn}>
           <Plus size={14} /> Add STRN
         </button>
+        </>
+        )}
 
         <div style={{ marginTop: '1.5rem' }}>
           <button className="btn btn-primary">
@@ -316,5 +314,22 @@ export default function UserFbrSettings() {
         </div>
       </form>
     </>
+  )
+}
+
+// A setting that is on or off: title and explanation on the left,
+// a toggle switch on the right.
+function SettingToggle({ title, text, checked, onChange }) {
+  return (
+    <label className="setting-toggle">
+      <span className="setting-toggle-text">
+        <span className="setting-toggle-title">{title}</span>
+        {text && <span className="muted">{text}</span>}
+      </span>
+      <span className="switch">
+        <input type="checkbox" role="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+        <span className="switch-track" aria-hidden="true" />
+      </span>
+    </label>
   )
 }

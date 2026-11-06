@@ -33,8 +33,23 @@ export function storeSession(data) {
       full_name: data.full_name,
       email: data.email,
       must_change_password: data.must_change_password,
+      // Dates only (status / ends_on / days_left) — never any amount.
+      plan: data.plan || null,
     })
   )
+}
+
+// Fired whenever the plan is found to have changed (sign-in, a /me refresh,
+// or the server refusing a request because the plan expired) so the layout
+// can lock or unlock screens straight away.
+export const PLAN_EVENT = 'fbr-plan-changed'
+
+export function storePlan(plan) {
+  const user = getStoredUser()
+  if (!user) return
+  user.plan = plan
+  localStorage.setItem(USER_KEY, JSON.stringify(user))
+  window.dispatchEvent(new CustomEvent(PLAN_EVENT, { detail: plan }))
 }
 
 export function clearSession() {
@@ -71,6 +86,13 @@ async function request(path, { method = 'GET', body, formData, raw = false } = {
     // the user here, instead of silently dropping them on the form.
     window.location.href = '/login?session=expired'
     throw new ApiError('Session expired', 401)
+  }
+
+  if (resp.status === 403 && resp.headers.get('x-plan-expired')) {
+    const user = getStoredUser()
+    if (user && user.plan?.status !== 'expired') {
+      storePlan({ ...(user.plan || {}), status: 'expired' })
+    }
   }
 
   if (!resp.ok) {

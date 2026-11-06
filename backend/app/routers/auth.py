@@ -12,17 +12,21 @@ from app.auth import (
 )
 from app.database import get_db
 from app.models import User
+from app.services.plans import user_plan_status
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-def _session_out(user: User) -> dict:
+def _session_out(user: User, db: Session) -> dict:
     return {
         "token": create_token(user),
         "role": user.role,
         "full_name": user.full_name,
         "email": user.email,
         "must_change_password": user.must_change_password,
+        # Dates only — never any amount.
+        "plan": user_plan_status(db, user),
+        "member_since": user.created_at.isoformat(),
     }
 
 
@@ -42,17 +46,19 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(401, "Invalid email or password")
     if not user.is_active:
         raise HTTPException(403, "Account is deactivated — contact your administrator")
-    return _session_out(user)
+    return _session_out(user, db)
 
 
 @router.get("/me")
-def me(user: User = Depends(get_current_user)):
+def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return {
         "id": user.id,
         "email": user.email,
         "full_name": user.full_name,
         "role": user.role,
         "must_change_password": user.must_change_password,
+        "plan": user_plan_status(db, user),
+        "member_since": user.created_at.isoformat(),
     }
 
 
@@ -96,7 +102,7 @@ def set_password(
     # used to make this very request) — the response below mints a fresh one.
     user.token_version += 1
     db.commit()
-    return _session_out(user)
+    return _session_out(user, db)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -131,4 +137,4 @@ def change_password(
     user.password_hash = hash_password(body.new_password)
     user.token_version += 1
     db.commit()
-    return _session_out(user)
+    return _session_out(user, db)

@@ -20,8 +20,15 @@ from app.routers.settings import get_or_create_fbr_settings, parse_strns
 from app.services import csv_processor, invoice_layout, invoice_service
 from app.services.invoice_service import ENV_FILTER_ALIASES, resolve_env_filter
 from app.services.qr import qr_data_uri
+from app.services.plans import require_active_plan
 
-router = APIRouter(prefix="/api/invoices", tags=["invoices"])
+
+router = APIRouter(
+    prefix="/api/invoices",
+    tags=["invoices"],
+    # An expired plan blocks everything here (see services/plans.py).
+    dependencies=[Depends(require_active_plan)],
+)
 
 INVOICE_STATUSES = {"draft", "submitted", "failed"}
 

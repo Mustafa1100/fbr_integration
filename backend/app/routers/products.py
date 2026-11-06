@@ -11,8 +11,15 @@ from app.models import Product, User
 from app.pagination import DEFAULT_PAGE_SIZE, paginate
 from app.routers.settings import get_or_create_fbr_settings
 from app.services import invoice_layout
+from app.services.plans import require_active_plan
 
-router = APIRouter(prefix="/api/products", tags=["products"])
+
+router = APIRouter(
+    prefix="/api/products",
+    tags=["products"],
+    # An expired plan blocks everything here (see services/plans.py).
+    dependencies=[Depends(require_active_plan)],
+)
 
 
 class ProductRequest(BaseModel):

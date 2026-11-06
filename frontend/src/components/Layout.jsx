@@ -4,6 +4,7 @@ import {
   FlaskConical,
   History,
   LayoutDashboard,
+  Lock,
   LogOut,
   Menu,
   Package,
@@ -16,7 +17,8 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { clearSession, getStoredUser } from '../api'
+import { api, clearSession, getStoredUser, PLAN_EVENT, storePlan } from '../api'
+import { PlanLockedPage } from './PlanLock'
 import Modal from './Modal'
 import markReverse from '../assets/mark-reverse.png'
 import mark from '../assets/mark.png'
@@ -43,6 +45,27 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1')
   const [isMobile, setIsMobile] = useState(() => window.matchMedia(MOBILE_QUERY).matches)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [plan, setPlan] = useState(() => user?.plan || null)
+  const isBusinessUser = user?.role === 'user'
+  const locked = isBusinessUser && plan?.status === 'expired'
+
+  useEffect(() => {
+    const onPlan = (e) => setPlan(e.detail)
+    window.addEventListener(PLAN_EVENT, onPlan)
+    return () => window.removeEventListener(PLAN_EVENT, onPlan)
+  }, [])
+
+  // Re-check the plan on every page change, so a renewal or extension
+  // unlocks the screens (and an expiry locks them) without signing in again.
+  useEffect(() => {
+    if (!isBusinessUser) return
+    api
+      .get('/api/auth/me')
+      .then((me) => {
+        if (JSON.stringify(me.plan) !== JSON.stringify(getStoredUser()?.plan)) storePlan(me.plan)
+      })
+      .catch(() => {})
+  }, [location.pathname, isBusinessUser])
 
   useEffect(() => {
     const mql = window.matchMedia(MOBILE_QUERY)
@@ -140,26 +163,32 @@ export default function Layout() {
             <NavLink to="/uploads" className={link} title="Generate Invoices">
               <CopyCheck size={18} />
               <span>Generate Invoices</span>
+              {locked && <Lock size={13} className="nav-lock" />}
             </NavLink>
             <NavLink to="/invoices" className={link} title="Invoices History">
               <ReceiptText size={18} />
               <span>Invoices History</span>
+              {locked && <Lock size={13} className="nav-lock" />}
             </NavLink>
             <NavLink to="/products" className={link} title="Products">
               <Package size={18} />
               <span>Products</span>
+              {locked && <Lock size={13} className="nav-lock" />}
             </NavLink>
             <NavLink to="/customers" className={link} title="Customers">
               <Contact size={18} />
               <span>Customers</span>
+              {locked && <Lock size={13} className="nav-lock" />}
             </NavLink>
             <NavLink to="/columns" className={link} title="Column Guide">
               <BookOpenText size={18} />
               <span>Column Guide</span>
+              {locked && <Lock size={13} className="nav-lock" />}
             </NavLink>
             <NavLink to="/settings" className={link} title="Settings">
               <Settings size={18} />
               <span>Settings</span>
+              {locked && <Lock size={13} className="nav-lock" />}
             </NavLink>
           </>
         )}
@@ -206,7 +235,7 @@ export default function Layout() {
           </button>
         </div>
         <div className="page">
-          <Outlet />
+          {locked && location.pathname !== '/dashboard' ? <PlanLockedPage plan={plan} pathname={location.pathname} /> : <Outlet />}
         </div>
       </div>
 

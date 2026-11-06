@@ -49,6 +49,14 @@ def run_light_migrations() -> None:
                     "BOOLEAN NOT NULL DEFAULT FALSE"
                 )
             )
+    if "plan_start" not in existing_columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN plan_start DATE"))
+    if "admin_note" not in existing_columns:
+        with engine.begin() as conn:
+            conn.execute(
+                text("ALTER TABLE users ADD COLUMN admin_note TEXT NOT NULL DEFAULT ''")
+            )
     if "token_version" not in existing_columns:
         with engine.begin() as conn:
             conn.execute(

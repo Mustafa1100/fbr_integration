@@ -5,7 +5,7 @@ from app.auth import hash_password
 from app.config import get_settings
 from app.database import Base, SessionLocal, engine, run_light_migrations
 from app.models import User
-from app.routers import admin, auth, customers, invoices, products, reference, settings, stats, uploads
+from app.routers import admin, admin_plans, auth, customers, invoices, products, reference, settings, stats, uploads
 
 Base.metadata.create_all(bind=engine)
 run_light_migrations()
@@ -56,11 +56,12 @@ app.add_middleware(
     allow_headers=["*"],
     # X-Total-Count powers pagination on the admin Users/Admins lists — not
     # one of the handful of "safe" headers browsers expose to JS by default.
-    expose_headers=["X-Total-Count"],
+    expose_headers=["X-Total-Count", "X-Plan-Expired"],
 )
 
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(admin_plans.router)
 app.include_router(settings.router)
 app.include_router(uploads.router)
 app.include_router(invoices.router)
