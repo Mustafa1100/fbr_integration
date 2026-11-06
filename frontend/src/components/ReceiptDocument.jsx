@@ -281,6 +281,19 @@ export default function ReceiptDocument({ inv, strnChoice = '' }) {
       .map((a) => ({ key: a.key, label: adjustmentLabel(a) }))
     return [...orphans, t]
   })
+  // Tax withheld by the buyer (e.g. cotton lint): the buyer pays it to FBR,
+  // so the seller is owed the total less that tax. Nothing shows without it.
+  const stWithheld = sumOf('st_withheld')
+  if (stWithheld > 0) {
+    totalValues.st_withheld = money(stWithheld)
+    totalValues.payable_to_seller = money(
+      beforeAdjustments + adjustments.reduce((sum, a) => sum + a.signed, 0) - stWithheld
+    )
+    totalRows.push(
+      { key: 'st_withheld', label: 'Sales Tax Withheld by Buyer' },
+      { key: 'payable_to_seller', label: 'Amount Payable to Seller' }
+    )
+  }
 
   // The discount column only appears when something was discounted.
   const columns = layout.columns.filter(
@@ -395,7 +408,12 @@ export default function ReceiptDocument({ inv, strnChoice = '' }) {
         {has('bottom-left') && <div className="fbr-box">{corner('bottom-left')}</div>}
         <div className="totals-box">
           {totalRows.map((t) => (
-            <div key={t.key} className={`trow${t.key === 'total_incl' ? ' grand' : ''}`}>
+            <div
+              key={t.key}
+              className={`trow${
+                t.key === (stWithheld > 0 ? 'payable_to_seller' : 'total_incl') ? ' grand' : ''
+              }`}
+            >
               <span>{t.label}</span>
               <span>{totalValues[t.key]}</span>
             </div>
