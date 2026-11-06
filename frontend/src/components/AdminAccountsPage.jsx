@@ -517,6 +517,9 @@ export default function AdminAccountsPage({ role }) {
   )
 }
 
+// Amount without "PKR" (the card icon already says Rs) so it fits.
+const fmtAmount = (v) => (Number(v) || 0).toLocaleString('en-PK', { maximumFractionDigits: 2 })
+
 // Revenue (plan fees received) and plan counts at the top of the Users page.
 // Clicking a plan card filters the table below; clicking it again clears it.
 function UsersStats({ stats, planFilter, onPlanFilter }) {
@@ -533,7 +536,7 @@ function UsersStats({ stats, planFilter, onPlanFilter }) {
           <span className="stat-icon-text">Rs</span>
         </div>
         <div>
-          <StatValue value={fmtMoney(stats.total_revenue)} />
+          <StatValue value={fmtAmount(stats.total_revenue)} />
           <div className="stat-label">Total revenue</div>
         </div>
       </div>
@@ -542,7 +545,7 @@ function UsersStats({ stats, planFilter, onPlanFilter }) {
           <CalendarDays size={20} />
         </div>
         <div>
-          <StatValue value={fmtMoney(stats.revenue_this_month)} />
+          <StatValue value={fmtAmount(stats.revenue_this_month)} />
           <div className="stat-label">This month</div>
         </div>
       </div>
