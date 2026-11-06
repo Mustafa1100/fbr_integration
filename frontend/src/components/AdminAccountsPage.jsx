@@ -13,6 +13,11 @@ import {
   Search,
   StickyNote,
   ChevronRight,
+  CalendarCheck,
+  CalendarClock,
+  CalendarX2,
+  CalendarOff,
+  CalendarDays,
 } from 'lucide-react'
 import { api } from '../api'
 import usePageTitle from '../hooks/usePageTitle'
@@ -21,7 +26,8 @@ import PaginationBar from './PaginationBar'
 import TableLoader from './TableLoader'
 import { PlanBadge } from './PlanPanel'
 import TempPasswordModal from './TempPasswordModal'
-import { addMonths, daysBetween, fmtDate, planText, todayPk } from '../planDates'
+import { addMonths, daysBetween, fmtDate, fmtMoney, planText, todayPk } from '../planDates'
+import StatValue from './StatValue'
 
 const emptyForm = () => ({
   email: '',
@@ -61,6 +67,7 @@ export default function AdminAccountsPage({ role }) {
   const [error, setError] = useState('')
   const [createdAccount, setCreatedAccount] = useState(null) // { email, temp_password }
   const [loading, setLoading] = useState(true)
+  const [userStats, setUserStats] = useState(null)
 
   // Debounce the search box so it doesn't fire a request per keystroke.
   useEffect(() => {
@@ -83,6 +90,7 @@ export default function AdminAccountsPage({ role }) {
     setTotal(Number(resp.headers.get('x-total-count') || items.length))
     setLoading(false)
     if (!isAdmin) {
+      api.get('/api/admin/stats/users').then(setUserStats).catch(() => {})
       const s = await api.get('/api/admin/stats')
       setInvoicesByEmail(Object.fromEntries(s.invoices_per_user.map((x) => [x.email, x.count])))
     }
@@ -197,6 +205,17 @@ export default function AdminAccountsPage({ role }) {
           <AlertCircle size={17} />
           <span>{error}</span>
         </div>
+      )}
+
+      {!isAdmin && userStats && (
+        <UsersStats
+          stats={userStats}
+          planFilter={planFilter}
+          onPlanFilter={(p) => {
+            setPlanFilter(planFilter === p ? 'all' : p)
+            setPage(1)
+          }}
+        />
       )}
 
       <div className="card" style={{ marginBottom: '1.25rem' }}>
@@ -495,5 +514,55 @@ export default function AdminAccountsPage({ role }) {
         />
       )}
     </>
+  )
+}
+
+// Revenue (plan fees received) and plan counts at the top of the Users page.
+// Clicking a plan card filters the table below; clicking it again clears it.
+function UsersStats({ stats, planFilter, onPlanFilter }) {
+  const plans = [
+    { key: 'active', label: 'Plan active', icon: CalendarCheck, tint: 'tint-green' },
+    { key: 'expiring', label: 'Ending soon', icon: CalendarClock, tint: 'tint-amber' },
+    { key: 'expired', label: 'Plan expired', icon: CalendarX2, tint: 'tint-red' },
+    { key: 'none', label: 'No plan set', icon: CalendarOff, tint: 'tint-slate' },
+  ]
+  return (
+    <div className="stat-grid users-stats">
+      <div className="stat-card" title={`All plan fees received: ${stats.payments} payments`}>
+        <div className="stat-icon tint-green">
+          <span className="stat-icon-text">Rs</span>
+        </div>
+        <div>
+          <StatValue value={fmtMoney(stats.total_revenue)} />
+          <div className="stat-label">Total revenue</div>
+        </div>
+      </div>
+      <div className="stat-card" title={`This year: ${fmtMoney(stats.revenue_this_year)}`}>
+        <div className="stat-icon tint-blue">
+          <CalendarDays size={20} />
+        </div>
+        <div>
+          <StatValue value={fmtMoney(stats.revenue_this_month)} />
+          <div className="stat-label">This month</div>
+        </div>
+      </div>
+      {plans.map(({ key, label, icon: Icon, tint }) => (
+        <button
+          type="button"
+          key={key}
+          className={`stat-card stat-click${planFilter === key ? ' selected' : ''}`}
+          onClick={() => onPlanFilter(key)}
+          title={planFilter === key ? 'Show all users' : `Show only: ${label.toLowerCase()}`}
+        >
+          <div className={`stat-icon ${tint}`}>
+            <Icon size={20} />
+          </div>
+          <div>
+            <StatValue value={stats.plans[key]} />
+            <div className="stat-label">{label}</div>
+          </div>
+        </button>
+      ))}
+    </div>
   )
 }

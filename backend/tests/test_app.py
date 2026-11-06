@@ -4204,3 +4204,41 @@ def test_admin_advanced_stats_and_attention_lists(admin_headers):
     headers, _ = _make_account(admin_headers, "attn-user@example.com")
     assert client.get("/api/admin/stats/attention", headers=headers).status_code == 403
     assert client.get("/api/admin/stats/advanced", headers=headers).status_code == 403
+
+
+def test_admin_users_stats_revenue_and_plan_counts(admin_headers):
+    from app.services.plans import add_months, today_pk
+
+    before = client.get("/api/admin/stats/users", headers=admin_headers).json()
+    today = today_pk()
+    r = client.post(
+        "/api/admin/users",
+        json={
+            "email": "rev-one@example.com",
+            "full_name": "Rev One",
+            "start_date": add_months(today, -14).isoformat(),
+            "plan_months": 12,
+            "initial_fee": 45000,
+        },
+        headers=admin_headers,
+    )
+    assert r.status_code == 201, r.text
+    uid = client.get("/api/admin/users?q=rev-one", headers=admin_headers).json()[0]["id"]
+    # Paid today (counts this month), plus a free extension (no money).
+    r = client.post(
+        f"/api/admin/users/{uid}/plan/entries",
+        json={"kind": "renewal", "months": 12, "amount": 20000, "received_on": today.isoformat()},
+        headers=admin_headers,
+    )
+    assert r.status_code in (200, 201), r.text
+    client.post(f"/api/admin/users/{uid}/plan/entries", json={"kind": "extension", "days": 5}, headers=admin_headers)
+
+    after = client.get("/api/admin/stats/users", headers=admin_headers).json()
+    assert round(after["total_revenue"] - before["total_revenue"], 2) == 65000
+    assert round(after["revenue_this_month"] - before["revenue_this_month"], 2) >= 20000
+    assert after["payments"] == before["payments"] + 2
+    assert after["users"] == before["users"] + 1
+    assert sum(after["plans"].values()) == after["users"]
+
+    # Admin-only.
+    assert client.get("/api/admin/stats/users").status_code == 401
