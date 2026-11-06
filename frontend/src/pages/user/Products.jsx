@@ -6,6 +6,7 @@ import HsCodePicker from '../../components/HsCodePicker'
 import Modal from '../../components/Modal'
 import UnitPriceCalculator from '../../components/UnitPriceCalculator'
 import { isPackPriced, unitPriceFromPack } from '../../packPricing'
+import { isCottonGinner } from '../../cottonWithholding'
 import PaginationBar from '../../components/PaginationBar'
 import TableLoader from '../../components/TableLoader'
 import usePageTitle from '../../hooks/usePageTitle'
@@ -365,11 +366,22 @@ function ProductModal({ product, uoms, scenarios, customFields, packPricing, onC
           <NumField label="Further tax" value={form.further_tax} onChange={set('further_tax')} />
           <NumField label="FED payable" value={form.fed_payable} onChange={set('fed_payable')} />
           <NumField label="Extra tax" value={form.extra_tax} onChange={set('extra_tax')} />
-          <NumField
-            label="Sales tax withheld at source"
-            value={form.st_withheld}
-            onChange={set('st_withheld')}
-          />
+          {isCottonGinner(form.sale_type) ? (
+            // Set on each invoice to the full sales tax (ManualInvoiceModal).
+            <div className="field">
+              <label>Sales tax withheld at source</label>
+              <input value="Auto: full sales tax" readOnly className="input-locked" />
+              <span className="hint">
+                Paid by the buyer. Set automatically to the full sales tax on each invoice.
+              </span>
+            </div>
+          ) : (
+            <NumField
+              label="Sales tax withheld at source"
+              value={form.st_withheld}
+              onChange={set('st_withheld')}
+            />
+          )}
           <NumField
             label="Total value"
             hint="(blank = auto-calculate)"

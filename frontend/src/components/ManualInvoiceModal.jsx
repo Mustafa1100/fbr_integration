@@ -5,6 +5,7 @@ import { api } from '../api'
 import Modal from './Modal'
 import UnitPriceCalculator from './UnitPriceCalculator'
 import { isPackPriced, packLine } from '../packPricing'
+import { isCottonGinner, serverSalesTax } from '../cottonWithholding'
 
 // Column order doesn't matter to the backend (it parses by header name), but
 // keeping it explicit and matching csv_processor.ALL_COLUMNS makes the
@@ -169,7 +170,7 @@ function perPack(amount, packs) {
 function toCsvItem(it, product, packOn = false) {
   const pk = packInfo(it, product, packOn)
   const packs = pk ? pk.packs : it.packs
-  return {
+  const row = {
     sales_tax: perPack(product.sales_tax, packs),
     total_values: perPack(product.total_values, packs),
     fed_payable: perPack(product.fed_payable, packs),
@@ -192,6 +193,13 @@ function toCsvItem(it, product, packOn = false) {
       ? { pack_qty: pk.packs, pack_price: linePackPrice(it, product), pack_name: product.pack_name || '' }
       : {}),
   }
+  // Cotton lint: the buyer withholds and pays the full sales tax to FBR.
+  if (isCottonGinner(product.sale_type)) {
+    const tax =
+      row.sales_tax !== '' ? row.sales_tax : serverSalesTax(row.quantity, row.unit_price, row.rate)
+    row.sales_tax_withheld_at_source = tax ?? ''
+  }
+  return row
 }
 
 // Small red asterisk marker for a required field's label.
@@ -395,6 +403,14 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
       editIndex === null && itemIsComplete(draft) ? [...items, draft] : items
     if (finalItems.length === 0) {
       setError('Add at least one product.')
+      return
+    }
+    // FBR rejects cotton lint sold to an unregistered buyer (error 0100).
+    if (
+      header.buyer_registration_type !== 'Registered' &&
+      finalItems.some((it) => isCottonGinner(productById(it.product_id)?.sale_type))
+    ) {
+      setError('Cotton lint can only be sold to a registered buyer. Pick a registered buyer.')
       return
     }
     setError('')
