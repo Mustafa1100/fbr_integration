@@ -223,6 +223,34 @@ def attention(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/stats/users")
+def users_stats(db: Session = Depends(get_db)):
+    """Top of the admin Users page: plan fees received (revenue) and how
+    many business users are in each plan status."""
+    users = db.query(User).filter(User.is_deleted.is_(False), User.role == "user").all()
+    plans = plan_summaries(db, users)
+    statuses = [plans[u.id]["status"] for u in users]
+    ids = [u.id for u in users]
+    entries = db.query(PlanEntry).filter(PlanEntry.user_id.in_(ids)).all() if ids else []
+    today = today_pk()
+
+    def received(e: PlanEntry) -> date:
+        return e.received_on or e.created_at.date()
+
+    paid = [e for e in entries if (e.amount or 0) > 0]
+    month = [e for e in paid if (d := received(e)).year == today.year and d.month == today.month]
+    year = [e for e in paid if received(e).year == today.year]
+    return {
+        "total_revenue": round(sum(e.amount for e in paid), 2),
+        "revenue_this_month": round(sum(e.amount for e in month), 2),
+        "revenue_this_year": round(sum(e.amount for e in year), 2),
+        "payments": len(paid),
+        "users": len(users),
+        "active_users": sum(1 for u in users if u.is_active),
+        "plans": {s: statuses.count(s) for s in ("active", "expiring", "expired", "none")},
+    }
+
+
 @router.get("/stats/user-growth")
 def user_growth(granularity: str = "day", db: Session = Depends(get_db)):
     """Accounts created per day/week/month/year — powers the admin
