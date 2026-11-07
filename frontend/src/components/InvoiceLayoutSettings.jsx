@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Columns3,
   Eye,
+  FileText,
   ListPlus,
   Loader2,
   MapPin,
@@ -656,6 +657,29 @@ export default function InvoiceLayoutSettings() {
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="card" style={{ marginBottom: '1.5rem' }}>
+            <h2 className="section-title" style={{ marginTop: 0 }}>
+              <FileText size={17} /> Test invoices
+            </h2>
+            <label className="setting-toggle">
+              <span className="setting-toggle-text">
+                <span className="setting-toggle-title">Show test invoices as Draft</span>
+                <span className="muted">
+                  Test invoices print &quot;DRAFT INVOICE&quot; instead of &quot;TEST INVOICE&quot;.
+                </span>
+              </span>
+              <span className="switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={!!layout.test_as_draft}
+                  onChange={(e) => update({ test_as_draft: e.target.checked })}
+                />
+                <span className="switch-track" aria-hidden="true" />
+              </span>
+            </label>
           </div>
         </div>
       </div>

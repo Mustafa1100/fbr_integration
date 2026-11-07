@@ -312,6 +312,13 @@ def normalize(raw: dict | None, strict: bool = False, pack_pricing: bool = False
             raise HTTPException(400, f"logo_position must be one of: {', '.join(POSITIONS)}")
         position = "top-right"
 
+    # Test invoices print as "DRAFT INVOICE" instead of "TEST INVOICE".
+    test_as_draft = raw.get("test_as_draft", False)
+    if not isinstance(test_as_draft, bool):
+        if strict:
+            raise HTTPException(400, "test_as_draft must be true or false")
+        test_as_draft = False
+
     return {
         "custom_fields": custom,
         "columns": columns,
@@ -319,6 +326,7 @@ def normalize(raw: dict | None, strict: bool = False, pack_pricing: bool = False
         "header": header,
         "logo_position": position,
         "qr_position": position,
+        "test_as_draft": test_as_draft,
     }
 
 
@@ -378,6 +386,7 @@ def to_storage(layout: dict) -> str:
             "header": layout["header"],
             "logo_position": layout["logo_position"],
             "qr_position": layout["qr_position"],
+            "test_as_draft": layout["test_as_draft"],
         }
     )
 
