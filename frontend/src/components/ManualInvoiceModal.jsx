@@ -515,6 +515,7 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
                 <option key={c.id} value={c.id}>
                   {c.name}
                   {c.ntn_cnic ? ` (${c.ntn_cnic})` : ''}
+                  {c.strn ? ` · STRN ${c.strn}` : ''}
                 </option>
               ))}
             </select>
