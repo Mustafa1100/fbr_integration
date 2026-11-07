@@ -13,7 +13,6 @@ from app.models import Customer, User
 from app.pagination import DEFAULT_PAGE_SIZE, paginate
 from app.routers.settings import get_or_create_fbr_settings
 from app.services import customer_import, grid_upload
-from app.services.grid_upload import name_key
 from app.services.plans import require_active_plan
 
 
@@ -64,43 +63,13 @@ def _apply(c: Customer, body: CustomerRequest) -> None:
     c.strn = body.strn.strip()
 
 
-def _digits(value: str) -> str:
-    return "".join(ch for ch in value or "" if ch.isdigit())
-
-
-def _check_unique(db: Session, user: User, body: CustomerRequest, own_id: int | None) -> None:
-    """NTN / CNIC is numbers only, and one saved customer per number. A blank
-    NTN / CNIC is allowed any number of times (e.g. walk-in buyers). Names
-    are unique too (ignoring case and extra spaces), because file uploads
-    find the buyer by name."""
+def _check_number(body: CustomerRequest) -> None:
+    """NTN / CNIC is numbers only. Names and numbers may repeat: one buyer
+    (one NTN / CNIC) can trade under several company names and STRNs, and
+    each is saved as its own customer."""
     raw = body.ntn_cnic.strip()
     if raw and not (raw.isascii() and raw.isdigit()):
         raise HTTPException(422, "NTN / CNIC must be numbers only, without dashes or spaces.")
-    number = _digits(raw)
-    name = name_key(body.name)
-    others = [
-        o
-        for o in db.query(Customer).filter(
-            Customer.user_id == user.id, Customer.is_deleted.is_(False)
-        )
-        if o.id != own_id
-    ]
-    for other in others:
-        if name and name_key(other.name) == name:
-            raise HTTPException(
-                409,
-                f"A customer named {other.name} is already saved. "
-                "Use a different name or edit that customer instead.",
-            )
-    if not number:
-        return
-    for other in others:
-        if _digits(other.ntn_cnic) == number:
-            raise HTTPException(
-                409,
-                f"A customer with NTN / CNIC {body.ntn_cnic.strip()} is already saved: "
-                f"{other.name}. Edit that customer instead.",
-            )
 
 
 def _get_owned(db: Session, user: User, customer_id: int) -> Customer:
@@ -212,7 +181,7 @@ def create_customer(
     user: User = Depends(require_password_already_set),
     db: Session = Depends(get_db),
 ):
-    _check_unique(db, user, body, None)
+    _check_number(body)
     c = Customer(user_id=user.id)
     _apply(c, body)
     db.add(c)
@@ -228,7 +197,7 @@ def update_customer(
     db: Session = Depends(get_db),
 ):
     c = _get_owned(db, user, customer_id)
-    _check_unique(db, user, body, c.id)
+    _check_number(body)
     _apply(c, body)
     db.commit()
     return customer_out(c)

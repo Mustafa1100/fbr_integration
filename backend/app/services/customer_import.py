@@ -103,9 +103,8 @@ def template_xlsx(fbr: FbrSettings) -> bytes:
     help_ws.column_dimensions["B"].width = 90
     rows = [
         ("Column", "What to enter"),
-        ("Buyer Name", "Required. Each name only once (also not one you have already saved)."),
-        ("NTN / CNIC", "Optional. Numbers only, e.g. 4120144015589. Dashes and spaces are removed. "
-                       "Each number only once."),
+        ("Buyer Name", "Required."),
+        ("NTN / CNIC", "Optional. Numbers only, e.g. 4120144015589. Dashes and spaces are removed."),
         ("Registration Type", "Registered or Unregistered. Required when an NTN / CNIC is given; "
                               "blank = Unregistered when there is no number."),
         ("Province", "Optional. One of: " + ", ".join(provinces) + "."),
@@ -162,16 +161,6 @@ def check(db: Session, user: User, fbr: FbrSettings, sheet: list[list[str]] | No
 
     with_strn = _with_strn(fbr)
     provinces = {name_key(p): p for p in province_names(fbr)}
-    saved = (
-        db.query(Customer)
-        .filter(Customer.user_id == user.id, Customer.is_deleted.is_(False))
-        .all()
-    )
-    saved_names = {name_key(c.name): c for c in saved}
-    saved_numbers = {c.ntn_cnic: c for c in saved if c.ntn_cnic}
-
-    seen_names: dict[str, int] = {}
-    seen_numbers: dict[str, int] = {}
     customers = []
     rows_seen = 0
     for ri in range(header_at + 1, len(sheet)):
@@ -196,14 +185,6 @@ def check(db: Session, user: User, fbr: FbrSettings, sheet: list[list[str]] | No
             problems.append(f"Row {row_no}: Buyer Name is missing.")
         elif len(name) > 200:
             problems.append(f"Row {row_no}: Buyer Name is too long (max 200 characters).")
-        else:
-            key = name_key(name)
-            if key in seen_names:
-                problems.append(f'Rows {seen_names[key]} and {row_no}: the buyer name "{name}" is listed twice.')
-            elif key in saved_names:
-                problems.append(f'Row {row_no}: "{name}" is already saved in your Customers.')
-            else:
-                seen_names[key] = row_no
 
         raw_number = values.get("ntn_cnic", "")
         number = re.sub(r"[\s\-]", "", raw_number)
@@ -211,15 +192,6 @@ def check(db: Session, user: User, fbr: FbrSettings, sheet: list[list[str]] | No
             problems.append(f'Row {row_no}: NTN / CNIC "{raw_number}" must be numbers only.')
         elif len(number) > 20:
             problems.append(f"Row {row_no}: NTN / CNIC is too long (max 20 digits).")
-        elif number:
-            if number in seen_numbers:
-                problems.append(f"Rows {seen_numbers[number]} and {row_no}: NTN / CNIC {number} is listed twice.")
-            elif number in saved_numbers:
-                problems.append(
-                    f"Row {row_no}: NTN / CNIC {number} is already saved for {saved_numbers[number].name}."
-                )
-            else:
-                seen_numbers[number] = row_no
 
         reg_text = values.get("registration_type", "")
         reg = next((t for t in REGISTRATION_TYPES if name_key(t) == name_key(reg_text)), None)

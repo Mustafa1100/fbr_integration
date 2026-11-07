@@ -3575,24 +3575,17 @@ def test_customer_registration_type_lookup(user_headers, admin_headers, monkeypa
     client.put(f"/api/admin/users/{user_id}/fbr-settings", json={**fbr, "sandbox_token": "", "production_token": ""}, headers=admin_headers)
 
 
-def test_customers_one_per_ntn_cnic(user_headers):
-    a = client.post("/api/customers", json={"name": "A", "ntn_cnic": "4120144015589"}, headers=user_headers).json()
-    # The same number is refused, naming the saved one.
-    r = client.post("/api/customers", json={"name": "B", "ntn_cnic": "4120144015589"}, headers=user_headers)
-    assert r.status_code == 409 and "A" in r.json()["detail"]
+def test_customers_same_ntn_cnic_allowed(user_headers):
+    # One buyer (one NTN / CNIC) can trade under several company names and
+    # STRNs; each is saved as its own customer.
+    a = client.post("/api/customers", json={"name": "A", "ntn_cnic": "4120144015589", "strn": "111"}, headers=user_headers)
+    b = client.post("/api/customers", json={"name": "B", "ntn_cnic": "4120144015589", "strn": "222"}, headers=user_headers)
+    assert a.status_code == b.status_code == 201
     # Numbers only: dashes or spaces are refused.
     for bad in ("41201-4401558-9", "4120 144015589", "abc"):
         assert client.post("/api/customers", json={"name": "D", "ntn_cnic": bad}, headers=user_headers).status_code == 422
-    # Editing a customer keeps its own number; another can't take it.
-    assert client.put(f"/api/customers/{a['id']}", json={"name": "A2", "ntn_cnic": "4120144015589"}, headers=user_headers).status_code == 200
-    b = client.post("/api/customers", json={"name": "B", "ntn_cnic": "1234567"}, headers=user_headers).json()
-    assert client.put(f"/api/customers/{b['id']}", json={"name": "B", "ntn_cnic": "4120144015589"}, headers=user_headers).status_code == 409
-    # Blank numbers are fine many times; a deleted customer frees its number.
-    for n in ("W1", "W2"):
-        assert client.post("/api/customers", json={"name": n}, headers=user_headers).status_code == 201
-    client.delete(f"/api/customers/{a['id']}", headers=user_headers)
-    c = client.post("/api/customers", json={"name": "C", "ntn_cnic": "4120144015589"}, headers=user_headers)
-    assert c.status_code == 201
+    c = client.post("/api/customers", json={"name": "C", "ntn_cnic": "1234567"}, headers=user_headers).json()
+    assert client.put(f"/api/customers/{c['id']}", json={"name": "C", "ntn_cnic": "4120144015589"}, headers=user_headers).status_code == 200
     for x in client.get("/api/customers", headers=user_headers).json():
         client.delete(f"/api/customers/{x['id']}", headers=user_headers)
 
@@ -3769,10 +3762,11 @@ def test_grid_template_download(admin_headers):
     assert client.get(f"/api/uploads/grid-template?products={gold['id']}", headers=other).status_code == 400
 
 
-def test_customer_names_are_unique(user_headers):
+def test_customer_names_can_repeat(user_headers):
     a = client.post("/api/customers", json={"name": "Rehman Bhai Karachi"}, headers=user_headers).json()
     r = client.post("/api/customers", json={"name": "  rehman  bhai KARACHI "}, headers=user_headers)
-    assert r.status_code == 409 and "already saved" in r.json()["detail"]
+    assert r.status_code == 201, r.text
+    client.delete(f"/api/customers/{r.json()['id']}", headers=user_headers)
     # Editing keeps its own name; deleting frees it.
     assert client.put(f"/api/customers/{a['id']}", json={"name": "Rehman Bhai Karachi", "address": "X"},
                       headers=user_headers).status_code == 200
@@ -3827,11 +3821,11 @@ def test_customer_import_saves_all_rows(admin_headers):
     assert got["AKRAM HYD NAWABSHAH"]["province"] == "Sindh"
     assert got["A-ONE"]["province"] == "Khyber Pakhtunkhwa" and got["A-ONE"]["registration_type"] == "Unregistered"
     assert got["Heera Laal"]["province"] == "Capital Territory" and got["Heera Laal"]["address"] == "Main Road"
-    # CSV works too, and the same list again is refused (already saved).
+    # CSV works too; names already saved can be added again.
     csv_body = "Buyer Name,NTN / CNIC\nA-ONE,\nNew Buyer,\n"
     r = client.post("/api/customers/import", files={"file": ("c.csv", csv_body, "text/csv")}, headers=h).json()
-    assert r["created"] == 0 and r["errors"] == ['Row 2: "A-ONE" is already saved in your Customers.']
-    assert len(client.get("/api/customers", headers=h).json()) == 3
+    assert r["created"] == 2 and not r["errors"]
+    assert len(client.get("/api/customers", headers=h).json()) == 5
 
 
 def test_customer_import_lists_every_problem_and_saves_nothing(admin_headers):
@@ -3853,8 +3847,8 @@ def test_customer_import_lists_every_problem_and_saves_nothing(admin_headers):
     assert r["created"] == 0 and not r["ok"]
     e = " | ".join(r["errors"])
     assert "Row 3: Buyer Name is missing." in e
-    assert 'Rows 4 and 5: the buyer name "twice" is listed twice.' in e
-    assert "Row 6: NTN / CNIC 1234567 is already saved for Saved One." in e
+    # Repeated names and numbers are allowed.
+    assert "listed twice" not in e and "already saved" not in e
     assert 'Row 7: NTN / CNIC "12AB" must be numbers only.' in e
     assert "Row 8: Registration Type is needed when an NTN / CNIC is given" in e
     assert 'Row 9: Registration Type "Filer" must be Registered or Unregistered.' in e
