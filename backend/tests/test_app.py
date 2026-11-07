@@ -4242,3 +4242,29 @@ def test_admin_users_stats_revenue_and_plan_counts(admin_headers):
 
     # Admin-only.
     assert client.get("/api/admin/stats/users").status_code == 401
+
+
+def test_invoice_layout_test_as_draft_toggle(user_headers):
+    layout = client.get("/api/settings/invoice-layout", headers=user_headers).json()["layout"]
+    assert layout["test_as_draft"] is False  # off by default
+
+    def put(value):
+        body = {**layout, "test_as_draft": value}
+        return client.put("/api/settings/invoice-layout", json=body, headers=user_headers)
+
+    r = put(True)
+    assert r.status_code == 200, r.text
+    saved = r.json()["layout"]
+    assert saved["test_as_draft"] is True
+    # Nothing else in the layout changed.
+    assert {k: v for k, v in saved.items() if k != "test_as_draft"} == {
+        k: v for k, v in layout.items() if k != "test_as_draft"
+    }
+    # Receipts carry it (the receipt prints "DRAFT INVOICE" for test invoices).
+    invs = client.get("/api/invoices", headers=user_headers).json()
+    if invs:
+        detail = client.get(f"/api/invoices/{invs[0]['id']}", headers=user_headers).json()
+        assert detail["layout"]["test_as_draft"] is True
+
+    assert put("yes").status_code == 400
+    assert put(False).json()["layout"]["test_as_draft"] is False

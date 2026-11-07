@@ -194,6 +194,8 @@ function useTableFit(deps) {
 export default function ReceiptDocument({ inv, strnChoice = '' }) {
   const layout = inv.layout || FALLBACK_LAYOUT
   const isTest = TEST_ENVS.includes(inv.fbr_env)
+  // Invoice Settings can label test invoices "Draft" instead of "Test".
+  const testWord = inv.layout?.test_as_draft ? 'Draft' : 'Test'
   const [tableCardRef, fitLevel] = useTableFit([inv, layout])
   const show = (key) => layout.header?.[key] !== false
   const fieldsByKey = Object.fromEntries((layout.custom_fields || []).map((f) => [f.key, f]))
@@ -324,14 +326,14 @@ export default function ReceiptDocument({ inv, strnChoice = '' }) {
           cropped photo or photocopy of the top shows it. */}
       {isTest && (
         <div className="receipt-watermark" aria-hidden="true">
-          TEST INVOICE
+          {testWord.toUpperCase()} INVOICE
         </div>
       )}
 
       <h1 className="receipt-title">Sales Tax Invoice</h1>
       {isTest && (
         <div className="receipt-test-tag-row">
-          <span className="receipt-test-tag">Test — Not valid for tax purposes</span>
+          <span className="receipt-test-tag">{testWord} — Not valid for tax purposes</span>
         </div>
       )}
 
