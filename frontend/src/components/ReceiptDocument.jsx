@@ -284,21 +284,28 @@ export default function ReceiptDocument({ inv, strnChoice = '' }) {
       .map((a) => ({ key: a.key, label: adjustmentLabel(a) }))
     return [...orphans, t]
   })
-  // Cotton lint ("Cotton ginners"): the buyer withholds the sales tax and pays
-  // it to FBR, so the seller is owed the total less that tax. On these
-  // invoices only, the inclusive total is replaced by the withheld tax and
-  // the net amount. Every other receipt is unchanged.
+  // Tax withheld by the buyer: the buyer pays it to FBR, so the seller is owed
+  // the total less that tax. Cotton lint ("Cotton ginners", buyer withholds
+  // all of it) replaces the inclusive total with these rows; any other
+  // invoice (e.g. a government buyer withholding 1/5) keeps the inclusive
+  // total and adds them below it. Nothing changes when nothing was withheld.
   const stWithheld = sumOf('st_withheld')
-  const showWithheld = stWithheld > 0 && items.some((it) => isCottonGinner(it.sale_type))
+  const showWithheld = stWithheld > 0
+  const cottonWithheld = showWithheld && items.some((it) => isCottonGinner(it.sale_type))
   if (showWithheld) {
     totalValues.st_withheld = money(stWithheld)
     totalValues.payable_to_seller = money(
       beforeAdjustments + adjustments.reduce((sum, a) => sum + a.signed, 0) - stWithheld
     )
-    const inclIndex = totalRows.findIndex((t) => t.key === 'total_incl')
-    if (inclIndex !== -1) totalRows.splice(inclIndex, 1)
+    if (cottonWithheld) {
+      const inclIndex = totalRows.findIndex((t) => t.key === 'total_incl')
+      if (inclIndex !== -1) totalRows.splice(inclIndex, 1)
+    }
     totalRows.push(
-      { key: 'st_withheld', label: 'Sales Tax Withheld' },
+      {
+        key: 'st_withheld',
+        label: cottonWithheld ? 'Sales Tax Withheld' : 'Sales Tax Withheld at Source',
+      },
       { key: 'payable_to_seller', label: 'Net Payable Amount' }
     )
   }
