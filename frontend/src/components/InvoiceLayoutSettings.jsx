@@ -395,7 +395,12 @@ export default function InvoiceLayoutSettings() {
     return put(
       {
         ...layout,
-        custom_fields: layout.custom_fields.map(({ key, label, type }) => ({ key, label, type })),
+        custom_fields: layout.custom_fields.map(({ key, label, type, on_invoice }) => ({
+          key,
+          label,
+          type,
+          on_invoice: !!on_invoice,
+        })),
         columns: forSave(layout.columns),
         totals: forSave(layout.totals),
       },
@@ -487,7 +492,9 @@ export default function InvoiceLayoutSettings() {
         <p className="muted" style={{ marginTop: 0 }}>
           Extra details per product, e.g. a trade price. Each field appears on the product form, as
           a column in the CSV / Excel template (under its column name), and as a column you can show
-          on the invoice. They print on your receipt only — nothing extra is sent to FBR.
+          on the invoice. They print on your receipt only — nothing extra is sent to FBR. Turn on
+          &quot;On invoice&quot; for a field that changes every invoice (e.g. a lot number) to also
+          fill it in while generating the invoice.
         </p>
         {layout.custom_fields.length > 0 && (
           <div className="table-card" style={{ marginBottom: 12 }}>
@@ -497,6 +504,9 @@ export default function InvoiceLayoutSettings() {
                   <th>Name</th>
                   <th>CSV column name</th>
                   <th>Type</th>
+                  <th title="Also ask for this field on each invoice line (pre-filled from the product)">
+                    On invoice
+                  </th>
                   <th style={{ textAlign: 'right' }}>Remove</th>
                 </tr>
               </thead>
@@ -535,6 +545,21 @@ export default function InvoiceLayoutSettings() {
                           ))}
                         </select>
                       </td>
+                      <td>
+                        <label
+                          className="switch has-tip"
+                          data-tip="Ask on each invoice"
+                          aria-label={`Ask ${f.label || 'this field'} on each invoice`}
+                        >
+                          <input
+                            type="checkbox"
+                            role="switch"
+                            checked={!!f.on_invoice}
+                            onChange={(e) => setField(i, { on_invoice: e.target.checked })}
+                          />
+                          <span className="switch-track" aria-hidden="true" />
+                        </label>
+                      </td>
                       <td style={{ textAlign: 'right' }}>
                         <button
                           type="button"
@@ -559,7 +584,9 @@ export default function InvoiceLayoutSettings() {
           type="button"
           className="btn btn-secondary btn-sm"
           onClick={() =>
-            update({ custom_fields: [...layout.custom_fields, { label: '', key: '', type: 'text' }] })
+            update({
+              custom_fields: [...layout.custom_fields, { label: '', key: '', type: 'text', on_invoice: false }],
+            })
           }
         >
           <Plus size={14} /> Add field
