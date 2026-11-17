@@ -237,7 +237,9 @@ def _clean_custom_fields(raw, strict: bool) -> list[dict]:
             fail(f"Unknown field type '{ftype}'.")
             continue
         seen.add(key)
-        fields.append({"key": key, "label": label, "type": ftype})
+        # on_invoice: also asked on each invoice line (pre-filled from the
+        # product, changeable per invoice) — e.g. a lot number. Off by default.
+        fields.append({"key": key, "label": label, "type": ftype, "on_invoice": f.get("on_invoice") is True})
     if len(fields) > MAX_CUSTOM_FIELDS:
         fail(f"At most {MAX_CUSTOM_FIELDS} custom fields.")
         fields = fields[:MAX_CUSTOM_FIELDS]

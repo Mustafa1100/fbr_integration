@@ -97,6 +97,9 @@ function emptyItem() {
     // Line amounts (LINE_FIELDS), pre-filled from the product's per-pack
     // amount × packs until the user types their own (then *_edited pins it).
     ...Object.fromEntries(LINE_FIELDS.flatMap((f) => [[f, ''], [`${f}_edited`, false]])),
+    // This line's values for custom fields marked "On invoice" (e.g. a lot
+    // number) — pre-filled from the product, changeable for this invoice.
+    custom: {},
   }
 }
 
@@ -187,7 +190,8 @@ function toCsvItem(it, product, packOn = false) {
     fixed_notified_value: product.fixed_notified_value || '',
     sro_schedule_no: product.sro_schedule_no,
     sro_item_serial_no: product.sro_item_serial_no,
-    custom_fields: product.custom_fields || {},
+    // Line values ("On invoice" fields) replace the product's saved ones.
+    custom_fields: { ...(product.custom_fields || {}), ...(it.custom || {}) },
     // Only on pack-priced lines (absent otherwise, so nothing changes).
     ...(pk
       ? { pack_qty: pk.packs, pack_price: linePackPrice(it, product), pack_name: product.pack_name || '' }
@@ -230,6 +234,35 @@ function NumField({ label, hint, value, onChange, placeholder = '0' }) {
   )
 }
 
+// One custom field marked "On invoice", typed to match its field type.
+function CustomField({ field, value, onChange }) {
+  const set = (e) => onChange(e.target.value)
+  let input
+  if (field.type === 'yes_no') {
+    input = (
+      <select value={value} onChange={set}>
+        <option value="">—</option>
+        <option value="Yes">Yes</option>
+        <option value="No">No</option>
+      </select>
+    )
+  } else if (field.type === 'number') {
+    input = <input type="number" step="any" value={value} onChange={set} />
+  } else if (field.type === 'date') {
+    input = <input type="date" value={value} onChange={set} />
+  } else {
+    input = <input value={value} onChange={set} maxLength={300} />
+  }
+  return (
+    <div className="field">
+      <label>
+        {field.label} <span className="hint">(for this line)</span>
+      </label>
+      {input}
+    </div>
+  )
+}
+
 // Enter one invoice by hand — one or more product lines. Reuses the exact same
 // upload pipeline: build a CSV client-side (one row per product, all sharing
 // the pos_invoice_no) and POST it through POST /api/uploads, so it gets 100%
@@ -253,6 +286,8 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
   // value for each (pre-filled with the saved default).
   const [adjRows, setAdjRows] = useState([])
   const [adjValues, setAdjValues] = useState({})
+  // Custom fields marked "On invoice" in Invoice Settings.
+  const [invoiceFields, setInvoiceFields] = useState([])
   // Saved buyers (Customers page); '' = entering the buyer by hand.
   const [customers, setCustomers] = useState([])
   const [customerId, setCustomerId] = useState('')
@@ -265,6 +300,7 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
         const rows = (d.layout?.totals || []).filter((t) => t.adjustment)
         setAdjRows(rows)
         setAdjValues(Object.fromEntries(rows.map((r) => [r.key, String(r.value ?? '')])))
+        setInvoiceFields((d.layout?.custom_fields || []).filter((f) => f.on_invoice))
       })
       .catch(() => {})
     api.get('/api/reference/provinces').then(setProvinces).catch(() => {})
@@ -318,6 +354,9 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
       // A different product brings its own saved prices, locked again; a
       // pack-priced one starts in whichever unit (packs / KG) was used last.
       if (key === 'product_id') {
+        next.custom = Object.fromEntries(
+          invoiceFields.map((f) => [f.key, product?.custom_fields?.[f.key] ?? ''])
+        )
         next.unit_price = product ? String(product.unit_price) : ''
         next.unit_price_editing = false
         const packed = isPackPriced(product, packPricing)
@@ -876,6 +915,14 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
                 value={draft.advance_tax}
                 onChange={setD('advance_tax')}
               />
+              {invoiceFields.map((f) => (
+                <CustomField
+                  key={f.key}
+                  field={f}
+                  value={draft.custom?.[f.key] ?? ''}
+                  onChange={(v) => setDraft({ ...draft, custom: { ...(draft.custom || {}), [f.key]: v } })}
+                />
+              ))}
             </div>
           )}
 
@@ -917,6 +964,14 @@ export default function ManualInvoiceModal({ onClose, onSubmitted, target = 'san
                       <td>{i + 1}</td>
                       <td>
                         <span className="strong">{p.description}</span>
+                        {invoiceFields.some((f) => it.custom?.[f.key]) && (
+                          <div className="muted small">
+                            {invoiceFields
+                              .filter((f) => it.custom?.[f.key])
+                              .map((f) => `${f.label}: ${it.custom[f.key]}`)
+                              .join(' · ')}
+                          </div>
+                        )}
                       </td>
                       <td className="mono">{p.hs_code}</td>
                       <td>

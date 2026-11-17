@@ -4262,3 +4262,27 @@ def test_invoice_layout_test_as_draft_toggle(user_headers):
 
     assert put("yes").status_code == 400
     assert put(False).json()["layout"]["test_as_draft"] is False
+
+
+def test_custom_field_on_invoice_flag(user_headers):
+    layout = client.get("/api/settings/invoice-layout", headers=user_headers).json()["layout"]
+    fields = [
+        {"key": "lot_no", "label": "Lot no", "type": "text", "on_invoice": True},
+        {"key": "grade", "label": "Grade", "type": "text"},  # flag left out -> off
+    ]
+    r = client.put(
+        "/api/settings/invoice-layout", json={**layout, "custom_fields": fields}, headers=user_headers
+    )
+    assert r.status_code == 200, r.text
+    saved = {f["key"]: f["on_invoice"] for f in r.json()["layout"]["custom_fields"]}
+    assert saved == {"lot_no": True, "grade": False}
+    # Read back the same; only a real true turns it on.
+    again = client.get("/api/settings/invoice-layout", headers=user_headers).json()["layout"]
+    assert {f["key"]: f["on_invoice"] for f in again["custom_fields"]} == saved
+    fields[1]["on_invoice"] = "yes"
+    r = client.put(
+        "/api/settings/invoice-layout", json={**layout, "custom_fields": fields}, headers=user_headers
+    )
+    assert {f["key"]: f["on_invoice"] for f in r.json()["layout"]["custom_fields"]}["grade"] is False
+    # Put the layout back for the tests that follow.
+    client.put("/api/settings/invoice-layout", json=layout, headers=user_headers)
